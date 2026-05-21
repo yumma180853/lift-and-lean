@@ -1,0 +1,6 @@
+{
+  "name": "LIFT & LEAN",
+  "description": "筋トレ・食事・体重をトータル管理できるフィットネス管理アプリ。PFCバランスの計算や進捗のグラフ可視化機能を搭載。",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
