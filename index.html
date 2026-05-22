@@ -7,6 +7,23 @@
 <link rel="icon" type="image/png" href="/icon.png">
     <link rel="manifest" href="/manifest.json">
     <title>Lift & Lean</title>
+    <style>
+  @media screen and (orientation: landscape) {
+    body::before {
+      content: "Lift & Lean は縦画面専用です 📱";
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #1a1a1a; /* アプリの背景色 */
+      color: #ffffff;
+      z-index: 99999;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 18px;
+      font-weight: bold;
+    }
+  }
+</style>
   </head>
   <body>
     <div id="root"></div>
