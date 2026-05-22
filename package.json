@@ -11,7 +11,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@rollup/rollup-linux-x64-gnu": "*",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
@@ -36,5 +35,10 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "overrides": {
+    "vite": {
+      "rollup": "npm:@rollup/wasm-node"
+    }
   }
 }
