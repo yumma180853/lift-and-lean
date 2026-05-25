@@ -22,7 +22,7 @@ app.use(express.json({ limit: '10mb' }));
 app.post("/api/analyze-meal", async (req, res) => {
   try {
     const { image } = req.body;
-    if (!image) {
+    if ( !image ) {
       return res.status(400).json({ error: "Image is required" });
     }
     const base64Data = image.split(',')[1] || image;
@@ -54,15 +54,15 @@ app.post("/api/analyze-meal", async (req, res) => {
     const result = JSON.parse(response.text || "{}");
     res.json(result);
   } catch (error: any) {
-    console.error("Gemini Error:", error ) ;
+    console.error("Gemini Error:", error);
     res.status(500).json({ error: error.message || "Failed to analyze image" });
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（食事・筋トレ完全連動＆お留守番対策版！）
+// 2. AIパーソナルトレーナー チャットルート（普通の対話＆メニュー連発防止版！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
-    const { message, images, userData, workouts, meals } = req.body;
+    const { message, images, userData, workouts, meals, history } = req.body;
 
     // 筋トレログを綺麗なテキストに変換
     const workoutSummary = workouts && workouts.length > 0
@@ -83,9 +83,13 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
-    const prompt = `
-あなたはプロのパーソナルトレーナーAIです。
-ユーザーが入力した本日の筋トレ内容や食事ログを完全に把握した上で、具体的で科学的な根拠に基づいた「オリジナルのアドバイス」を毎回考えて提供してください。テンプレ文章をそのまま返してはいけません。
+    const systemInstruction = `
+あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
+一問一答の機械的な回答ではなく、普通のAIのようになめらかに、これまでの会話の文脈（流れ）に沿ったキャッチボールを行ってください。
+
+【⚠️最重要ルール：メニュー提案の厳重制限】
+ユーザーから「メニューを教えて」「新しい種目を提案して」「メニューを変えたい」など、明示的に新しい筋トレメニューの作成・変更を求められた場合以外は、絶対に新しいメニューを提案してはいけません。
+通常の相談、質問への回答、雑談、励ましの言葉、食事のアドバイスなどの際は、exercises フィールドは必ず空の配列 [] にしてください。毎回違うメニューを押し付けるような推奨は絶対に禁止します。
 
 【ユーザーの基本目標設定】
 ・現在の体重: ${userData?.weight || "--"}kg / 目標体重: ${userData?.targetWeight || "--"}kg
@@ -101,35 +105,49 @@ ${workoutSummary}
 --- 食べたメニュー一覧 ---
 ${mealSummary}
 
-【トレーナーへの指示】
-1. ユーザーから言われなくても、上記の「今日の筋トレ内容」や「食事のPFCバランス」を自動的にチェックし、具体的に褒めたり、目標値に対するアドバイスを最初から会話に盛り込んでください。必ず毎回、ユーザーの実際の記録に応じた個別のメッセージを生成してください。
-2. もし「現在の体」と「目標の体」の画像（2枚）が送られてきた場合、そのギャップを分析し、最適なメニューを提案してください。
-3. 毎回、必ず「現在の筋肉痛の有無・部位」や「今日の体調」を最後に質問してください。
-回答は常に元気で親しみやすく、かつ誠実な態度で行ってください。
+【トレーナーとしての対話指針】
+1. ユーザーが「こうしたいんだけど何すればいい？」などと質問してきたら、その意図（バルクアップしたいのか、痩せたいのか、特定の部位を鍛えたいのかなど）を丁寧に聞き返したり、会話の文脈に沿って親身に答えてください。
+2. ユーザーから言われなくても、上記の「今日のデータ」は脳内に把握しておき、会話の流れで自然に「今日のタンパク質バッチリだね！」などと触れるのはOKですが、毎回同じセリフを連発しないでください。
+3. 毎回無理に「筋肉痛はありますか？」と定型文で締めくくる必要はありません。普通の人間のように自然に会話を終わらせてください。
 `;
 
-    const parts: any[] = [{ text: prompt }];
+    // 過去の履歴（history）がある場合はそれをベースにし、最新のメッセージを追加する
+    let contents: any[] = [];
+    
+    if (history && Array.isArray(history)) {
+      contents = history.map((h: any) => ({
+        role: h.role === "assistant" ? "model" : "user",
+        parts: [{ text: h.text || h.message || "" }]
+      }));
+    }
+
+    // 最新のユーザー発言の組み立て
+    const currentParts: any[] = [];
     if (images && images.length > 0) {
       images.forEach((img: string) => {
         const base64Data = img.split(',')[1] || img;
-        parts.push({
+        currentParts.push({
           inlineData: { mimeType: "image/jpeg", data: base64Data }
         });
       });
     }
-    parts.push({ text: message });
+    currentParts.push({ text: message });
+
+    // 履歴の最後に最新の発言を追加
+    contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: [{ role: "user", parts }],
+      contents: contents,
       config: { 
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             text: { 
               type: Type.STRING, 
-              description: "ユーザーへの親身で具体的なオリジナルアドバイス（今日の食事や筋トレのフィードバックを含めてください）" 
+              description: "ユーザーへの親身で自然な返答メッセージ。文脈に沿った対話を行ってください。" 
             },
             exercises: {
               type: Type.ARRAY,
@@ -142,7 +160,7 @@ ${mealSummary}
                 },
                 required: ["name", "reps", "sets"]
               },
-              description: "新しく提案する筋トレメニューのリスト（ない場合は空の配列 []）"
+              description: "ユーザーから明確にメニュー提案を求められた場合のみ、提案する筋トレメニューのリストを入れます。それ以外（通常の対話）は必ず空の配列 [] にしてください。"
             }
           },
           required: ["text", "exercises"]
