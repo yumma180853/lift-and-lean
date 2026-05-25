@@ -40,7 +40,24 @@ app.post("/api/analyze-diet-image", handleAnalyzeMeal);
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
-    const systemInstruction = `あなたはプロのトレーナーAIです。自然な対話をして下さい。要望がない限りメニュー提案(exercises)は空配列[]にして下さい。`;
+    
+    const workoutSummary = workouts && workouts.length > 0
+      ? workouts.map((w: any) => `■ ${w.name}\n` + (w.sets ? w.sets.map((s: any, i: number) => `  - SET ${i+1}: ${s.weight}kg × ${s.reps}回`).join("\n") : "")).join("\n\n")
+      : "なし";
+
+    const mealSummary = meals && meals.length > 0
+      ? meals.map((m: any) => `・ ${m.name} (${m.calories}kcal / P:${m.protein}g F:${m.fat}g C:${m.carbs}g)`).join("\n")
+      : "なし";
+
+    const totalP = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0) : 0;
+    const totalF = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0) : 0;
+    const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
+    const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
+
+    // 🚨ここにAIへの画像認識命令と、今日のデータをがっちり復活させました！
+    const systemInstruction = `あなたはプロのトレーナーAIです。自然な対話をして下さい。要望がない限りメニュー提案(exercises)は空配列[]にして下さい。ユーザーから画像が送られてきた場合は、その画像（体型や食事など）をしっかり見て、具体的に褒めたりアドバイスをして下さい。
+【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
+【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}`;
     
     let contents = [];
     if (history && Array.isArray(history)) {
