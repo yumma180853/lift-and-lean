@@ -37,8 +37,17 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// --- Default State ---
+// 🚨【超重要・真っ白クラッシュ完全防衛盾】
+// 一部のスマホやブラウザ環境で「crypto.randomUUID」が使えずに画面が真っ白に自爆するのを200%完璧に防ぐ安全なIDジェネレーター
+const safeUUID = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // 万が一スマホ側が対応していない場合の無敵の身代わりID生成
+  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+};
 
+// --- Default State ---
 
 const DEFAULT_GOALS: UserGoals = {
   calories: 2200,
@@ -133,7 +142,6 @@ export default function App() {
       
       if (!hasWeightToday && Notification.permission === 'granted') {
         const hour = new Date().getHours();
-        // Morning reminder (6 AM - 11 AM)
         if (hour >= 6 && hour <= 11) {
           new Notification('LIFT & LEAN', {
             body: 'おはようございます！今日の体重を記録しましょう。',
@@ -162,7 +170,7 @@ export default function App() {
     if (!text.trim() && images.length === 0) return;
 
     const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: safeUUID(), // 🚨安全なIDに差し替え
       role: 'user',
       text,
       images,
@@ -199,10 +207,10 @@ export default function App() {
       const data = await response.json();
       
       const assistantMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: safeUUID(), // 🚨安全なIDに差し替え
         role: 'assistant',
-        text: data.text,
-        exercises: data.exercises,
+        text: data?.text || 'お返事の作成中にエラーが発生しました。',
+        exercises: Array.isArray(data?.exercises) ? data.exercises : [],
         timestamp: new Date().toISOString()
       };
 
@@ -210,7 +218,7 @@ export default function App() {
     } catch (error: any) {
       if (error.name === 'AbortError') {
         const cancelMsg: ChatMessage = {
-          id: crypto.randomUUID(),
+          id: safeUUID(), // 🚨安全なIDに差し替え
           role: 'assistant',
           text: '回答の生成が中断されました。',
           timestamp: new Date().toISOString()
@@ -243,10 +251,10 @@ export default function App() {
 
   const todayStats = useMemo(() => {
     return todayMeals.reduce((acc, meal) => ({
-      calories: acc.calories + meal.calories,
-      protein: acc.protein + meal.protein,
-      fat: acc.fat + meal.fat,
-      carbs: acc.carbs + meal.carbs,
+      calories: acc.calories + (Number(meal.calories) || 0),
+      protein: acc.protein + (Number(meal.protein) || 0),
+      fat: acc.fat + (Number(meal.fat) || 0),
+      carbs: acc.carbs + (Number(meal.carbs) || 0),
     }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
   }, [todayMeals]);
 
@@ -263,7 +271,7 @@ export default function App() {
 
   const addWorkout = () => {
     const newWorkout: Workout = {
-      id: crypto.randomUUID(),
+      id: safeUUID(), // 🚨安全なIDに差し替え
       date: today,
       exercises: []
     };
@@ -280,7 +288,7 @@ export default function App() {
       if (w.id !== workoutId) return w;
       return {
         ...w,
-        exercises: [...w.exercises, { id: crypto.randomUUID(), name, sets: [] }]
+        exercises: [...w.exercises, { id: safeUUID(), name, sets: [] }] // 🚨安全なIDに差し替え
       };
     }));
   };
@@ -294,7 +302,7 @@ export default function App() {
           if (e.id !== exerciseId) return e;
           return {
             ...e,
-            sets: [...e.sets, { id: crypto.randomUUID(), weight, reps }]
+            sets: [...e.sets, { id: safeUUID(), weight, reps }] // 🚨安全なIDに差し替え
           };
         })
       };
@@ -349,7 +357,7 @@ export default function App() {
   const addMeal = (meal: Omit<Meal, 'id' | 'date'>) => {
     const newMeal: Meal = {
       ...meal,
-      id: crypto.randomUUID(),
+      id: safeUUID(), // 🚨安全なIDに差し替え
       date: today,
     };
     setMeals([...meals, newMeal]);
@@ -357,11 +365,10 @@ export default function App() {
 
   const addWeight = (weight: number) => {
     const newRecord: WeightRecord = {
-      id: crypto.randomUUID(),
+      id: safeUUID(), // 🚨安全なIDに差し替え
       date: today,
       weight
     };
-    // Update if exists for today or add new
     const existingIndex = weightHistory.findIndex(w => w.date === today);
     if (existingIndex > -1) {
       const updated = [...weightHistory];
@@ -372,23 +379,8 @@ export default function App() {
     }
   };
 
-  // --- Sub-components (Sections) ---
-
-  // --- SectionWorkout deleted ---
-
-  // --- SectionDiet deleted ---
-
-  // --- SectionAnalysis deleted ---
-
-  // --- SectionAITrainer deleted ---
-
-  // --- SectionSettings deleted ---
-
-  // --- Main Render ---
-
   return (
     <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-lime-400 selection:text-black">
-      {/* Mobile-first layout container */}
       <div className="max-w-md mx-auto min-h-screen flex flex-col relative px-5 pt-6 bg-[#0a0a0a]">
         
         <main className="flex-1">
@@ -471,7 +463,6 @@ export default function App() {
           </AnimatePresence>
         </main>
 
-        {/* Bottom Navigation */}
         <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-6 py-4 flex items-center justify-between z-50">
           <NavItem active={activeTab === 'dashboard'} icon={<Activity />} label="ホーム" onClick={() => setActiveTab('dashboard')} />
           <NavItem active={activeTab === 'workout'} icon={<Dumbbell />} label="ログ" onClick={() => setActiveTab('workout')} />
@@ -482,11 +473,9 @@ export default function App() {
         </nav>
       </div>
 
-      {/* Modern High-Contrast Interactive Weight Input Modal */}
       <AnimatePresence>
         {isWeightModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            {/* Backdrop */}
             <motion.div 
               onClick={() => setIsWeightModalOpen(false)}
               initial={{ opacity: 0 }}
@@ -495,7 +484,6 @@ export default function App() {
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
             
-            {/* Modal Modal */}
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -586,7 +574,4 @@ function NavItem({ active, icon, label, onClick }: { active: boolean, icon: Reac
         {React.cloneElement(icon as React.ReactElement, { size: 24, strokeWidth: active ? 2.5 : 2 })}
       </div>
       <span className="text-[10px] font-bold uppercase tracking-tight">{label}</span>
-    </button>
-  );
-}
-
+    </
