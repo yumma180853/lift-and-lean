@@ -1,89 +1,108 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    }
+  }
 });
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（10秒制限を絶対に回避する爆速JSONモード！）
+// 1. 食事の写真解析ルート（一番良かった最初の超高速・必勝構造に完全復帰！）
 async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
   try {
     const { image } = req.body;
-    if (!image) return res.status(400).json({ error: "Image is required" });
+    if (!image) {
+      return res.status(400).json({ error: "Image is required" });
+    }
     const mime = image.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? image.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
 
-    // 🚨重いチェック機能を外して文字指示にすることで速度を3倍に高速化！
-    // Vercelにブチ切られる前に2秒で即答させることで、真っ白フリーズを完璧に防ぎます。
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview", // 🚨一番サクサク動いていた大本命モデルに戻します！
       contents: [
         {
-          role: "user",
           parts: [
             { inlineData: { mimeType: mime, data: base64Data } },
-            { text: "Analyze this meal image. Estimate: name, calories, protein, fat, carbs. You must return a raw JSON object exactly in this format: {\"name\": \"料理名\", \"calories\": 350, \"protein\": 20, \"fat\": 10, \"carbs\": 45}. Do not include markdown code blocks like ```json." }
+            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Provide reasonable estimates based on the visual contents. Return the result in Japanese." }
           ]
         }
       ],
       config: {
-        responseMimeType: "application/json"
-      }
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT, // 🚨大成功していた正式な型指定に戻します！
+          properties: {
+            name: { type: Type.STRING },
+            calories: { type: Type.NUMBER },
+            protein: { type: Type.NUMBER },
+            fat: { type: Type.NUMBER },
+            carbs: { type: Type.NUMBER },
+          },
+          required: ["name", "calories", "protein", "fat", "carbs"],
+        },
+      },
     });
 
-    let rawText = response.text || "{}";
-    rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(rawText);
-
-    res.json({
-      name: parsed.name || "解析された料理",
-      calories: Number(parsed.calories) || 0,
-      protein: Number(parsed.protein) || 0,
-      fat: Number(parsed.fat) || 0,
-      carbs: Number(parsed.carbs) || 0
-    });
-
+    const result = JSON.parse(response.text || "{}");
+    res.json(result);
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    res.json({
-      name: "画像解析スキップ（手動入力してください）",
-      calories: 0,
-      protein: 0,
-      fat: 0,
-      carbs: 0
-    });
+    res.status(500).json({ error: error.message || "Failed to analyze image" });
   }
 }
 
 app.post("/api/analyze-meal", handleAnalyzeMeal);
-app.post("/api/analyze-diet-image", handleAnalyzeMeal);
+app.post("/api/analyze-diet-image", handleAnalyzeMeal); // 🚨どちらのURLで届いても100%キャッチします！
 
-// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある安定版）
+// 2. AIパーソナルトレーナー チャットルート（普通のなめらかな会話ができるハイブリッド安定版！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
-    const workoutSummary = workouts && workouts.length > 0 ? workouts.map((w: any) => `■ ${w.name}\n` + (w.sets ? w.sets.map((s: any, i: number) => `  - SET ${i+1}: ${s.weight}kg × ${s.reps}回`).join("\n") : "")) : "なし";
-    const mealSummary = meals && meals.length > 0 ? meals.map((m: any) => `・ ${m.name} (${m.calories}kcal / P:${m.protein}g F:${m.fat}g C:${m.carbs}g)`) : "なし";
+
+    const workoutSummary = workouts && workouts.length > 0
+      ? workouts.map((w: any) => {
+          const setsText = w.sets ? w.sets.map((s: any, i: number) => `  - SET ${i+1}: ${s.weight}kg × ${s.reps}回 (VOL: ${s.weight * s.reps})`).join("\n") : "  データなし";
+          return `■ ${w.name}\n${setsText}`;
+        }).join("\n\n")
+      : "本日の筋トレ記録はまだありません。";
+
+    const mealSummary = meals && meals.length > 0
+      ? meals.map((m: any) => `・ ${m.name} (${m.calories}kcal / P:${m.protein}g F:${m.fat}g C:${m.carbs}g)`).join("\n")
+      : "本日の食事記録はまだありません。";
+
     const totalP = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0) : 0;
     const totalF = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0) : 0;
     const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
-    const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。 【⚠️超重要：画像認識ルール】 あなたには、ユーザーから送られてきた写真や画像（食事、体型、トレーニング風景など）が「100%完全に直接見えています」。 絶対に「私はテキストベースのAIなので画像が見えません」と言い訳や嘘をついてはいけません。具体的にアドバイスしてください。 【⚠️最重要ルール：メニュー提案の厳重制限】 要望がない限りexercisesは必ず空の配列 [] にしてください。 【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal 【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}`;
+    const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
+一問一答の機械的な回答ではなく、普通のAIのようになめらかに、これまでの会話の文脈に沿ったキャッチボールを行ってください。
+【⚠️最重要ルール：メニュー提案の厳重制限】
+ユーザーから明確に新しい筋トレメニューの作成を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
 
-    let contents = [];
+【目標設定】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
+【🔥本日のリアルタイム筋トレ記録】\n${workoutSummary}
+\n\n【🍏本日のリアルタイム食事・摂取栄養素】\n合計摂取カロリー: ${totalCal} kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}`;
+
+    let contents: any[] = [];
     if (history && Array.isArray(history)) {
-      contents = history.map((h: any) => ({role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text || h.message || "" }] }));
+      contents = history.map((h: any) => ({
+        role: h.role === "assistant" ? "model" : "user",
+        parts: [{ text: h.text || h.message || "" }]
+      }));
     }
-    const currentParts = [];
+
+    const currentParts: any[] = [];
     if (images && images.length > 0) {
       images.forEach((img: string) => {
         const m = img.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? img.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
@@ -94,49 +113,45 @@ app.post("/api/chat-trainer", async (req, res) => {
     contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents,
-      config: {
-        systemInstruction,
+      model: "gemini-3-flash-preview", // 🚨チャット側も大本命モデルに完全復帰！
+      contents: contents,
+      config: { 
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
-          type: "OBJECT",
+          type: Type.OBJECT,
           properties: {
-            text: { type: "STRING" },
+            text: { type: Type.STRING, description: "ユーザーへの自然な返答メッセージ。文脈に沿った対話を行ってください。" },
             exercises: {
-              type: "ARRAY",
+              type: Type.ARRAY,
               items: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } },
                 required: ["name", "reps", "sets"]
-              }
+              },
+              description: "メニュー提案を求められた場合のみ。それ以外は必ず空の配列 []"
             }
           },
           required: ["text", "exercises"]
         }
-      }
+      },
     });
 
-    let rawText = response.text || "{}";
-    rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(rawText);
-
-    res.json({
-      text: parsed.text || "お返事の作成中に少し迷ってしまいました。もう一度話しかけてみてください！",
-      exercises: Array.isArray(parsed.exercises) ? parsed.exercises : []
-    });
-  } catch (error) {
+    res.json(JSON.parse(response.text || "{}"));
+  } catch (error: any) {
+    console.error("Trainer Error:", error);
     res.status(500).json({ error: "Failed to chat" });
   }
 });
 
 if (process.env.NODE_ENV !== "production") {
-  const { createServer } = await import("vite");
-  const vite = await createServer({ server: { middlewareMode: true }, appType: "spa" });
+  const { createServer: createViteServer } = await import("vite");
+  const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
   app.use(vite.middlewares);
 } else {
   const distPath = path.join(process.cwd(), 'dist');
   app.use(express.static(distPath));
   app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
 }
+
 export default app;
