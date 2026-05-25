@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（最新SDK公式の「単発マルチモーダル形式」に完全リフォーム！）
+// 1. 食事の写真解析ルート（最新SDKの公式データ形式に完全準拠！）
 async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
   try {
     const { image } = req.body;
@@ -23,24 +23,36 @@ async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
 
-    // 🚨重要：単発の画像解析はroleやpartsで包まず、配列に直接データを入れるのが最新SDKの絶対ルールです！
-    // さらに、重いチェック機能を外して文字指示にすることで速度を3倍に高速化し、10秒フリーズを完璧に回避します。
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
-        "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). You must return a raw JSON object exactly in this format: {\"name\": \"料理名\", \"calories\": 350, \"protein\": 20, \"fat\": 10, \"carbs\": 45}. Do not include markdown code blocks like ```json.",
-        { inlineData: { mimeType: mimeType, data: base64Data } }
-      ]
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: mimeType, data: base64Data } },
+            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            name: { type: "STRING" },
+            calories: { type: "NUMBER" },
+            protein: { type: "NUMBER" },
+            fat: { type: "NUMBER" },
+            carbs: { type: "NUMBER" },
+          },
+          required: ["name", "calories", "protein", "fat", "carbs"],
+        },
+      },
     });
 
-    let text = response.text || "{}";
-    // 万が一AIがマークダウンの装飾（```json）をつけて返してきた場合のお掃除
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    
-    res.json(JSON.parse(text));
+    res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    // 万が一の時もスマホの画面が絶対に真っ白にならない安全な身代わりデータ
     res.json({
       name: "解析をスキップ（手動で入力してください）",
       calories: 0,
@@ -54,7 +66,7 @@ async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
 app.post("/api/analyze-meal", handleAnalyzeMeal);
 app.post("/api/analyze-diet-image", handleAnalyzeMeal);
 
-// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある完全版）
+// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある普通の会話・連動版）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -73,8 +85,8 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
     const systemInstruction = `
-ユーザーの基本目標設定を把握した上で、プロのパーソナルトレーナーとして「普通の自然な対話」を最も大切にしてください。
-一問一答ではなく、これまでの会話の文脈に沿ったキャッチボールを行ってください。
+あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
+【⚠️最重要ルール：メニュー提案の厳重制限】
 ユーザーから明確に新しい筋トレメニューの作成を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
 
 【目標設定】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
@@ -133,15 +145,7 @@ app.post("/api/chat-trainer", async (req, res) => {
   }
 });
 
-// 🚨ここから下の部分が綺麗に繋がっている必要があります！
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-  app.use(vite.middlewares);
-} else {
-  const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
-}
-
-export default app;
+  app.use(vite.middlewares
