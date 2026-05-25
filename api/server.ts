@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（混雑に強い超安定モデルに変更！）
+// 1. 食事の写真解析ルート（公式大本命の最新モデルに修正！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -24,7 +24,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const base64Data = image.split(',')[1] || image;
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash", // 24時間いつでも安定して動くタフモデル
+      model: "gemini-2.5-flash", // 新しいプログラム部品が100%認識する本命モデル
       contents: [
         {
           parts: [
@@ -55,7 +55,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（混雑に強い超安定モデルに変更！）
+// 2. AIパーソナルトレーナー チャットルート（公式大本命の最新モデルに修正！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -103,7 +103,7 @@ app.post("/api/chat-trainer", async (req, res) => {
     contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash", // 24時間いつでも安定して動くタフモデル
+      model: "gemini-2.5-flash", // 新しいプログラム部品が100%認識する本命モデル
       contents: contents,
       config: { 
         systemInstruction: systemInstruction,
