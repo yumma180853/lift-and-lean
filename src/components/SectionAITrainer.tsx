@@ -52,14 +52,37 @@ export function SectionAITrainer({
     scrollToBottom();
   }, [chatMessages, isSending]);
 
+  // 🚨【大手術】チャット側にも「自動画像圧縮機能」をがっちり搭載！
+  // スマホの巨大な生写真を一瞬で1024px以下に超軽量化し、メモリ破裂（真っ白クラッシュ）を完全に根絶します！
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     files.forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPendingImages(prev => [...prev, reader.result as string]);
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 1024;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        const base64Data = canvas.toDataURL('image/jpeg', 0.6); // 画質を適度に落として極小サイズに
+        setPendingImages(prev => [...prev, base64Data]);
       };
-      reader.readAsDataURL(file);
     });
   };
 
@@ -192,13 +215,10 @@ export function SectionAITrainer({
           </div>
         ))}
 
-        {/* Gemini-like Thinking Pulse Animation */}
         {isSending && (
           <div className="py-4 px-2 space-y-4 max-w-[90%] flex-shrink-0">
-            {/* Sparkling indicators with beautiful glowing gradient effect */}
             <div className="flex items-center gap-2.5">
               <div className="relative flex items-center justify-center">
-                {/* Multi-colored glowing aura */}
                 <div className="absolute w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-lime-400 blur-md opacity-40 animate-pulse" />
                 <motion.div 
                   className="relative p-1.5 bg-zinc-950 text-white rounded-full border border-zinc-800 flex items-center justify-center shadow-lg"
@@ -213,17 +233,13 @@ export function SectionAITrainer({
               </div>
             </div>
             
-            {/* Flowing multi-layered 3D wave gradient animation */}
             <div className="space-y-2 pl-9 w-64">
               <div className="relative w-full h-1.5 overflow-hidden rounded-full bg-zinc-900/50 border border-zinc-850 shadow-inner">
-                {/* Wave 1: Fast & Vibrant */}
                 <div className="absolute inset-y-0 w-[400%] -left-full bg-gradient-to-r from-transparent via-[#d9ff00]/60 via-[#00f5ff]/60 via-[#9d00ff]/60 via-[#d9ff00]/60 to-transparent animate-gemini-flow-1" />
-                {/* Wave 2: Slower & translucent overlay */}
                 <div className="absolute inset-y-0 w-[400%] -left-full bg-gradient-to-r from-transparent via-[#00f5ff]/40 via-[#d9ff00]/30 via-[#9d00ff]/50 via-transparent to-transparent animate-gemini-flow-2 opacity-80" />
               </div>
               
               <div className="relative w-11/12 h-1 overflow-hidden rounded-full bg-zinc-900/50 border border-zinc-850 shadow-inner opacity-75">
-                {/* Wave 3: Reverse flow */}
                 <div className="absolute inset-y-0 w-[450%] -left-full bg-gradient-to-r from-[#9d00ff]/20 via-[#ff007c]/40 via-[#00f5ff]/50 via-transparent to-[#9d00ff]/20 animate-gemini-flow-3" />
               </div>
             </div>
@@ -286,7 +302,7 @@ export function SectionAITrainer({
             <button 
               type="button"
               onClick={handleCancelMessage}
-              className="w-11 h-11 bg-rose-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/20 active:scale-95 transition-all duration-300"
+              className="w-11 h-11 bg-rose-500 text-white rounded-xl flex items-center justify-xl shadow-lg shadow-rose-500/20 active:scale-95 transition-all duration-300"
               title="生成を中断"
             >
               <Square size={16} fill="white" />
