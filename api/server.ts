@@ -54,12 +54,12 @@ app.post("/api/analyze-meal", async (req, res) => {
     const result = JSON.parse(response.text || "{}");
     res.json(result);
   } catch (error: any) {
-    console.error("Gemini Error:", error);
+    console.error("Gemini Error:", error ) ;
     res.status(500).json({ error: error.message || "Failed to analyze image" });
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（食事・筋トレの完全連動版！）
+// 2. AIパーソナルトレーナー チャットルート（食事・筋トレ完全連動＆お留守番対策版！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals } = req.body;
@@ -85,7 +85,7 @@ app.post("/api/chat-trainer", async (req, res) => {
 
     const prompt = `
 あなたはプロのパーソナルトレーナーAIです。
-ユーザーが入力した本日の筋トレ内容や食事ログを完全に把握した上で、具体的で科学的な根拠に基づいたアドバイスを提供してください。
+ユーザーが入力した本日の筋トレ内容や食事ログを完全に把握した上で、具体的で科学的な根拠に基づいた「オリジナルのアドバイス」を毎回考えて提供してください。テンプレ文章をそのまま返してはいけません。
 
 【ユーザーの基本目標設定】
 ・現在の体重: ${userData?.weight || "--"}kg / 目標体重: ${userData?.targetWeight || "--"}kg
@@ -102,19 +102,10 @@ ${workoutSummary}
 ${mealSummary}
 
 【トレーナーへの指示】
-1. ユーザーから言われなくても、上記の「今日の筋トレ内容」や「食事のPFCバランス」を自動的にチェックし、具体的に褒めたり、目標値に対するアドバイスを最初から会話に盛り込んでください。
+1. ユーザーから言われなくても、上記の「今日の筋トレ内容」や「食事のPFCバランス」を自動的にチェックし、具体的に褒めたり、目標値に対するアドバイスを最初から会話に盛り込んでください。必ず毎回、ユーザーの実際の記録に応じた個別のメッセージを生成してください。
 2. もし「現在の体」と「目標の体」の画像（2枚）が送られてきた場合、そのギャップを分析し、最適なメニューを提案してください。
 3. 毎回、必ず「現在の筋肉痛の有無・部位」や「今日の体調」を最後に質問してください。
-4. 新しいトレーニングメニューを提案する場合は、以下のJSONフォーマットの配列を "exercises" フィールドに含めてください。
-   {"name": "種目名", "reps": 回数, "sets": セット数}
-
 回答は常に元気で親しみやすく、かつ誠実な態度で行ってください。
-
-返信は必ず以下のJSON形式で返してください:
-{
-  "text": "ユーザーへの親身なメッセージ（ここに今日の食事や筋トレのフィードバックをたっぷり書いてください）",
-  "exercises": [{"name": "種目名", "reps": 10, "sets": 3}] // 提案がある場合のみ
-}
 `;
 
     const parts: any[] = [{ text: prompt }];
@@ -131,7 +122,32 @@ ${mealSummary}
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [{ role: "user", parts }],
-      config: { responseMimeType: "application/json" },
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            text: { 
+              type: Type.STRING, 
+              description: "ユーザーへの親身で具体的なオリジナルアドバイス（今日の食事や筋トレのフィードバックを含めてください）" 
+            },
+            exercises: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  reps: { type: Type.NUMBER },
+                  sets: { type: Type.NUMBER }
+                },
+                required: ["name", "reps", "sets"]
+              },
+              description: "新しく提案する筋トレメニューのリスト（ない場合は空の配列 []）"
+            }
+          },
+          required: ["text", "exercises"]
+        }
+      },
     });
 
     const result = JSON.parse(response.text || "{}");
