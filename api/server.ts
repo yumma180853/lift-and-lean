@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（新しいSDKの画像データ配列形式に完全修正！）
+// 1. 食事の写真解析ルート（大成功したチャットと同じ「正式な封筒形式」に完全修正！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -26,8 +26,13 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
-        { inlineData: { mimeType: mimeType, data: base64Data } },
-        { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: mimeType, data: base64Data } },
+            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
+          ]
+        }
       ],
       config: {
         responseMimeType: "application/json",
@@ -51,7 +56,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（最新のスキーマ記述＆対話最優先版）
+// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある安定版）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -107,7 +112,7 @@ app.post("/api/chat-trainer", async (req, res) => {
         responseSchema: {
           type: "OBJECT",
           properties: {
-            text: { type: "STRING", description: "ユーザーへの自然な返答メッセージ。文脈に沿った対話を行ってください。" },
+            text: { type: "STRING" , description: "ユーザーへの自然な返答メッセージ。文脈に沿った対話を行ってください。" },
             exercises: {
               type: "ARRAY",
               items: {
