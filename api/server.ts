@@ -18,20 +18,25 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート
+// 1. 食事の写真解析ルート（エラー対策・自動判別強化版！）
 app.post("/api/analyze-meal", async (req, res) => {
   try {
     const { image } = req.body;
-    if ( !image ) {
+    if (!image) {
       return res.status(400).json({ error: "Image is required" });
     }
+    
+    // 画像のMIMEタイプ（jpeg, png, webpなど）を自動で判別してエラーを防ぐ
+    const mimeTypeMatch = image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+    const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash", // 安定した最新の公式モデルに修正
       contents: [
         {
           parts: [
-            { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+            { inlineData: { mimeType: mimeType, data: base64Data } },
             { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Provide reasonable estimates based on the visual contents. Return the result in Japanese." }
           ]
         }
@@ -125,9 +130,11 @@ ${mealSummary}
     const currentParts: any[] = [];
     if (images && images.length > 0) {
       images.forEach((img: string) => {
+        const mimeTypeMatch = img.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
         const base64Data = img.split(',')[1] || img;
         currentParts.push({
-          inlineData: { mimeType: "image/jpeg", data: base64Data }
+          inlineData: { mimeType: mimeType, data: base64Data }
         });
       });
     }
@@ -137,7 +144,7 @@ ${mealSummary}
     contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash", // 安定した最新の公式モデルに修正
       contents: contents,
       config: { 
         systemInstruction: systemInstruction,
