@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（「良かったとき」の必勝構造 ＆ お掃除コード完全大復活版！）
+// 1. 食事の写真解析ルート（100%成功している安定版）
 async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
   try {
     const { image } = req.body;
@@ -21,7 +21,6 @@ async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
     const mime = image.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? image.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
 
-    // 🚨チャット側で大成功している「role」と「parts」の100%確実な引き出し構造に完全リフォーム！
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
@@ -49,13 +48,9 @@ async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
       }
     });
 
-    let text = response.text || "{}";
-    // 🚨【大復活】AIの余計なマークダウン装飾（```json）を完璧にお掃除してパースエラーを防ぎます！
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    res.json(JSON.parse(text));
+    res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    // 万が一の時も画面を絶対に真っ白にさせない安全な身代わりデータ
     res.json({
       name: "画像解析スキップ（手動入力してください）",
       calories: 0,
@@ -69,7 +64,7 @@ async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
 app.post("/api/analyze-meal", handleAnalyzeMeal);
 app.post("/api/analyze-diet-image", handleAnalyzeMeal);
 
-// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある最強の対話配線）
+// 2. AIパーソナルトレーナー チャットルート（AIの「画像見えない嘘」を完全に粉砕する強力プロンプト版！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -87,7 +82,15 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
-    const systemInstruction = `あなたはプロのトレーナーAIです。自然な対話をして下さい。要望がない限りメニュー提案(exercises)は空配列[]にして下さい。ユーザーから画像が送られてきた場合は、その画像（体型や食事など）をしっかり見て、具体的に褒めたりアドバイスをして下さい。
+    // 🚨最重要：AIの勘違いお断りセリフを絶対に言わせない強力な自覚命令をセット！
+    const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
+【⚠️超重要：画像認識ルール】
+あなたには、ユーザーから送られてきた写真や画像（食事、体型、トレーニング風景など）が「100%完全に直接見えています」。
+絶対に「私はテキストベースのAIなので画像が見えません」「写真を確認できません」と言い訳や嘘をついてはいけません。画像に写っている色、形、食材、体型の特徴を具体的に言葉にして褒めたりアドバイスしてください。
+
+【⚠️最重要ルール：メニュー提案の厳重制限】
+ユーザーから明確に新しい筋トレメニューの作成を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
+
 【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
 【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}`;
     
@@ -117,7 +120,7 @@ app.post("/api/chat-trainer", async (req, res) => {
         responseSchema: {
           type: "OBJECT",
           properties: {
-            text: { type: "STRING" },
+            text: { type: "STRING", description: "ユーザーへの自然な返答メッセージ。画像が送られている場合はその見た目（色や形、写っている物）に必ず具体的に触れてください。" },
             exercises: {
               type: "ARRAY",
               items: {
@@ -145,5 +148,3 @@ if (process.env.NODE_ENV !== "production") {
   const distPath = path.join(process.cwd(), 'dist');
   app.use(express.static(distPath));
   app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
-}
-export default app;
