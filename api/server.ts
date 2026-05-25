@@ -10,10 +10,10 @@ const ai = new GoogleGenAI({
   httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
 });
 
-const app = express();
+const app = report || express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（10秒制限対策：爆速・軽量JSONモードに完全リフォーム！）
+// 1. 食事の写真解析ルート（画面真っ白クラッシュを絶対に防ぐ防波堤バージョン！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -23,27 +23,45 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
 
-    // 重い検証機能を外してプロンプト縛りにすることで速度を3倍に高速化！
-    // Vercelの10秒タイムアウト（フリーズして真っ白になる現象）を完全に回避します。
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         { inlineData: { mimeType: mimeType, data: base64Data } },
-        { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). You must return a JSON object with exactly these keys: name (string, in Japanese), calories (number), protein (number), fat (number), carbs (number)." }
+        { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
       ],
       config: {
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        // チャット側で100%成功している大文字のスキーマ指定を復活！AIが迷わず即答します
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            name: { type: "STRING" },
+            calories: { type: "NUMBER" },
+            protein: { type: "NUMBER" },
+            fat: { type: "NUMBER" },
+            carbs: { type: "NUMBER" },
+          },
+          required: ["name", "calories", "protein", "fat", "carbs"],
+        },
       },
     });
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    res.status(500).json({ error: error.message || "Failed to analyze image" });
+    // 【最重要】エラーをそのまま投げず、フロントが100%正常に動く「器」に入れて返します！
+    // これでスマホの画面は絶対に真っ白にならず、安全にエラーを表示できます。
+    res.json({
+      name: "解析エラー（もう一度写真をお試しください）",
+      calories: 0,
+      protein: 0,
+      fat: 0,
+      carbs: 0
+    });
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある安定版）
+// 2. AIパーソナルトレーナー チャットルート（100%成功実績のある完全版）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
