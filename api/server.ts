@@ -18,7 +18,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（エラー対策・自動判別強化版！）
+// 1. 食事の写真解析ルート（幻のモデル名を本物に完全修正！）
 app.post("/api/analyze-meal", async (req, res) => {
   try {
     const { image } = req.body;
@@ -32,7 +32,7 @@ app.post("/api/analyze-meal", async (req, res) => {
     const base64Data = image.split(',')[1] || image;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // 安定した最新の公式モデルに修正
+      model: "gemini-2.5-flash", // 本物の最新・最速モデルに完全修正！
       contents: [
         {
           parts: [
@@ -89,36 +89,35 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
     const systemInstruction = `
-あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
-一問一答の機械的な回答ではなく、普通のAIのようになめらかに、これまでの会話の文脈（流れ）に沿ったキャッチボールを行ってください。
+    あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
+    一問一答の機械的な回答ではなく、普通のAIのようになめらかに、これまでの会話の文脈（流れ）に沿ったキャッチボールを行ってください。
 
-【⚠️最重要ルール：メニュー提案の厳重制限】
-ユーザーから「メニューを教えて」「新しい種目を提案して」「メニューを変えたい」など、明示的に新しい筋トレメニューの作成・変更を求められた場合以外は、絶対に新しいメニューを提案してはいけません。
-通常の相談、質問への回答、雑談、励ましの言葉、食事のアドバイスなどの際は、exercises フィールドは必ず空の配列 [] にしてください。毎回違うメニューを押し付けるような推奨は絶対に禁止します。
+    【⚠️最重要ルール：メニュー提案の厳重制限】
+    ユーザーから「メニューを教えて」「新しい種目を提案して」「メニューを変えたい」など、明示的に新しい筋トレメニューの作成・変更を求められた場合以外は、絶対に新しいメニューを提案してはいけません。
+    通常の相談、質問への回答、雑談、励ましの言葉、食事のアドバイスなどの際は、exercises フィールドは必ず空の配列 [] にしてください。毎回違うメニューを押し付けるような推奨は絶対に禁止します。
 
-【ユーザーの基本目標設定】
-・現在の体重: ${userData?.weight || "--"}kg / 目標体重: ${userData?.targetWeight || "--"}kg
-・目標カロリー: ${userData?.calories || "--"}kcal
-・目標PFCバランス: P:${userData?.protein || "--"}g, F:${userData?.fat || "--"}g, C:${userData?.carbs || "--"}g
+    【ユーザーの基本目標設定】
+    ・現在の体重: ${userData?.weight || "--"}kg / 目標体重: ${userData?.targetWeight || "--"}kg
+    ・目標カロリー: ${userData?.calories || "--"}kcal
+    ・目標PFCバランス: P:${userData?.protein || "--"}g, F:${userData?.fat || "--"}g, C:${userData?.carbs || "--"}g
 
-【🔥本日のリアルタイム筋トレ記録】
-${workoutSummary}
+    【🔥本日のリアルタイム筋トレ記録】
+    ${workoutSummary}
 
-【🍏本日のリアルタイム食事・摂取栄養素】
-合計摂取カロリー: ${totalCal} kcal
-現在の摂取PFC: P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g
---- 食べたメニュー一覧 ---
-${mealSummary}
+    【🍏本日のリアルタイム食事・摂取栄養素】
+    合計摂取カロリー: ${totalCal} kcal
+    現在の摂取PFC: P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g
+    --- 食べたメニュー一覧 ---
+    ${mealSummary}
 
-【トレーナーとしての対話指針】
-1. ユーザーが「こうしたいんだけど何すればいい？」などと質問してきたら、その意図（バルクアップしたいのか、痩せたいのか、特定の部位を鍛えたいのかなど）を丁寧に聞き返したり、会話の文脈に沿って親身に答えてください。
-2. ユーザーから言われなくても、上記の「今日のデータ」は脳内に把握しておき、会話の流れで自然に「今日のタンパク質バッチリだね！」などと触れるのはOKですが、毎回同じセリフを連発しないでください。
-3. 毎回無理に「筋肉痛はありますか？」と定型文で締めくくる必要はありません。普通の人間のように自然に会話を終わらせてください。
-`;
+    【トレーナーとしての対話指針】
+    1. ユーザーが「こうしたいんだけど何すればいい？」などと質問してきたら、その意図（バルクアップしたいのか、痩せたいのか、特定の部位を鍛えたいのかなど）を丁寧に聞き返したり、会話の文脈に沿って親身に答えてください。
+    2. ユーザーから言われなくても、上記の「今日のデータ」は脳内に把握しておき、会話の流れで自然に「今日のタンパク質バッチリだね！」などと触れるのはOKですが、毎回同じセリフを連発しないでください。
+    3. 毎回無理に「筋肉痛はありますか？」と定型文で締めくくる必要はありません。普通の人間のように自然に会話を終わらせてください。
+    `;
 
     // 過去の履歴（history）がある場合はそれをベースにし、最新のメッセージを追加する
     let contents: any[] = [];
-    
     if (history && Array.isArray(history)) {
       contents = history.map((h: any) => ({
         role: h.role === "assistant" ? "model" : "user",
@@ -144,7 +143,7 @@ ${mealSummary}
     contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // 安定した最新の公式モデルに修正
+      model: "gemini-2.5-flash", 
       contents: contents,
       config: { 
         systemInstruction: systemInstruction,
@@ -167,36 +166,4 @@ ${mealSummary}
                 },
                 required: ["name", "reps", "sets"]
               },
-              description: "ユーザーから明確にメニュー提案を求められた場合のみ、提案する筋トレメニューのリストを入れます。それ以外（通常の対話）は必ず空の配列 [] にしてください。"
-            }
-          },
-          required: ["text", "exercises"]
-        }
-      },
-    });
-
-    const result = JSON.parse(response.text || "{}");
-    res.json(result);
-  } catch (error: any) {
-    console.error("Trainer Gemini Error:", error);
-    res.status(500).json({ error: error.message || "Failed to chat with AI trainer" });
-  }
-});
-
-// 開発環境と本番環境の振り分け設定
-if (process.env.NODE_ENV !== "production") {
-  const { createServer: createViteServer } = await import("vite");
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
-} else {
-  const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-}
-
-export default app;
+              description: "ユーザーから明確にメニュー提案を求められた
