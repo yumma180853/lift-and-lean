@@ -73,8 +73,8 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
     const systemInstruction = `
-あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
-【⚠️最重要ルール：メニュー提案の厳重制限】
+ユーザーの基本目標設定を把握した上で、プロのパーソナルトレーナーとして「普通の自然な対話」を最も大切にしてください。
+一問一答ではなく、これまでの会話の文脈に沿ったキャッチボールを行ってください。
 ユーザーから明確に新しい筋トレメニューの作成を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
 
 【目標設定】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
@@ -133,9 +133,15 @@ app.post("/api/chat-trainer", async (req, res) => {
   }
 });
 
+// 🚨ここから下の部分が綺麗に繋がっている必要があります！
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
   app.use(vite.middlewares);
 } else {
   const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
+}
+
+export default app;
