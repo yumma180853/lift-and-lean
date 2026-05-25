@@ -1,6 +1,6 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（公式大本命の最新モデルに修正！）
+// 1. 食事の写真解析ルート（最新のスキーマ記述に完全修正！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -24,7 +24,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const base64Data = image.split(',')[1] || image;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // 新しいプログラム部品が100%認識する本命モデル
+      model: "gemini-2.5-flash",
       contents: [
         {
           parts: [
@@ -36,13 +36,13 @@ app.post("/api/analyze-diet-image", async (req, res) => {
       config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: "OBJECT",
           properties: {
-            name: { type: Type.STRING },
-            calories: { type: Type.NUMBER },
-            protein: { type: Type.NUMBER },
-            fat: { type: Type.NUMBER },
-            carbs: { type: Type.NUMBER },
+            name: { type: "STRING" },
+            calories: { type: "NUMBER" },
+            protein: { type: "NUMBER" },
+            fat: { type: "NUMBER" },
+            carbs: { type: "NUMBER" },
           },
           required: ["name", "calories", "protein", "fat", "carbs"],
         },
@@ -55,7 +55,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（公式大本命の最新モデルに修正！）
+// 2. AIパーソナルトレーナー チャットルート（最新のスキーマ記述＆対話最優先版）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -103,20 +103,20 @@ app.post("/api/chat-trainer", async (req, res) => {
     contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // 新しいプログラム部品が100%認識する本命モデル
+      model: "gemini-2.5-flash",
       contents: contents,
       config: { 
         systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: "OBJECT",
           properties: {
-            text: { type: Type.STRING, description: "ユーザーへの自然な返答メッセージ。文脈に沿った対話を行ってください。" },
+            text: { type: "STRING", description: "ユーザーへの自然な返答メッセージ。文脈に沿った対話を行ってください。" },
             exercises: {
-              type: Type.ARRAY,
+              type: "ARRAY",
               items: {
-                type: Type.OBJECT,
-                properties: { name: { type: Type.STRING }, reps: { type: Type.NUMBER }, sets: { type: Type.NUMBER } },
+                type: "OBJECT",
+                properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } },
                 required: ["name", "reps", "sets"]
               },
               description: "メニュー提案を求められた場合のみ。それ以外は必ず空の配列 []"
