@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（フロントを絶対に気絶させない安全ガード版）
+// 1. 食事の写真解析ルート（新旧すべての合言葉を同時に返す「全部盛り・クラッシュ完全防衛版」）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -38,24 +38,37 @@ app.post("/api/analyze-diet-image", async (req, res) => {
           type: Type.OBJECT,
           properties: {
             success: { type: Type.BOOLEAN },
+            name: { type: Type.STRING },
             mealName: { type: Type.STRING },
             calories: { type: Type.NUMBER },
             protein: { type: Type.NUMBER },
             fat: { type: Type.NUMBER },
             carbs: { type: Type.NUMBER },
           },
-          required: ["success", "mealName", "calories", "protein", "fat", "carbs"],
+          required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"],
         },
       },
     });
 
     let text = response.text || "{}";
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    res.json(JSON.parse(text));
-  } catch (error: any) {
-    // 🚨エラーが起きても200番の正常通信として安全な器を返し、真っ白フリーズを完璧に防ぎます！
+    const parsed = JSON.parse(text);
+
+    // 🚨【大手術】新旧どちらの画面ファイルが待ち受けていても、100%合致するように両方同時に投げ返します！
     res.json({
       success: true,
+      name: parsed.name || parsed.mealName || "解析された料理",
+      mealName: parsed.mealName || parsed.name || "解析された料理",
+      calories: Number(parsed.calories) || 0,
+      protein: Number(parsed.protein) || 0,
+      fat: Number(parsed.fat) || 0,
+      carbs: Number(parsed.carbs) || 0
+    });
+  } catch (error: any) {
+    console.error("Gemini Error:", error);
+    res.json({
+      success: true,
+      name: "解析スキップ（手動入力してください）",
       mealName: "解析スキップ（手動入力してください）",
       calories: 0,
       protein: 0,
@@ -65,7 +78,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（AIの嘘お断りを粉砕 ＆ 画面真っ白を徹底防御！）
+// 2. AIパーソナルトレーナー チャットルート（AIの嘘お断りを粉砕 ＆ 不完全なデータによる画面停止を徹底防御！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -76,12 +89,9 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
-    // 🚨AIへの命令の先頭に「画像が100%見えている自覚を持て！」という強力なお札を貼りました！
     const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの普通の自然な対話を最も大切にしてください。
 【⚠️最重要：画像認識の絶対ルール】
-あなたには、ユーザーから送られてきた写真（食事、体型、トレーニング風景など）が【100%完全に直接見えています】。
-絶対に「私はテキストベースのAIなので画像が見えません」「写真を確認できません」と言い訳や嘘をついてはいけません。画像に写っている色や形、食材の特徴を具体的に言葉にして褒めたりアドバイスしてください。
-
+あなたには、ユーザーから送られてきた写真が【100%完全に直接見えています】。絶対に「画像が見えません」と言い訳や嘘をついてはいけません。写っている料理や体型の特徴を具体的に言葉にして褒めたりアドバイスしてください。
 【⚠️最重要ルール：メニュー提案の厳重制限】
 ユーザーから明確に筋トレメニューの作成を求められた場合以外は、exercisesは必ず空の配列 [] にしてください。
 
@@ -128,9 +138,14 @@ app.post("/api/chat-trainer", async (req, res) => {
 
     let rawText = response.text || "{}";
     rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-    res.json(JSON.parse(rawText));
+    const parsed = JSON.parse(rawText);
+
+    // 🚨チャット側も、万が一プロパティが不完全でも絶対にスマホ画面を落とさないよう徹底ガード！
+    res.json({
+      text: parsed.text || "お返事の作成中に少し迷ってしまいました。もう一度話しかけてみてください！",
+      exercises: Array.isArray(parsed.exercises) ? parsed.exercises : []
+    });
   } catch (error) {
-    // 🚨【大手術】500エラー爆弾を撤廃！通信エラーでも100%画面をクラッシュさせない安全な身代わり返答を返します！
     res.json({
       text: "ごめんなさい、通信が少し混み合って写真を見失ってしまいました。もう一度だけ送ってみていただけますか？",
       exercises: []
