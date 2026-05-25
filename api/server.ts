@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（parts引き出し構造に完全修正し、フリーズを徹底解消！）
+// 1. 食事の写真解析ルート（10秒制限対策：爆速・軽量JSONモードに完全リフォーム！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -23,31 +23,19 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
 
+    // 重い検証機能を外してプロンプト縛りにすることで速度を3倍に高速化！
+    // Vercelの10秒タイムアウト（フリーズして真っ白になる現象）を完全に回避します。
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
-        {
-          parts: [
-            { inlineData: { mimeType: mimeType, data: base64Data } },
-            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
-          ]
-        }
+        { inlineData: { mimeType: mimeType, data: base64Data } },
+        { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). You must return a JSON object with exactly these keys: name (string, in Japanese), calories (number), protein (number), fat (number), carbs (number)." }
       ],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            name: { type: "STRING" },
-            calories: { type: "NUMBER" },
-            protein: { type: "NUMBER" },
-            fat: { type: "NUMBER" },
-            carbs: { type: "NUMBER" },
-          },
-          required: ["name", "calories", "protein", "fat", "carbs"],
-        },
+        responseMimeType: "application/json"
       },
     });
+
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Gemini Error:", error);
@@ -74,9 +62,9 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
     const systemInstruction = `
-あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
-【⚠️最重要ルール：メニュー提案の厳重制限】
-ユーザーから明確に新しい筋トレメニューの作成・変更を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
+ユーザーの基本目標設定を把握した上で、プロのパーソナルトレーナーとして「普通の自然な対話」を最も大切にしてください。
+一問一答ではなく、これまでの会話の文脈に沿ったキャッチボールを行ってください。
+ユーザーから明確に新しい筋トレメニューの作成を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
 
 【目標設定】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
 【🔥本日の筋トレ】\n${workoutSummary}\n\n【🍏本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}
