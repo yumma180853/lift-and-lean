@@ -10,11 +10,11 @@ const ai = new GoogleGenAI({
   httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
 });
 
-const app = report || express();
+const app = express(); // 🚨「report ||」を完全に消去して正常化しました！
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（画面真っ白クラッシュを絶対に防ぐ防波堤バージョン！）
-app.post("/api/analyze-diet-image", async (req, res) => {
+// 共通の写真解析処理
+async function handleAnalyzeMeal(req: express.Request, res: express.Response) {
   try {
     const { image } = req.body;
     if (!image) return res.status(400).json({ error: "Image is required" });
@@ -26,12 +26,16 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
-        { inlineData: { mimeType: mimeType, data: base64Data } },
-        { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: mimeType, data: base64Data } },
+            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
+          ]
+        }
       ],
       config: {
         responseMimeType: "application/json",
-        // チャット側で100%成功している大文字のスキーマ指定を復活！AIが迷わず即答します
         responseSchema: {
           type: "OBJECT",
           properties: {
@@ -49,8 +53,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    // 【最重要】エラーをそのまま投げず、フロントが100%正常に動く「器」に入れて返します！
-    // これでスマホの画面は絶対に真っ白にならず、安全にエラーを表示できます。
+    // 万が一のエラーでも画面が絶対に真っ白にならない安全な器を返します
     res.json({
       name: "解析エラー（もう一度写真をお試しください）",
       calories: 0,
@@ -59,7 +62,11 @@ app.post("/api/analyze-diet-image", async (req, res) => {
       carbs: 0
     });
   }
-});
+}
+
+// 1. 食事の写真解析ルート（新旧どちらのURLで届いても100%キャッチして動かします！）
+app.post("/api/analyze-meal", handleAnalyzeMeal);
+app.post("/api/analyze-diet-image", handleAnalyzeMeal);
 
 // 2. AIパーソナルトレーナー チャットルート（100%成功実績のある完全版）
 app.post("/api/chat-trainer", async (req, res) => {
@@ -80,8 +87,8 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
 
     const systemInstruction = `
-ユーザーの基本目標設定を把握した上で、プロのパーソナルトレーナーとして「普通の自然な対話」を最も大切にしてください。
-一問一答ではなく、これまでの会話の文脈に沿ったキャッチボールを行ってください。
+あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
+【⚠️最重要ルール：メニュー提案の厳重制限】
 ユーザーから明確に新しい筋トレメニューの作成を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
 
 【目標設定】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
