@@ -5,34 +5,26 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// AIの鍵（APIキー）の設定
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
+  httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
 });
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（URLをフロントに完全に合わせました！）
+// 1. 食事の写真解析ルート（混雑に強い超安定モデルに変更！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
-    if (!image) {
-      return res.status(400).json({ error: "Image is required" });
-    }
+    if (!image) return res.status(400).json({ error: "Image is required" });
     
-    // 画像のMIMEタイプ（jpeg, png, webpなど）を自動で判別してエラーを防ぐ
     const mimeTypeMatch = image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // 本物の最新・最速モデルに完全修正！
+      model: "gemini-1.5-flash", // 24時間いつでも安定して動くタフモデル
       contents: [
         {
           parts: [
@@ -63,7 +55,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（普通の対話＆メニュー連発防止版！）
+// 2. AIパーソナルトレーナー チャットルート（混雑に強い超安定モデルに変更！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -83,18 +75,13 @@ app.post("/api/chat-trainer", async (req, res) => {
 
     const systemInstruction = `
 あなたはプロのパーソナルトレーナーAIです。ユーザーとの「普通の自然な対話」を最も大切にしてください。
-一問一答の機械的な回答ではなく、普通のAIのようになめらかに、これまでの会話の文脈（流れ）に沿ったキャッチボールを行ってください。
-
 【⚠️最重要ルール：メニュー提案の厳重制限】
-ユーザーから明確に新しい筋トレメニューの作成・変更を求められた場合以外は、絶対に新しいメニューを提案してはいけません。
-通常の相談や励ましの際は、exercises フィールドは必ず空の配列 [] にしてください。毎回違うメニューを押し付けるような推奨は絶対に禁止します。
+ユーザーから明確に新しい筋トレメニューの作成・変更を求められた場合以外は、絶対に新しいメニューを提案してはいけません。通常の相談や食事アドバイスの際はexercisesは必ず空の配列 [] にしてください。
 
-【目標設定】体重: ${userData?.weight || "--"}kg / 目標体重: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
-【🔥本日のリアルタイム筋トレ記録】\n${workoutSummary}
-\n\n【🍏本日のリアルタイム食事・摂取栄養素】\n合計摂取カロリー: ${totalCal} kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}
+【目標設定】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
+【🔥本日の筋トレ】\n${workoutSummary}\n\n【🍏本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)\n${mealSummary}
 `;
 
-    // 過去の履歴（history）がある場合はそれをベースにし、最新のメッセージを追加する
     let contents: any[] = [];
     if (history && Array.isArray(history)) {
       contents = history.map((h: any) => ({
@@ -103,19 +90,20 @@ app.post("/api/chat-trainer", async (req, res) => {
       }));
     }
 
-    // 最新のユーザー発言の組み立て
     const currentParts: any[] = [];
     if (images && images.length > 0) {
       images.forEach((img: string) => {
+        const mimeTypeMatch = img.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
         const base64Data = img.split(',')[1] || img;
-        currentParts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
+        currentParts.push({ inlineData: { mimeType, data: base64Data } });
       });
     }
     currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", 
+      model: "gemini-1.5-flash", // 24時間いつでも安定して動くタフモデル
       contents: contents,
       config: { 
         systemInstruction: systemInstruction,
@@ -131,7 +119,7 @@ app.post("/api/chat-trainer", async (req, res) => {
                 properties: { name: { type: Type.STRING }, reps: { type: Type.NUMBER }, sets: { type: Type.NUMBER } },
                 required: ["name", "reps", "sets"]
               },
-              description: "メニュー提案を求められた場合のみ、提案する筋トレメニューのリスト。それ以外は空の配列 [] にしてください。"
+              description: "メニュー提案を求められた場合のみ。それ以外は必ず空の配列 []"
             }
           },
           required: ["text", "exercises"]
@@ -146,7 +134,6 @@ app.post("/api/chat-trainer", async (req, res) => {
   }
 });
 
-// 開発環境と本番環境の振り分け設定
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
