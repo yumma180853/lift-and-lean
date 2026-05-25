@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（最新のスキーマ記述に完全修正！）
+// 1. 食事の写真解析ルート（新しいSDKの画像データ配列形式に完全修正！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -26,12 +26,8 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
-        {
-          parts: [
-            { inlineData: { mimeType: mimeType, data: base64Data } },
-            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
-          ]
-        }
+        { inlineData: { mimeType: mimeType, data: base64Data } },
+        { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
       ],
       config: {
         responseMimeType: "application/json",
