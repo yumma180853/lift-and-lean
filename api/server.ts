@@ -3,10 +3,10 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import webpush from "web-push";
+import { kv } from "@vercel/kv"; // 🚨さっき繋いだ無料データベースを召喚！
 
 dotenv.config();
 
-// 🚨【大手術・完全固定鍵】サーバーが何回居眠りリセットされても絶対に鍵が変わらないように完全固定！
 const publicKey = "BEFkZqIn2Xp-B9yjenzQLjzGXqGorbZPYI7qHfjC8qrYKmbP81KLM54WzVPrBx0ErP5ITrv0SGms7goEfPyQHeg";
 const privateKey = "XZBvEvk2fSZ1NagRfbqweXGizvxBk99nUAvaewhC6tA";
 webpush.setVapidDetails("mailto:test@example.com", publicKey, privateKey);
@@ -23,15 +23,44 @@ app.get("/api/wp-public-key", (req, res) => {
   res.json({ publicKey });
 });
 
-// 🚨【大手術】Vercelの強制終了を防ぐため、setTimeoutを廃止して受け取った瞬間に即大砲発射！
+// 🚨【大手術】毎日朝7時、データベースに登録されている「全員のスマホ」へ一斉に自動大砲を発射！
+app.get("/api/cron-morning-reminder", async (req, res) => {
+  try {
+    // データベースから全員分の住所リスト（大砲の宛先）をガサッと一括取得
+    const subs: any[] = await kv.get("push_subscriptions") || [];
+    
+    // 全員に向けて弾幕発射！
+    const promises = subs.map(sub => 
+      webpush.sendNotification(sub, JSON.stringify({
+        title: "LIFT & LEAN",
+        body: "おはようございます！今日の体重を記録しましょう。🔥"
+      })).catch(e => console.error("送信失敗した宛先をスキップ:", e))
+    );
+    
+    await Promise.all(promises);
+    res.json({ success: true, count: subs.length });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// 🚨【大手術】通知ボタンが押されたら、その人のスマホ住所をデータベースに自動で書き込む！
 app.post("/api/send-test-notification", async (req, res) => {
   try {
     const { subscription } = req.body;
-    if (!subscription) return res.status(400).json({ error: "No sub" });
+    if (!subscription || !subscription.endpoint) return res.status(400).json({ error: "No sub" });
     
+    // 1. 今ある住所リストをノートから読み出す
+    const subs: any[] = await kv.get("push_subscriptions") || [];
+    
+    // 2. すでに同じ住所がなければ、新しくノートに追記する
+    if (!subs.some(s => s.endpoint === subscription.endpoint)) {
+      subs.push(subscription);
+      await kv.set("push_subscriptions", subs);
+    }
+
+    // 3. 登録完了の記念に、その場で即時テスト大砲を発射！
     await webpush.sendNotification(subscription, JSON.stringify({
-      title: "LIFT & LEAN 大改造成功",
-      body: "大成功！！アプリを閉じても、スマホがスリープしてても届く本物のプッシュ通知です！🔥"
+      title: "LIFT & LEAN システム開通",
+      body: "データベースへの自動住所登録が完了しました！明日から毎朝自動で通知が届きます！🔥"
     }));
 
     res.json({ success: true });
