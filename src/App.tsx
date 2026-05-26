@@ -38,6 +38,11 @@ export default function App() {
       if (c) setChats(JSON.parse(c));
     } catch (e) { console.error(e); }
     setLoaded(true);
+
+    // 🚨アプリ起動時に、追加した24時間お留守番プログラムをスマホに常駐させる
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(e => console.error(e));
+    }
   }, []);
 
   useEffect(() => {
@@ -52,25 +57,37 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨毎朝自動リマインダー部屋（朝6時〜11時の間に体重がなければ自動通知）
-  useEffect(() => {
-    if (remind && loaded) {
-      const t = format(new Date(), 'yyyy-MM-dd');
-      if (!weights.some(w => w.date === t) && Notification.permission === 'granted') {
-        const h = new Date().getHours();
-        if (h >= 6 && h <= 11) new Notification('LIFT & LEAN', { body: 'おはようございます！今日の体重を記録しましょう。' });
-      }
-    }
-  }, [remind, weights, loaded]);
-
-  // 🚨【大手術】通知をオンにした瞬間に、即座にスマホにリマインダーを1発テスト発射！
+  // 🚨【大手術】24時間いつでも届く「本物のプッシュ通知」の鍵をスマホにハメ込み、テスト大砲を撃つ
   const reqNotify = async () => {
-    if (!('Notification' in window)) { alert('通知未対応のブラウザです'); return; }
-    const p = await Notification.requestPermission();
-    if (p === 'granted') {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('ホーム画面（アプリモード）から起動してください。');
+      return;
+    }
+    try {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') { alert('通知を許可してください'); return; }
+
+      const reg = await navigator.serviceWorker.ready;
+      // 1. サーバーから秘密の暗号鍵をスカウト
+      const keyRes = await fetch('/api/wp-public-key');
+      const { publicKey } = await keyRes.json();
+
+      // 2. スマホ側に24時間お留守番のサインをさせる
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicKey
+      });
+
       setRemind(true);
-      new Notification('LIFT & LEAN', { body: '通知設定が完了しました！毎朝体重の記録をお知らせします。', icon: '/favicon.ico' });
-    } else { alert('通知を許可してください'); }
+      alert('通信開通！OKを押したら【3秒後】に大砲が届きます。速攻でアプリを完全に閉じて、スマホをスリープさせて待ってください！');
+
+      // 3. サーバーの大砲部屋に、このスマホに向けて電波を飛ばすよう要請！
+      await fetch('/api/send-test-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub })
+      });
+    } catch (e) { alert('登録エラー: ' + String(e)); }
   };
 
   const handleSendMessage = async (text: string, images: string[]) => {
@@ -142,7 +159,7 @@ export default function App() {
                   </div>
                   <div className="flex gap-2">
                     <button type="submit" className="flex-1 bg-lime-400 text-black py-3 rounded-xl font-bold text-xs" > 記録する </button>
-                    <button type="button" onClick={() => setOpenW(false)} className="flex-1 bg-zinc-900 text-zinc-400 py-3 rounded-xl font-bold text-xs" > キャンセル </button>
+                    <button type="button" onClick={() => setOpenW(false)} className="flex-1 bg-zinc-900 text-zinc-450 hover:text-white border border-zinc-900 py-3 rounded-xl font-bold text-xs" > キャンセル </button>
                   </div>
                 </form>
               </div>
