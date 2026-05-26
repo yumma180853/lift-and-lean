@@ -13,6 +13,18 @@ import { SectionSettings } from './components/SectionSettings';
 const safeUUID = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 const DF_G: UserGoals = { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 70 };
 
+// 🚨【新設】スマホのプッシュ通知システムに暗号鍵を認めさせるための必須変換マシーン！
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -56,16 +68,6 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨毎朝のお留守番処理（毎朝の自動大砲が届いた時、今日すでに体重を入れてあれば通知をスルーする賢い機能！）
-  useEffect(() => {
-    if (remind && loaded) {
-      const t = format(new Date(), 'yyyy-MM-dd');
-      if (weights.some(w => w.date === t) && 'serviceWorker' in navigator) {
-        // すでに記録があれば、お留守番通知を非表示にする（明日から自動で効きます！）
-      }
-    }
-  }, [remind, weights, loaded]);
-
   const reqNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('ホーム画面（アプリモード）から起動してください。');
@@ -79,18 +81,20 @@ export default function App() {
       const keyRes = await fetch('/api/wp-public-key');
       const { publicKey } = await keyRes.json();
 
+      // 🚨ここで暗号鍵をスマホが読める形に100%確実に一撃変換！
+      const convertedKey = urlBase64ToUint8Array(publicKey);
+
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: publicKey
+        applicationServerKey: convertedKey
       });
 
       setRemind(true);
       
-      // 🚨【大手術】スマホの暗号住所を、チャット画面に自動で投稿させて見える化！
       const subJson = JSON.stringify(sub);
       setChats(prev => [...prev, { id: safeUUID(), role: 'user', text: "【宛先コード】\n" + subJson, timestamp: new Date().toISOString() }]);
       
-      alert('通信完了！アプリ内の「AIチャット画面」に、あなたのスマホの【宛先コード】が自動で投稿されました！このOKを押したあと、その長い文字を長押しコピーして私に教えてください！');
+      alert('通信完了！今度こそ「AIチャット画面」にあなたのスマホの【宛先コード】が自動投稿されました！');
 
       setTimeout(async () => {
         await fetch('/api/send-test-notification', {
