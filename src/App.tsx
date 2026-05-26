@@ -43,7 +43,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (weights.length === 0 && wg) setWeights(JSON.parse(weights));
+      if (wg) setWeights(JSON.parse(wg)); // 🚨タイポ完全修正！起動時のリセット自爆を粉砕！
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -67,7 +67,6 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨【本番大改造】オン/オフ両方に完全対応した、美しすぎるトグルスイッチ関数！
   const toggleNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('ホーム画面（アプリモード）から起動してください。');
@@ -77,7 +76,6 @@ export default function App() {
       const reg = await navigator.serviceWorker.ready;
 
       if (remind) {
-        // 🚨【オフにする時】：データベースから削除
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
           await fetch('/api/send-test-notification', {
@@ -90,7 +88,6 @@ export default function App() {
         setRemind(false);
         alert('毎朝のリマインダー通知をオフにしました。');
       } else {
-        // 🚨【オンにする時】：データベースに登録
         const p = await Notification.requestPermission();
         if (p !== 'granted') { alert('通知を許可してください'); return; }
 
@@ -178,7 +175,8 @@ export default function App() {
                 <div><h2 className="text-lg font-bold text-white uppercase italic">MEASURE WEIGHT</h2><p className="text-xs text-zinc-500 mt-1">本日の体重(kg)を測定して記録</p></div>
                 <form onSubmit={(e) => { e.preventDefault(); const w = parseFloat(wVal); if (w && !isNaN(w)) { addWeight(w); setOpenW(false); setWVal(''); } }} className="space-y-4 pt-2">
                   <div className="relative">
-                    <input type="number" step="0.1" required placeholder="0.0" value={wVal} onChange={(e) => setWVal(e.target.value)} className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-center text-3xl font-black text-lime-400 outline-none" autoFocus />
+                    {/* 🚨【快適改造】毎朝の体重入力モーダルでも、0や空文字の時にイライラしないようにバチッと調整！ */}
+                    <input type="number" step="0.1" required placeholder="0.0" value={wVal === '0' || wVal === '0.0' ? '' : wVal} onChange={(e) => setWVal(e.target.value)} className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-center text-3xl font-black text-lime-400 outline-none" autoFocus />
                     <span className="absolute right-4 bottom-4 text-xs font-mono text-zinc-500">KG</span>
                   </div>
                   <div className="flex gap-2">
