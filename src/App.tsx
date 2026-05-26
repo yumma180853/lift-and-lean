@@ -1,131 +1,163 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles } from 'lucide-react';
-import { format } from 'date-fns';
-import { motion, AnimatePresence } from 'motion/react';
-import { UserGoals, WeightRecord, Workout, Meal, ChatMessage, Tab } from './types';
-import { SectionDashboard } from './components/SectionDashboard';
-import { SectionWorkout } from './components/SectionWorkout';
-import { SectionDiet } from './components/SectionDiet';
-import { SectionAnalysis } from './components/SectionAnalysis';
-import { SectionAITrainer } from './components/SectionAITrainer';
-import { SectionSettings } from './components/SectionSettings';
+import express from "express";
+import path from "path";
+import { GoogleGenAI } from "@google/genai";
+import dotenv from "dotenv";
 
-// 🚨【真っ白クラッシュ完全防衛盾】スマホ自爆を完全に防ぐ安全ID生成
-const safeUUID = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-};
+dotenv.config();
 
-const DEFAULT_GOALS: UserGoals = { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 70 };
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+});
 
-export default function App() {
-  const [tab, setTab] = useState<Tab>('dashboard');
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [weights, setWeights] = useState<WeightRecord[]>([]);
-  const [goals, setGoals] = useState<UserGoals>(DEFAULT_GOALS);
-  const [chats, setChats] = useState<ChatMessage[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [openW, setOpenW] = useState(false);
-  const [wVal, setWVal] = useState('');
-  const [sending, setSending] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+const app = express();
+app.use(express.json({ limit: '10mb' }));
 
-  useEffect(() => {
-    try {
-      const w = localStorage.getItem('workouts');
-      const m = localStorage.getItem('meals');
-      const wg = localStorage.getItem('weight_history');
-      const g = localStorage.getItem('user_goals');
-      const c = localStorage.getItem('chat_messages');
-      if (w) setWorkouts(JSON.parse(w));
-      if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg)); // 🚨1文字のバグを完璧に大修正！
-      if (g) setGoals({ ...DEFAULT_GOALS, ...JSON.parse(g) });
-      if (c) setChats(JSON.parse(c));
-    } catch (e) { console.error(e); }
-    setLoaded(true);
-  }, []);
+// 1. 食事の写真解析ルート（最新AIルールに完全対応した爆速JSON解析版！）
+app.post("/api/analyze-diet-image", async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: "Image is required" });
+    const mime = image.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? image.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
+    const base64Data = image.split(',')[1] || image;
 
-  useEffect(() => {
-    if (!loaded) return;
-    localStorage.setItem('workouts', JSON.stringify(workouts));
-    localStorage.setItem('meals', JSON.stringify(meals));
-    localStorage.setItem('weight_history', JSON.stringify(weights));
-    localStorage.setItem('user_goals', JSON.stringify(goals));
-    localStorage.setItem('chat_messages', JSON.stringify(chats));
-  }, [workouts, meals, weights, goals, chats, loaded]);
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: mime, data: base64Data } },
+            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT", // 🚨最新の指定方法（文字列）に完璧に修正！
+          properties: {
+            success: { type: "boolean" },
+            name: { type: "string" },
+            mealName: { type: "string" },
+            calories: { type: "number" },
+            protein: { type: "number" },
+            fat: { type: "number" },
+            carbs: { type: "number" },
+          },
+          required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"],
+        },
+      },
+    });
 
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const tMeals = useMemo(() => meals.filter(m => m.date === today), [meals, today]);
-  const tStats = useMemo(() => tMeals.reduce((acc, m) => ({
-    calories: acc.calories + (Number(m.calories) || 0),
-    protein: acc.protein + (Number(m.protein) || 0),
-    fat: acc.fat + (Number(m.fat) || 0),
-    carbs: acc.carbs + (Number(m.carbs) || 0)
-  }), { calories: 0, protein: 0, fat: 0, carbs: 0 }), [tMeals]);
-  const tWorkout = useMemo(() => workouts.find(w => w.date === today), [workouts, today]);
-  const cWeight = useMemo(() => weights.length ? weights[weights.length - 1].weight : null, [weights]);
+    let text = response.text || "{}";
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(text);
 
-  const handleSendMessage = async (text: string, images: string[]) => {
-    if (!text.trim() && images.length === 0) return;
-    const userMsg: ChatMessage = { id: safeUUID(), role: 'user', text, images, timestamp: new Date().toISOString() };
-    setChats(prev => [...prev, userMsg]);
-    setSending(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const response = await fetch('/api/chat-trainer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          message: text,
-          images,
-          workouts: tWorkout ? [tWorkout] : [],
-          meals: tMeals,
-          userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs }
-        })
-      });
-      const data = await response.json();
-      setChats(prev => [...prev, {
-        id: safeUUID(),
-        role: 'assistant',
-        text: data?.text || 'エラーが発生しました。',
-        exercises: Array.isArray(data?.exercises) ? data.exercises : [],
-        timestamp: new Date().toISOString()
-      }]);
-    } catch (error: any) {
-      if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。');
-    } finally {
-      setSending(false);
-      abortRef.current = null;
+    res.json({
+      success: true,
+      name: parsed.name || parsed.mealName || "解析された料理",
+      mealName: parsed.mealName || parsed.name || "解析された料理",
+      calories: Number(parsed.calories) || 0,
+      protein: Number(parsed.protein) || 0,
+      fat: Number(parsed.fat) || 0,
+      carbs: Number(parsed.carbs) || 0
+    });
+  } catch (error: any) {
+    console.error("Gemini Error:", error);
+    res.json({
+      success: true,
+      name: "解析スキップ（手動入力してください）",
+      mealName: "解析スキップ（手動入力してください）",
+      calories: 0,
+      protein: 0,
+      fat: 0,
+      carbs: 0
+    });
+  }
+});
+
+// 2. AIパーソナルトレーナー チャットルート（こちらも最新ルールで完全開通！）
+app.post("/api/chat-trainer", async (req, res) => {
+  try {
+    const { message, images, userData, workouts, meals, history } = req.body;
+    const workoutSummary = workouts && workouts.length > 0 ? workouts.map((w: any) => `■ ${w.name}\n` + (w.sets ? w.sets.map((s: any, i: number) => `  - SET ${i+1}: ${s.weight}kg × ${s.reps}回`).join("\n") : "")).join("\n\n") : "なし";
+    const mealSummary = meals && meals.length > 0 ? meals.map((m: any) => `・ ${m.name} (${m.calories}kcal / P:${m.protein}g F:${m.fat}g C:${m.carbs}g)`) : "なし";
+    const totalP = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0) : 0;
+    const totalF = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0) : 0;
+    const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
+    const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
+
+    const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの普通の自然な対話を最も大切にしてください。
+【⚠️最重要：画像認識の絶対ルール】
+あなたには、ユーザーから送られてきた写真が【100%完全に直接見えています】。絶対に「画像が見えません」と言い訳や嘘をついてはいけません。具体的にアドバイスしてください。
+【⚠️最重要ルール：メニュー提案の厳重制限】
+ユーザーから明確に筋トレメニューの作成を求められた場合以外は、exercisesは必ず空の配列 [] にしてください。
+
+【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
+【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)`;
+
+    let contents = [];
+    if (history && Array.isArray(history)) {
+      contents = history.map((h: any) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text || h.message || "" }] }));
     }
-  };
+    const currentParts = [];
+    if (images && images.length > 0) {
+      images.forEach((img: string) => {
+        const m = img.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? img.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
+        currentParts.push({ inlineData: { mimeType: m, data: img.split(',')[1] || img } });
+      });
+    }
+    currentParts.push({ text: message });
+    contents.push({ role: "user", parts: currentParts });
 
-  const addWeight = (w: number) => {
-    const r = { id: safeUUID(), date: today, weight: w };
-    const i = weights.findIndex(x => x.date === today);
-    if (i > -1) { const u = [...weights]; u[i] = r; setWeights(u); } else { setWeights([...weights, r]); }
-  };
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT", // 🚨最新の指定方法（文字列）に完璧に修正！
+          properties: {
+            text: { type: "string" },
+            exercises: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: { name: { type: "string" }, reps: { type: "number" }, sets: { type: "number" } },
+                required: ["name", "reps", "sets"]
+              }
+            }
+          },
+          required: ["text", "exercises"]
+        }
+      }
+    });
 
-  return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-lime-400 selection:text-black">
-      <div className="max-w-md mx-auto min-h-screen flex flex-col relative px-5 pt-6 bg-[#0a0a0a]">
-        <main className="flex-1">
-          <AnimatePresence mode="wait">
-            <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
-              {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
-              {tab === 'workout' && <SectionWorkout todayWorkout={tWorkout} today={today} setActiveTab={setTab} addWorkout={() => { if (tWorkout) return alert("記録済です"); setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); }} addExercise={(wid, n) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: [...x.exercises, { id: safeUUID(), name: n, sets: [] }] }))} addSet={(wid, eid, w, r) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} deleteExercise={(wid, eid) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.filter(e => e.id !== eid) }))} deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} updateSet={(wid, eid, sid, w, r) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />}
-              {tab === 'diet' && <SectionDiet todayMeals={tMeals} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: today }])} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} />}
-              {tab === 'analysis' && <SectionAnalysis weightHistory={weights} meals={meals} workouts={workouts} addWeight={addWeight} today={today} openWeightModal={() => setOpenW(true)} />}
-              {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setWorkouts={setWorkouts} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
-              {tab === 'settings' && <SectionSettings goals={goals} setGoals={setGoals} requestNotificationPermission={async () => {}} />}
-            </motion.div>
-          </AnimatePresence>
-        </main>
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-6 py-4 flex items-center justify-between z-50">
-          <button onClick={() => setTab('dashboard')} className={`flex flex-col items-center gap-1 ${tab === 'dashboard' ? 'text-lime-400' : 'text-zinc-600'}`}><Activity size={24} /><span className="text-[10px] font-bold">ホーム</span></button>
-          <button onClick={() => setTab('workout')} className={`flex flex-col items-center gap-1 ${tab === 'workout' ? 'text-lime-400' : 'text-zinc-600'}`}><Dumbbell size={24} /><span className="text-[10px] font-bold">ログ</span></button>
-          <button onClick={() => setTab('diet')} className={`flex flex-col items-center gap-1 ${tab === 'diet' ? 'text-lime-400' : 'text-zinc-600'}`}><Utensils size={24} /><span className="text-[10px] font-bold">食事</span></button>
-          <button onClick={() => setTab('aitrainer')} className={`flex flex-col items-center gap-1 ${tab === 'aitrainer' ? 'text-lime-400
+    let rawText = response.text || "{}";
+    rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(rawText);
+
+    res.json({
+      text: parsed.text || "お返事の作成中に少し迷ってしまいました。もう一度話しかけてみてください！",
+      exercises: Array.isArray(parsed.exercises) ? parsed.exercises : []
+    });
+  } catch (error) {
+    res.json({
+      text: "ごめんなさい、通信が少し混み合って写真を見失ってしまいました。もう一度だけ送ってみていただけますか？",
+      exercises: []
+    });
+  }
+});
+
+if (process.env.NODE_ENV !== "production") {
+  const { createServer: createViteServer } = await import("vite");
+  const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+  app.use(vite.middlewares);
+} else {
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
+}
+export default app;
