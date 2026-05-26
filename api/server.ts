@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（最新大文字ルールに完全対応した爆速JSON解析版！）
+// 1. 食事の写真解析ルート（小文字スキーマルールに完全準拠した最新大成功版！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -35,15 +35,15 @@ app.post("/api/analyze-diet-image", async (req, res) => {
       config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: "OBJECT",
+          type: "object", // 🚨最新の小文字指定に修正！
           properties: {
-            success: { type: "BOOLEAN" },
-            name: { type: "STRING" },
-            mealName: { type: "STRING" },
-            calories: { type: "NUMBER" },
-            protein: { type: "NUMBER" },
-            fat: { type: "NUMBER" },
-            carbs: { type: "NUMBER" },
+            success: { type: "boolean" },
+            name: { type: "string" },
+            mealName: { type: "string" },
+            calories: { type: "number" },
+            protein: { type: "number" },
+            fat: { type: "number" },
+            carbs: { type: "number" },
           },
           required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"],
         },
@@ -74,7 +74,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート
+// 2. AIパーソナルトレーナー チャットルート（ここを完全な小文字ルールに修正して大復活！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -112,14 +112,14 @@ app.post("/api/chat-trainer", async (req, res) => {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
-          type: "OBJECT",
+          type: "object", // 🚨最新の小文字指定に大修正！
           properties: {
-            text: { type: "STRING" },
+            text: { type: "string" }, // 🚨最新の小文字指定に大修正！
             exercises: {
-              type: "ARRAY",
+              type: "array", // 🚨最新の小文字指定に大修正！
               items: {
-                type: "OBJECT",
-                properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } },
+                type: "object", // 🚨最新の小文字指定に大修正！
+                properties: { name: { type: "string" }, reps: { type: "number" }, sets: { type: "number" } },
                 required: ["name", "reps", "sets"]
               }
             }
@@ -138,8 +138,10 @@ app.post("/api/chat-trainer", async (req, res) => {
       exercises: Array.isArray(parsed.exercises) ? parsed.exercises : []
     });
   } catch (error) {
+    console.error("Trainer Error:", error);
+    // 🚨エラー時の固定お断り文を変更し、写真なしのテキスト送信時でも自然な案内になるように変更
     res.json({
-      text: "ごめんなさい、通信が少し混み合って写真を見失ってしまいました。もう一度だけ送ってみていただけますか？",
+      text: "トレーナーAIとの通信に一時的なエラーが発生しました。もう一度だけ送ってみていただけますか？",
       exercises: []
     });
   }
