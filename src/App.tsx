@@ -39,7 +39,6 @@ export default function App() {
     } catch (e) { console.error(e); }
     setLoaded(true);
 
-    // 🚨アプリ起動時に、追加した24時間お留守番プログラムをスマホに常駐させる
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(e => console.error(e));
     }
@@ -57,7 +56,7 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨【大手術】24時間いつでも届く「本物のプッシュ通知」の鍵をスマホにハメ込み、テスト大砲を撃つ
+  // 🚨【大手術】スマホ側で3秒待ってから、確実に居眠りしないサーバーに電波をリクエストする！
   const reqNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('ホーム画面（アプリモード）から起動してください。');
@@ -68,25 +67,26 @@ export default function App() {
       if (p !== 'granted') { alert('通知を許可してください'); return; }
 
       const reg = await navigator.serviceWorker.ready;
-      // 1. サーバーから秘密の暗号鍵をスカウト
       const keyRes = await fetch('/api/wp-public-key');
       const { publicKey } = await keyRes.json();
 
-      // 2. スマホ側に24時間お留守番のサインをさせる
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: publicKey
       });
 
       setRemind(true);
-      alert('通信開通！OKを押したら【3秒後】に大砲が届きます。速攻でアプリを完全に閉じて、スマホをスリープさせて待ってください！');
+      alert('通信準備完了！OKを押したら【3秒後】に大砲が自動で飛びます。速攻でアプリを完全に閉じて、スリープさせて待ってください！');
 
-      // 3. サーバーの大砲部屋に、このスマホに向けて電波を飛ばすよう要請！
-      await fetch('/api/send-test-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription: sub })
-      });
+      // スマホ側でしっかり3秒数えてから、確実にお留守番大砲を起動！
+      setTimeout(async () => {
+        await fetch('/api/send-test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: sub })
+        });
+      }, 3000);
+
     } catch (e) { alert('登録エラー: ' + String(e)); }
   };
 
