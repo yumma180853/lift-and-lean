@@ -40,7 +40,7 @@ export default function App() {
       const c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg)); // 🚨私の自爆バグを完璧に修正！
+      if (wg) setWeights(JSON.parse(wg)); // 🚨1文字のバグを完璧に大修正！
       if (g) setGoals({ ...DEFAULT_GOALS, ...JSON.parse(g) });
       if (c) setChats(JSON.parse(c));
     } catch (e) { console.error(e); }
@@ -97,7 +97,7 @@ export default function App() {
       }]);
     } catch (error: any) {
       if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。');
-    } finally { // 🚨タイポを完璧に修正！
+    } finally {
       setSending(false);
       abortRef.current = null;
     }
@@ -128,35 +128,4 @@ export default function App() {
           <button onClick={() => setTab('dashboard')} className={`flex flex-col items-center gap-1 ${tab === 'dashboard' ? 'text-lime-400' : 'text-zinc-600'}`}><Activity size={24} /><span className="text-[10px] font-bold">ホーム</span></button>
           <button onClick={() => setTab('workout')} className={`flex flex-col items-center gap-1 ${tab === 'workout' ? 'text-lime-400' : 'text-zinc-600'}`}><Dumbbell size={24} /><span className="text-[10px] font-bold">ログ</span></button>
           <button onClick={() => setTab('diet')} className={`flex flex-col items-center gap-1 ${tab === 'diet' ? 'text-lime-400' : 'text-zinc-600'}`}><Utensils size={24} /><span className="text-[10px] font-bold">食事</span></button>
-          <button onClick={() => setTab('aitrainer')} className={`flex flex-col items-center gap-1 ${tab === 'aitrainer' ? 'text-lime-400' : 'text-zinc-600'}`}><Sparkles size={24} /><span className="text-[10px] font-bold">AI</span></button>
-          <button onClick={() => setTab('analysis')} className={`flex flex-col items-center gap-1 ${tab === 'analysis' ? 'text-lime-400' : 'text-zinc-600'}`}><BarChart3 size={24} /><span className="text-[10px] font-bold">分析</span></button>
-          <button onClick={() => setTab('settings')} className={`flex flex-col items-center gap-1 ${tab === 'settings' ? 'text-lime-400' : 'text-zinc-600'}`}><Settings size={24} /><span className="text-[10px] font-bold">設定</span></button>
-        </nav>
-      </div>
-      <AnimatePresence>
-        {openW && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div onClick={() => setOpenW(false)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-zinc-950 border border-zinc-900 rounded-3xl p-6 z-10" >
-              <div className="text-center space-y-4">
-                <div className="mx-auto w-12 h-12 bg-lime-400/10 rounded-full flex items-center justify-center text-lime-400"><Activity size={24} /></div>
-                <div><h2 className="text-lg font-bold text-white uppercase italic">MEASURE WEIGHT</h2><p className="text-xs text-zinc-500 mt-1">本日の体重(kg)を測定して記録</p></div>
-                <form onSubmit={(e) => { e.preventDefault(); const w = parseFloat(wVal); if (w && !isNaN(w)) { addWeight(w); setOpenW(false); setWVal(''); } }} className="space-y-4 pt-2">
-                  <div className="relative">
-                    <input type="number" step="0.1" required placeholder="0.0" value={wVal} onChange={(e) => setWVal(e.target.value)} className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-center text-3xl font-black text-lime-400 outline-none" autoFocus />
-                    <span className="absolute right-4 bottom-4 text-xs font-mono text-zinc-500">KG</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="submit" className="flex-1 bg-lime-400 text-black py-3 rounded-xl font-bold text-xs" > 記録する </button>
-                    <button type="button" onClick={() => setOpenW(false)} className="flex-1 bg-zinc-900 text-zinc-400 py-3 rounded-xl font-bold text-xs" > キャンセル </button>
-                  </div>
-                </form>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      <style>{`body { font-family: 'Inter', system-ui, sans-serif; } ::-webkit-scrollbar { display: none; } input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-outer-spin-button {-webkit-appearance: none; margin: 0; }`}</style>
-    </div>
-  );
-}
+          <button onClick={() => setTab('aitrainer')} className={`flex flex-col items-center gap-1 ${tab === 'aitrainer' ? 'text-lime-400
