@@ -2,13 +2,14 @@ import express from "express";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import webpush from "web-push"; // 🚨スカウトした筋肉を合流！
+import webpush from "web-push";
 
 dotenv.config();
 
-// 🚨【重要】テスト用にその場で暗号鍵を自動生成！面倒な設定なしで今すぐ鳴らせます
-const vapidKeys = webpush.generateVAPIDKeys();
-webpush.setVapidDetails("mailto:test@example.com", vapidKeys.publicKey, vapidKeys.privateKey);
+// 🚨【大手術・完全固定鍵】サーバーが何回居眠りリセットされても絶対に鍵が変わらないように完全固定！
+const publicKey = "BEFkZqIn2Xp-B9yjenzQLjzGXqGorbZPYI7qHfjC8qrYKmbP81KLM54WzVPrBx0ErP5ITrv0SGms7goEfPyQHeg";
+const privateKey = "XZBvEvk2fSZ1NagRfbqweXGizvxBk99nUAvaewhC6tA";
+webpush.setVapidDetails("mailto:test@example.com", publicKey, privateKey);
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -18,26 +19,20 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 🚨【新設】スマホにお留守番の暗号鍵を渡す部屋
 app.get("/api/wp-public-key", (req, res) => {
-  res.json({ publicKey: vapidKeys.publicKey });
+  res.json({ publicKey });
 });
 
-// 🚨【新設】アプリを閉じても、スリープしてても電波をこじ開けて届ける大砲の部屋！
+// 🚨【大手術】Vercelの強制終了を防ぐため、setTimeoutを廃止して受け取った瞬間に即大砲発射！
 app.post("/api/send-test-notification", async (req, res) => {
   try {
     const { subscription } = req.body;
     if (!subscription) return res.status(400).json({ error: "No sub" });
     
-    // ボタンを押して3秒後に、サーバーからあなたのスマホへ直接電波を強制発射！
-    setTimeout(async () => {
-      try {
-        await webpush.sendNotification(subscription, JSON.stringify({
-          title: "LIFT & LEAN 大改造成功",
-          body: "大成功！！アプリを閉じても、スマホがスリープしてても届く本物のプッシュ通知です！🔥"
-        }));
-      } catch (e) { console.error(e); }
-    }, 3000);
+    await webpush.sendNotification(subscription, JSON.stringify({
+      title: "LIFT & LEAN 大改造成功",
+      body: "大成功！！アプリを閉じても、スマホがスリープしてても届く本物のプッシュ通知です！🔥"
+    }));
 
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: String(error) }); }
