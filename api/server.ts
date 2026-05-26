@@ -1,163 +1,165 @@
-import express from "express";
-import path from "path";
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, MessageSquare, Plus, Paperclip, Send, Square } from 'lucide-react';
+import { motion } from 'motion/react';
+import { ChatMessage, UserGoals, Workout, Tab } from '../types';
 
-dotenv.config();
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-});
-
-const app = express();
-app.use(express.json({ limit: '10mb' }));
-
-// 1. 食事の写真解析ルート（最新AIルールに完全対応した爆速JSON解析版！）
-app.post("/api/analyze-diet-image", async (req, res) => {
-  try {
-    const { image } = req.body;
-    if (!image) return res.status(400).json({ error: "Image is required" });
-    const mime = image.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? image.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
-    const base64Data = image.split(',')[1] || image;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: mime, data: base64Data } },
-            { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." }
-          ]
-        }
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT", // 🚨最新の指定方法（文字列）に完璧に修正！
-          properties: {
-            success: { type: "boolean" },
-            name: { type: "string" },
-            mealName: { type: "string" },
-            calories: { type: "number" },
-            protein: { type: "number" },
-            fat: { type: "number" },
-            carbs: { type: "number" },
-          },
-          required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"],
-        },
-      },
-    });
-
-    let text = response.text || "{}";
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(text);
-
-    res.json({
-      success: true,
-      name: parsed.name || parsed.mealName || "解析された料理",
-      mealName: parsed.mealName || parsed.name || "解析された料理",
-      calories: Number(parsed.calories) || 0,
-      protein: Number(parsed.protein) || 0,
-      fat: Number(parsed.fat) || 0,
-      carbs: Number(parsed.carbs) || 0
-    });
-  } catch (error: any) {
-    console.error("Gemini Error:", error);
-    res.json({
-      success: true,
-      name: "解析スキップ（手動入力してください）",
-      mealName: "解析スキップ（手動入力してください）",
-      calories: 0,
-      protein: 0,
-      fat: 0,
-      carbs: 0
-    });
-  }
-});
-
-// 2. AIパーソナルトレーナー チャットルート（こちらも最新ルールで完全開通！）
-app.post("/api/chat-trainer", async (req, res) => {
-  try {
-    const { message, images, userData, workouts, meals, history } = req.body;
-    const workoutSummary = workouts && workouts.length > 0 ? workouts.map((w: any) => `■ ${w.name}\n` + (w.sets ? w.sets.map((s: any, i: number) => `  - SET ${i+1}: ${s.weight}kg × ${s.reps}回`).join("\n") : "")).join("\n\n") : "なし";
-    const mealSummary = meals && meals.length > 0 ? meals.map((m: any) => `・ ${m.name} (${m.calories}kcal / P:${m.protein}g F:${m.fat}g C:${m.carbs}g)`) : "なし";
-    const totalP = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.protein) || 0), 0) : 0;
-    const totalF = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0) : 0;
-    const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
-    const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
-
-    const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの普通の自然な対話を最も大切にしてください。
-【⚠️最重要：画像認識の絶対ルール】
-あなたには、ユーザーから送られてきた写真が【100%完全に直接見えています】。絶対に「画像が見えません」と言い訳や嘘をついてはいけません。具体的にアドバイスしてください。
-【⚠️最重要ルール：メニュー提案の厳重制限】
-ユーザーから明確に筋トレメニューの作成を求められた場合以外は、exercisesは必ず空の配列 [] にしてください。
-
-【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal
-【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)`;
-
-    let contents = [];
-    if (history && Array.isArray(history)) {
-      contents = history.map((h: any) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text || h.message || "" }] }));
-    }
-    const currentParts = [];
-    if (images && images.length > 0) {
-      images.forEach((img: string) => {
-        const m = img.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? img.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
-        currentParts.push({ inlineData: { mimeType: m, data: img.split(',')[1] || img } });
-      });
-    }
-    currentParts.push({ text: message });
-    contents.push({ role: "user", parts: currentParts });
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT", // 🚨最新の指定方法（文字列）に完璧に修正！
-          properties: {
-            text: { type: "string" },
-            exercises: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: { name: { type: "string" }, reps: { type: "number" }, sets: { type: "number" } },
-                required: ["name", "reps", "sets"]
-              }
-            }
-          },
-          required: ["text", "exercises"]
-        }
-      }
-    });
-
-    let rawText = response.text || "{}";
-    rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(rawText);
-
-    res.json({
-      text: parsed.text || "お返事の作成中に少し迷ってしまいました。もう一度話しかけてみてください！",
-      exercises: Array.isArray(parsed.exercises) ? parsed.exercises : []
-    });
-  } catch (error) {
-    res.json({
-      text: "ごめんなさい、通信が少し混み合って写真を見失ってしまいました。もう一度だけ送ってみていただけますか？",
-      exercises: []
-    });
-  }
-});
-
-if (process.env.NODE_ENV !== "production") {
-  const { createServer: createViteServer } = await import("vite");
-  const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-  app.use(vite.middlewares);
-} else {
-  const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => { res.sendFile(path.join(distPath, 'index.html')); });
+export interface SectionAITrainerProps {
+  chatMessages: ChatMessage[];
+  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  currentWeight: number | null;
+  goals: UserGoals;
+  today: string;
+  todayWorkout: Workout | undefined;
+  setWorkouts: React.Dispatch<React.SetStateAction<Workout[]>>;
+  setActiveTab: (tab: Tab) => void;
+  isSending: boolean;
+  handleSendMessage: (text: string, images: string[]) => void;
+  handleCancelMessage: () => void;
 }
-export default app;
+
+export function SectionAITrainer({
+  chatMessages,
+  setChatMessages,
+  currentWeight,
+  goals,
+  today,
+  todayWorkout,
+  setWorkouts,
+  setActiveTab,
+  isSending,
+  handleSendMessage,
+  handleCancelMessage
+}: SectionAITrainerProps) {
+  const [inputText, setInputText] = useState('');
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, isSending]);
+
+  // 🚨【大手術】チャット側にも「自動画像圧縮機能」をがっちり搭載！
+  // スマホの巨大な生写真を一瞬で超軽量化し、容量上限による真っ白クラッシュを完全に根絶します！
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((file: File) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 800;
+        let width = img.width, height = img.height;
+        if (width > height) {
+          if (width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
+        } else {
+          if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
+        }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        setPendingImages(prev => [...prev, canvas.toDataURL('image/jpeg', 0.5)]);
+      };
+    });
+  };
+
+  const onSendClick = () => {
+    if (!inputText.trim() && pendingImages.length === 0) return;
+    handleSendMessage(inputText, pendingImages);
+    setInputText('');
+    setPendingImages([]);
+  };
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-140px)]">
+      <header className="flex items-center justify-between mb-4 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 bg-lime-400 rounded-full flex items-center justify-center text-black"><Sparkles size={20} /></div>
+          <div>
+            <h1 className="text-lg font-bold text-white uppercase italic">AI Trainer</h1>
+            <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-lime-400 rounded-full shadow-[0_0_5px_#d9ff00] animate-pulse" /><span className="text-[10px] text-zinc-500 font-bold">ONLINE</span></div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+        {chatMessages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
+            <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700"><MessageSquare size={32} /></div>
+            <div>
+              <p className="text-white font-bold">LIFT & LEAN AI</p>
+              <p className="text-zinc-500 text-sm mt-1">目標達成への課題、限界、理想を共有してください。最適な戦略を構築します。</p>
+            </div>
+          </div>
+        )}
+
+        {chatMessages.map((msg) => (
+          <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-full`}>
+            {msg.role === 'user' ? (
+              <div className="bg-lime-400 text-black font-medium p-4 rounded-3xl rounded-tr-sm max-w-[85%] text-sm select-text">
+                {msg.text}
+                {msg.images && msg.images.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {msg.images.map((img, i) => <img key={i} src={img} alt="添付" className="rounded-lg max-h-32 object-cover" referrerPolicy="no-referrer" />)}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-800 text-zinc-100 p-4 rounded-3xl rounded-tl-sm max-w-[90%] text-sm leading-relaxed space-y-4 select-text shadow-md">
+                <p className="whitespace-pre-line">{msg.text}</p>
+                {msg.exercises && msg.exercises.length > 0 && (
+                  <div className="bg-zinc-950 rounded-2xl p-4 border border-zinc-800 space-y-3">
+                    <div className="flex items-center gap-2"><Sparkles className="text-lime-400" size={16} /><span className="text-xs font-bold text-lime-400">AI推奨メニュー</span></div>
+                    <div className="space-y-2">
+                      {msg.exercises.map((ex, i) => (
+                        <div key={i} className="flex justify-between text-xs py-1.5 border-b border-zinc-900/50 last:border-0">
+                          <span className="font-bold text-white">{ex.name}</span><span className="text-zinc-400 font-mono">{ex.reps}回 × {ex.sets}セット</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <span className="text-[9px] text-zinc-600 mt-1 font-mono">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+        ))}
+
+        {isSending && (
+          <div className="py-4 px-2 space-y-4 max-w-[90%] flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex items-center justify-center">
+                <div className="absolute w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-lime-400 blur-md opacity-40 animate-pulse" />
+                <div className="relative p-1.5 bg-zinc-950 text-white rounded-full border border-zinc-800 flex items-center justify-center"><Sparkles size={16} className="text-cyan-400" /></div>
+              </div>
+              <div className="text-zinc-400 font-bold text-xs tracking-widest animate-pulse">GEMINI AI IS SYNTHESIZING...</div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="space-y-2 py-4 border-t border-zinc-800 flex-shrink-0">
+        {pendingImages.length > 0 && (
+          <div className="flex gap-2 bg-zinc-900/50 p-2.5 rounded-2xl border border-zinc-800/80 items-center overflow-x-auto">
+            {pendingImages.map((img, i) => (
+              <div key={i} className="relative group shrink-0">
+                <img src={img} alt="プレビュー" className="w-14 h-14 object-cover rounded-xl" referrerPolicy="no-referrer" />
+                <button type="button" onClick={() => setPendingImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2 items-center">
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="w-11 h-11 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl flex items-center justify-center"><Paperclip size={18} /></button>
+          <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden" />
+          <input type="text" placeholder="トレーナーへの相談を入力..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onSendClick(); }} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white placeholder:text-zinc-600 focus:ring-1 focus:ring-lime-400 outline-none text-sm" />
+          {isSending ? (
+            <button type="button" onClick={handleCancelMessage} className="w-11 h-11 bg-rose-500 text-white rounded-xl flex items-center justify-center"><Square size={16} fill="white" /></button>
+          ) : (
+            <button type="button" onClick={onSendClick} disabled={(!inputText.trim() && pendingImages.length === 0)} className="w-11 h-11 bg-lime-400 text-black disabled:bg-zinc-800 disabled:text-zinc-600 rounded-xl flex items-center justify-center font-bold"><Send size={16} /></button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
