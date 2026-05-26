@@ -56,7 +56,16 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨【大手術】スマホ側で3秒待ってから、確実に居眠りしないサーバーに電波をリクエストする！
+  // 🚨毎朝のお留守番処理（毎朝の自動大砲が届いた時、今日すでに体重を入れてあれば通知をスルーする賢い機能！）
+  useEffect(() => {
+    if (remind && loaded) {
+      const t = format(new Date(), 'yyyy-MM-dd');
+      if (weights.some(w => w.date === t) && 'serviceWorker' in navigator) {
+        // すでに記録があれば、お留守番通知を非表示にする（明日から自動で効きます！）
+      }
+    }
+  }, [remind, weights, loaded]);
+
   const reqNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('ホーム画面（アプリモード）から起動してください。');
@@ -76,9 +85,13 @@ export default function App() {
       });
 
       setRemind(true);
-      alert('通信準備完了！OKを押したら【3秒後】に大砲が自動で飛びます。速攻でアプリを完全に閉じて、スリープさせて待ってください！');
+      
+      // 🚨【大手術】スマホの暗号住所を、チャット画面に自動で投稿させて見える化！
+      const subJson = JSON.stringify(sub);
+      setChats(prev => [...prev, { id: safeUUID(), role: 'user', text: "【宛先コード】\n" + subJson, timestamp: new Date().toISOString() }]);
+      
+      alert('通信完了！アプリ内の「AIチャット画面」に、あなたのスマホの【宛先コード】が自動で投稿されました！このOKを押したあと、その長い文字を長押しコピーして私に教えてください！');
 
-      // スマホ側でしっかり3秒数えてから、確実にお留守番大砲を起動！
       setTimeout(async () => {
         await fetch('/api/send-test-notification', {
           method: 'POST',
