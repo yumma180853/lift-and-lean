@@ -43,7 +43,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (weights.length === 0 && wg) setWeights(JSON.parse(wg));
+      if (weights.length === 0 && wg) setWeights(JSON.parse(weights));
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -67,39 +67,51 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨【本番クリーンアップ】変なコードの投稿や、3秒後に自爆するテスト通知を完全に撤去！
-  const reqNotify = async () => {
+  // 🚨【本番大改造】オン/オフ両方に完全対応した、美しすぎるトグルスイッチ関数！
+  const toggleNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('ホーム画面（アプリモード）から起動してください。');
       return;
     }
     try {
-      const p = await Notification.requestPermission();
-      if (p !== 'granted') { alert('通知を許可してください'); return; }
-
       const reg = await navigator.serviceWorker.ready;
-      const keyRes = await fetch('/api/wp-public-key');
-      const { publicKey } = await keyRes.json();
-      const convertedKey = urlBase64ToUint8Array(publicKey);
 
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: convertedKey
-      });
+      if (remind) {
+        // 🚨【オフにする時】：データベースから削除
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await fetch('/api/send-test-notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subscription: sub, action: 'unsubscribe' })
+          });
+          await sub.unsubscribe();
+        }
+        setRemind(false);
+        alert('毎朝のリマインダー通知をオフにしました。');
+      } else {
+        // 🚨【オンにする時】：データベースに登録
+        const p = await Notification.requestPermission();
+        if (p !== 'granted') { alert('通知を許可してください'); return; }
 
-      setRemind(true);
-      
-      // 裏側でそっとデータベースに住所を自動保存する通信だけを走らせる
-      await fetch('/api/send-test-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription: sub })
-      });
+        const keyRes = await fetch('/api/wp-public-key');
+        const { publicKey } = await keyRes.json();
+        const convertedKey = urlBase64ToUint8Array(publicKey);
 
-      // 一般ユーザー向けの上品で嬉しいアラートに変更！
-      alert('リマインダー通知をオンにしました！明日から毎朝7時に、体重が未入力の場合にお知らせします。🔥');
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedKey
+        });
 
-    } catch (e) { alert('登録エラー: ' + String(e)); }
+        setRemind(true);
+        await fetch('/api/send-test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: sub })
+        });
+        alert('毎朝のリマインダー通知をオンにしました！明日から朝7時に、体重が未入力の場合にお知らせします。🔥');
+      }
+    } catch (e) { alert('設定エラー: ' + String(e)); }
   };
 
   const handleSendMessage = async (text: string, images: string[]) => {
@@ -143,7 +155,7 @@ export default function App() {
               {tab === 'diet' && <SectionDiet todayMeals={tMeals} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: today }])} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} />}
               {tab === 'analysis' && <SectionAnalysis weightHistory={weights} meals={meals} workouts={workouts} addWeight={addWeight} today={today} openWeightModal={() => setOpenW(true)} />}
               {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setWorkouts={setWorkouts} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
-              {tab === 'settings' && <SectionSettings goals={goals} setGoals={setGoals} requestNotificationPermission={reqNotify} />}
+              {tab === 'settings' && <SectionSettings goals={goals} setGoals={setGoals} remind={remind} toggleNotification={toggleNotify} />}
             </motion.div>
           </AnimatePresence>
         </main>
