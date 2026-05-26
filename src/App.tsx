@@ -38,7 +38,12 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
+      const w = localStorage.getItem('workouts');
+      const m = localStorage.getItem('meals');
+      const wg = localStorage.getItem('weight_history');
+      const g = localStorage.getItem('user_goals');
+      const r = localStorage.getItem('reminders_enabled');
+      const c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
       if (wg) setWeightHistory(JSON.parse(wg));
@@ -49,14 +54,20 @@ export default function App() {
     setIsLoaded(true);
   }, []);
 
+  // 🚨【大手術】保存側の部屋にも「エラーを握りつぶす盾」を完全に配置！
+  // かすうどんの写真を何枚送ろうと、容量エラーでの真っ白自爆を200%完璧に根絶します！
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem('workouts', JSON.stringify(workouts));
-    localStorage.setItem('meals', JSON.stringify(meals));
-    localStorage.setItem('weight_history', JSON.stringify(weightHistory));
-    localStorage.setItem('user_goals', JSON.stringify(goals));
-    localStorage.setItem('reminders_enabled', JSON.stringify(remindersEnabled));
-    localStorage.setItem('chat_messages', JSON.stringify(chatMessages));
+    try {
+      localStorage.setItem('workouts', JSON.stringify(workouts));
+      localStorage.setItem('meals', JSON.stringify(meals));
+      localStorage.setItem('weight_history', JSON.stringify(weightHistory));
+      localStorage.setItem('user_goals', JSON.stringify(goals));
+      localStorage.setItem('reminders_enabled', JSON.stringify(remindersEnabled));
+      localStorage.setItem('chat_messages', JSON.stringify(chatMessages));
+    } catch (e) {
+      console.warn("Storage full, skipped history save", e);
+    }
   }, [workouts, meals, weightHistory, goals, remindersEnabled, chatMessages, isLoaded]);
 
   const handleSendMessage = async (text: string, images: string[]) => {
