@@ -13,7 +13,6 @@ import { SectionSettings } from './components/SectionSettings';
 const safeUUID = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 const DF_G: UserGoals = { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 70 };
 
-// 🚨【新設】スマホのプッシュ通知システムに暗号鍵を認めさせるための必須変換マシーン！
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
@@ -44,7 +43,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg));
+      if (weights.length === 0 && wg) setWeights(JSON.parse(wg));
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -68,6 +67,7 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
+  // 🚨【本番クリーンアップ】変なコードの投稿や、3秒後に自爆するテスト通知を完全に撤去！
   const reqNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('ホーム画面（アプリモード）から起動してください。');
@@ -80,8 +80,6 @@ export default function App() {
       const reg = await navigator.serviceWorker.ready;
       const keyRes = await fetch('/api/wp-public-key');
       const { publicKey } = await keyRes.json();
-
-      // 🚨ここで暗号鍵をスマホが読める形に100%確実に一撃変換！
       const convertedKey = urlBase64ToUint8Array(publicKey);
 
       const sub = await reg.pushManager.subscribe({
@@ -91,18 +89,15 @@ export default function App() {
 
       setRemind(true);
       
-      const subJson = JSON.stringify(sub);
-      setChats(prev => [...prev, { id: safeUUID(), role: 'user', text: "【宛先コード】\n" + subJson, timestamp: new Date().toISOString() }]);
-      
-      alert('通信完了！今度こそ「AIチャット画面」にあなたのスマホの【宛先コード】が自動投稿されました！');
+      // 裏側でそっとデータベースに住所を自動保存する通信だけを走らせる
+      await fetch('/api/send-test-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub })
+      });
 
-      setTimeout(async () => {
-        await fetch('/api/send-test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscription: sub })
-        });
-      }, 3000);
+      // 一般ユーザー向けの上品で嬉しいアラートに変更！
+      alert('リマインダー通知をオンにしました！明日から毎朝7時に、体重が未入力の場合にお知らせします。🔥');
 
     } catch (e) { alert('登録エラー: ' + String(e)); }
   };
