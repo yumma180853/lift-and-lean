@@ -36,6 +36,7 @@ export default function App() {
   const [openW, setOpenW] = useState(false);
   const [wVal, setWVal] = useState('');
   const [sending, setSending] = useState(false);
+  const [selDate, setSelDate] = useState<string | null>(null); // 🚨【新設】過去のログを選択するための超重要スイッチ！
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -43,7 +44,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg)); // 🚨タイポ完全修正！起動時のリセット自爆を粉砕！
+      if (wg) setWeights(JSON.parse(wg));
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -66,6 +67,16 @@ export default function App() {
       localStorage.setItem('chat_messages', JSON.stringify(chats));
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
+
+  // 🚨タブが切り替わったら、自動的にログの選択をリセットして一覧画面に戻す親切設計
+  useEffect(() => {
+    setSelDate(null);
+  }, [tab]);
+
+  // 🚨過去のトレーニング記録を日付が新しい順（最新が一番上）に自動で並び替えるマシーン
+  const sortedWorkouts = useMemo(() => {
+    return [...workouts].sort((a, b) => b.date.localeCompare(a.date));
+  }, [workouts]);
 
   const toggleNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -148,7 +159,93 @@ export default function App() {
           <AnimatePresence mode="wait">
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
               {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
-              {tab === 'workout' && <SectionWorkout todayWorkout={tWorkout} today={today} setActiveTab={setTab} addWorkout={addWorkout} addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />}
+              
+              {/* 🚨【超進化ログセクション】今日固定ではなく、選択した過去の日にちを動的にバインド！ */}
+              {tab === 'workout' && (
+                selDate === null ? (
+                  // 【モードA】過去の筋トレ履歴タイムライン一覧画面
+                  <div className="space-y-4 pb-24">
+                    <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2">
+                      <Dumbbell size={24} />
+                      <span>TRAINING LOGS</span>
+                    </div>
+                    
+                    <button 
+                      onClick={() => {
+                        const hasToday = workouts.some(w => w.date === today);
+                        if (!hasToday) {
+                          setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]);
+                        }
+                        setSelDate(today);
+                      }}
+                      className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]"
+                    >
+                      <Sparkles size={18} />
+                      {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
+                    </button>
+
+                    <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-4">筋トレ履歴</div>
+                    
+                    {sortedWorkouts.length === 0 ? (
+                      <div className="text-center py-12 bg-zinc-950 border border-zinc-900 rounded-3xl text-zinc-500 text-xs">
+                        トレーニングの記録がまだありません。<br/>上のボタンから最初の記録を始めましょう！🔥
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {sortedWorkouts.map(w => {
+                          const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0);
+                          return (
+                            <div 
+                              key={w.id}
+                              onClick={() => setSelDate(w.date)}
+                              className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer"
+                            >
+                              <div className="space-y-1 max-w-[70%]">
+                                <div className="text-sm font-mono font-bold text-white flex items-center gap-2">
+                                  {w.date.replace(/-/g, '/')}
+                                  {w.date === today && <span className="text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>}
+                                </div>
+                                <div className="text-xs text-zinc-400 truncate">
+                                  {w.exercises.length > 0 
+                                    ? w.exercises.map(e => e.name).join(', ') 
+                                    : '種目の登録がありません'}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg">
+                                  {w.exercises.length}種目 / {totalSets}SET
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // 【モードB】選択した日付の筋トレ詳細・編集画面
+                  <div className="space-y-4">
+                    <button 
+                      onClick={() => setSelDate(null)}
+                      className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-lime-400 transition-colors mb-1 pt-1"
+                    >
+                      ← 履歴一覧に戻る
+                    </button>
+                    <SectionWorkout 
+                      todayWorkout={workouts.find(w => w.date === selDate)} 
+                      today={selDate} 
+                      setActiveTab={setTab} 
+                      addWorkout={addWorkout} 
+                      addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} 
+                      addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} 
+                      deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} 
+                      deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} 
+                      updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} 
+                    />
+                  </div>
+                )
+              )}
+
               {tab === 'diet' && <SectionDiet todayMeals={tMeals} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: today }])} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} />}
               {tab === 'analysis' && <SectionAnalysis weightHistory={weights} meals={meals} workouts={workouts} addWeight={addWeight} today={today} openWeightModal={() => setOpenW(true)} />}
               {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setWorkouts={setWorkouts} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
@@ -175,7 +272,6 @@ export default function App() {
                 <div><h2 className="text-lg font-bold text-white uppercase italic">MEASURE WEIGHT</h2><p className="text-xs text-zinc-500 mt-1">本日の体重(kg)を測定して記録</p></div>
                 <form onSubmit={(e) => { e.preventDefault(); const w = parseFloat(wVal); if (w && !isNaN(w)) { addWeight(w); setOpenW(false); setWVal(''); } }} className="space-y-4 pt-2">
                   <div className="relative">
-                    {/* 🚨【快適改造】毎朝の体重入力モーダルでも、0や空文字の時にイライラしないようにバチッと調整！ */}
                     <input type="number" step="0.1" required placeholder="0.0" value={wVal === '0' || wVal === '0.0' ? '' : wVal} onChange={(e) => setWVal(e.target.value)} className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-center text-3xl font-black text-lime-400 outline-none" autoFocus />
                     <span className="absolute right-4 bottom-4 text-xs font-mono text-zinc-500">KG</span>
                   </div>
