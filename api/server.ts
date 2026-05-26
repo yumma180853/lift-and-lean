@@ -1,6 +1,6 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（新旧すべての合言葉を同時に返す「全部盛り・クラッシュ完全防衛版」）
+// 1. 食事の写真解析ルート（最新AIルールに完全対応した爆速JSON解析版！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -35,15 +35,15 @@ app.post("/api/analyze-diet-image", async (req, res) => {
       config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: "OBJECT", // 🚨最新の指定方法（文字列）に完璧に修正！
           properties: {
-            success: { type: Type.BOOLEAN },
-            name: { type: Type.STRING },
-            mealName: { type: Type.STRING },
-            calories: { type: Type.NUMBER },
-            protein: { type: Type.NUMBER },
-            fat: { type: Type.NUMBER },
-            carbs: { type: Type.NUMBER },
+            success: { type: "boolean" },
+            name: { type: "string" },
+            mealName: { type: "string" },
+            calories: { type: "number" },
+            protein: { type: "number" },
+            fat: { type: "number" },
+            carbs: { type: "number" },
           },
           required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"],
         },
@@ -54,7 +54,6 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(text);
 
-    // 🚨【大手術】新旧どちらの画面ファイルが待ち受けていても、100%合致するように両方同時に投げ返します！
     res.json({
       success: true,
       name: parsed.name || parsed.mealName || "解析された料理",
@@ -78,7 +77,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（AIの嘘お断りを粉砕 ＆ 不完全なデータによる画面停止を徹底防御！）
+// 2. AIパーソナルトレーナー チャットルート（こちらも最新ルールで完全開通！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -91,7 +90,7 @@ app.post("/api/chat-trainer", async (req, res) => {
 
     const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの普通の自然な対話を最も大切にしてください。
 【⚠️最重要：画像認識の絶対ルール】
-あなたには、ユーザーから送られてきた写真が【100%完全に直接見えています】。絶対に「画像が見えません」と言い訳や嘘をついてはいけません。写っている料理や体型の特徴を具体的に言葉にして褒めたりアドバイスしてください。
+あなたには、ユーザーから送られてきた写真が【100%完全に直接見えています】。絶対に「画像が見えません」と言い訳や嘘をついてはいけません。具体的にアドバイスしてください。
 【⚠️最重要ルール：メニュー提案の厳重制限】
 ユーザーから明確に筋トレメニューの作成を求められた場合以外は、exercisesは必ず空の配列 [] にしてください。
 
@@ -119,14 +118,14 @@ app.post("/api/chat-trainer", async (req, res) => {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: "OBJECT", // 🚨最新の指定方法（文字列）に完璧に修正！
           properties: {
-            text: { type: Type.STRING, description: "ユーザーへのメッセージ。画像がある場合は必ずその見た目に具体的に触れてください。" },
+            text: { type: "string" },
             exercises: {
-              type: Type.ARRAY,
+              type: "ARRAY",
               items: {
-                type: Type.OBJECT,
-                properties: { name: { type: Type.STRING }, reps: { type: Type.NUMBER }, sets: { type: Type.NUMBER } },
+                type: "OBJECT",
+                properties: { name: { type: "string" }, reps: { type: "number" }, sets: { type: "number" } },
                 required: ["name", "reps", "sets"]
               }
             }
@@ -140,7 +139,6 @@ app.post("/api/chat-trainer", async (req, res) => {
     rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(rawText);
 
-    // 🚨チャット側も、万が一プロパティが不完全でも絶対にスマホ画面を落とさないよう徹底ガード！
     res.json({
       text: parsed.text || "お返事の作成中に少し迷ってしまいました。もう一度話しかけてみてください！",
       exercises: Array.isArray(parsed.exercises) ? parsed.exercises : []
