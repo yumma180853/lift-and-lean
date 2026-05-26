@@ -34,19 +34,11 @@ interface SetRowProps {
 function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRowProps) {
   const [weight, setWeight] = useState(set.weight.toString());
   const [reps, setReps] = useState(set.reps.toString());
-  const [isDeleting, setIsDeleting] = useState(false);
 
   React.useEffect(() => {
     setWeight(set.weight.toString());
     setReps(set.reps.toString());
   }, [set.weight, set.reps]);
-
-  React.useEffect(() => {
-    if (isDeleting) {
-      const timer = setTimeout(() => setIsDeleting(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isDeleting]);
 
   const handleBlur = () => {
     const w = parseFloat(weight);
@@ -65,14 +57,10 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
     }
   };
 
+  // 🚨【大改造】面倒な2段階確認を全カット！押した瞬間に即座に抹消！
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isDeleting) {
-      setIsDeleting(true);
-    } else {
-      deleteSet(workoutId, exerciseId, set.id);
-      setIsDeleting(false);
-    }
+    deleteSet(workoutId, exerciseId, set.id);
   };
 
   return (
@@ -109,14 +97,10 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
         <button 
           type="button"
           onClick={handleDeleteClick}
-          className={`px-2 py-1 rounded-lg transition-all flex items-center justify-center gap-1 text-[10px] font-bold ml-auto ${
-            isDeleting 
-              ? "bg-rose-500 text-white animate-pulse" 
-              : "text-zinc-500 hover:text-rose-500 hover:bg-zinc-850"
-          }`}
+          className="px-2 py-1 rounded-lg transition-all flex items-center justify-center gap-1 text-[10px] font-bold ml-auto text-zinc-500 hover:text-rose-500 hover:bg-zinc-850"
           title="このセットを削除"
         >
-          {isDeleting ? 'OK?' : <Trash2 size={13} />}
+          <Trash2 size={13} />
         </button>
       </div>
     </div>
@@ -141,23 +125,11 @@ function ExerciseCard({
   deleteSet, 
   updateSet 
 }: ExerciseCardProps) {
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  React.useEffect(() => {
-    if (isDeleting) {
-      const timer = setTimeout(() => setIsDeleting(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isDeleting]);
-
+  // 🚨【大改造】種目の削除ボタンからも「確定？」の2段階確認を完全消去！
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isDeleting) {
-      setIsDeleting(true);
-    } else {
-      deleteExercise(workoutId, exercise.id);
-      setIsDeleting(false);
-    }
+    deleteExercise(workoutId, exercise.id);
   };
 
   return (
@@ -169,15 +141,10 @@ function ExerciseCard({
           <button 
             type="button"
             onClick={handleDeleteClick}
-            className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 text-[10px] font-extrabold ${
-              isDeleting 
-                ? "bg-rose-500 text-white animate-pulse" 
-                : "text-zinc-500 hover:text-rose-500 hover:bg-zinc-800"
-            }`}
+            className="px-2 py-1 rounded-lg transition-all flex items-center gap-1 text-[10px] font-extrabold text-zinc-500 hover:text-rose-500 hover:bg-zinc-800"
             title="この種目を削除"
           >
             <Trash2 size={13} />
-            {isDeleting && <span>確定?</span>}
           </button>
         </div>
         <button 
