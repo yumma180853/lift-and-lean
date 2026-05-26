@@ -86,8 +86,11 @@ export function SectionDashboard({
         </motion.div>
       )}
 
-      {/* Calories Card */}
-      <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 shadow-xl relative overflow-hidden">
+      {/* Calories Card 🚨【大改造】タップで設定画面へ一瞬でワープする魔法を実装！ */}
+      <div 
+        onClick={() => setActiveTab('settings')}
+        className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 shadow-xl relative overflow-hidden cursor-pointer hover:border-lime-400/50 active:scale-[0.99] transition-all"
+      >
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -158,8 +161,11 @@ export function SectionDashboard({
         </div>
       </div>
 
-      {/* Current Weight */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
+      {/* Current Weight 🚨【大改造】タップでいつでも本日の体重を再入力（修正）できるモーダルを召喚！ */}
+      <div 
+        onClick={openWeightModal}
+        className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-rose-500/50 active:scale-[0.99] transition-all"
+      >
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-rose-500/20 text-rose-400 rounded-xl flex items-center justify-center">
             <Weight size={20} />
