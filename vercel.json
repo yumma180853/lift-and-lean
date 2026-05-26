@@ -20,5 +20,11 @@
       "src": "/(.*)",
       "dest": "/$1"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron-morning-reminder",
+      "schedule": "0 22 * * *"
+    }
   ]
 }
