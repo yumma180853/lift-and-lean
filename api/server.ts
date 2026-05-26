@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// 1. 食事の写真解析ルート（大文字スキーマルールに完全修正した大成功版！）
+// 1. 食事の写真解析ルート（無料制限のときは、理由をハッキリ表示！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -35,7 +35,7 @@ app.post("/api/analyze-diet-image", async (req, res) => {
       config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: "OBJECT", // 🚨大文字に完全修正！
+          type: "OBJECT",
           properties: {
             success: { type: "BOOLEAN" },
             name: { type: "STRING" },
@@ -65,16 +65,20 @@ app.post("/api/analyze-diet-image", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Gemini Error:", error);
+    const errStr = String(error);
+    const isQuota = errStr.includes("429") || errStr.includes("Quota") || error?.status === 429;
+    
+    // 🚨無料制限（429）の時は、スキップではなく「無料枠の上限」とハッキリ表示！
     res.json({
       success: true,
-      name: "解析スキップ（手動入力してください）",
-      mealName: "解析スキップ（手動入力してください）",
+      name: isQuota ? "解析制限（無料枠の上限に達しました。明日復活します）" : "解析スキップ（手動入力してください）",
+      mealName: isQuota ? "解析制限（無料枠の上限に達しました。明日復活します）" : "解析スキップ（手動入力してください）",
       calories: 0, protein: 0, fat: 0, carbs: 0
     });
   }
 });
 
-// 2. AIパーソナルトレーナー チャットルート（ここも大文字ルールに修正して完全開通！）
+// 2. AIパーソナルトレーナー チャットルート（無料制限のチケット切れをハッキリ喋るように大改造！）
 app.post("/api/chat-trainer", async (req, res) => {
   try {
     const { message, images, userData, workouts, meals, history } = req.body;
@@ -112,13 +116,13 @@ app.post("/api/chat-trainer", async (req, res) => {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
-          type: "OBJECT", // 🚨大文字に完全修正！
+          type: "OBJECT",
           properties: {
-            text: { type: "STRING" }, // 🚨大文字に完全修正！
+            text: { type: "STRING" },
             exercises: {
-              type: "ARRAY", // 🚨大文字に完全修正！
+              type: "ARRAY",
               items: {
-                type: "OBJECT", // 🚨大文字に完全修正！
+                type: "OBJECT",
                 properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } },
                 required: ["name", "reps", "sets"]
               }
@@ -139,8 +143,14 @@ app.post("/api/chat-trainer", async (req, res) => {
     });
   } catch (error) {
     console.error("Trainer Error:", error);
+    const errStr = String(error);
+    const isQuota = errStr.includes("429") || errStr.includes("Quota") || error?.status === 429;
+    
+    // 🚨チケット切れ(429)のときは、AI自身がハッキリと理由を叫ぶように大手術！
     res.json({
-      text: "トレーナーAIとの通信に一時的なエラーが発生しました。もう一度だけ送ってみていただけますか？",
+      text: isQuota 
+        ? "【Gemini AIの無料制限】1日の無料利用枠（20回）の上限に達しました！数時間〜明日になると自動でリセットされて満タンになりますので、しばらく時間を置いてからもう一度話しかけてみてください！" 
+        : "トレーナーAIとの通信に一時的なエラーが発生しました。もう一度だけ送ってみていただけますか？",
       exercises: []
     });
   }
