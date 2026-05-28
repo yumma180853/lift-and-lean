@@ -38,7 +38,7 @@ app.get("/api/cron-morning-reminder", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
-// 🚨【本番仕様】オンならデータベースに追加、オフならデータベースから自動削除するハイテク処理に大改造！
+// オンならデータベースに追加、オフならデータベースから自動削除するハイテク処理
 app.post("/api/send-test-notification", async (req, res) => {
   try {
     const { subscription, action } = req.body;
@@ -47,19 +47,16 @@ app.post("/api/send-test-notification", async (req, res) => {
     let subs: any[] = await kv.get("push_subscriptions") || [];
     
     if (action === "unsubscribe") {
-      // 🚨オフにされたら、データベースからその人の住所をキレイに抹消！
       subs = subs.filter(s => s.endpoint !== subscription.endpoint);
       await kv.set("push_subscriptions", subs);
       return res.json({ success: true, message: "Unsubscribed" });
     }
 
-    // オンにする場合
     if (!subs.some(s => s.endpoint === subscription.endpoint)) {
       subs.push(subscription);
       await kv.set("push_subscriptions", subs);
     }
 
-    // 登録完了の瞬間にだけ届く、上品なウェルカム通知
     await webpush.sendNotification(subscription, JSON.stringify({
       title: "LIFT & LEAN リマインダー",
       body: "通知の連携が完了しました！明日から毎朝7時に自動でチェックします。🔥"
@@ -69,18 +66,31 @@ app.post("/api/send-test-notification", async (req, res) => {
   } catch (error) { res.status(500).json({ error: String(error) }); }
 });
 
-// 1. 食事の写真解析ルート
+// 1. 食事の写真解析ルート（ここにも自動リトライを装備！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
     if ( !image ) return res.status(400).json({ error: "Image is required" });
     const mime = image.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? image.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
     const base64Data = image.split(',')[1] || image;
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ inlineData: { mimeType: mime, data: base64Data } }, { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." } ] }],
-      config: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { success: { type: "BOOLEAN" }, name: { type: "STRING" }, mealName: { type: "STRING" }, calories: { type: "NUMBER" }, protein: { type: "NUMBER" }, fat: { type: "NUMBER" }, carbs: { type: "NUMBER" } }, required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"] } }
-    });
+    
+    let response;
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [{ role: "user", parts: [{ inlineData: { mimeType: mime, data: base64Data } }, { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Return the result in Japanese." } ] }],
+          config: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { success: { type: "BOOLEAN" }, name: { type: "STRING" }, mealName: { type: "STRING" }, calories: { type: "NUMBER" }, protein: { type: "NUMBER" }, fat: { type: "NUMBER" }, carbs: { type: "NUMBER" } }, required: ["success", "name", "mealName", "calories", "protein", "fat", "carbs"] } }
+        });
+        break;
+      } catch (err) {
+        attempts++;
+        if (attempts >= 3) throw err;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
     let text = response.text || "{}";
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(text);
@@ -102,18 +112,45 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
     const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの普通の自然な対話を最も大切にしてください。ユーザーから送られてきた写真は100%完全に見えています。具体的にアドバイスしてください。要望がない限りexercisesは必ず空の配列 [] にしてください。【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal\n【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)`;
+    
     let contents = [];
     if (history && Array.isArray(history)) { contents = history.map((h: any) => ( { role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text || h.message || "" }] } )); }
+    
     const currentParts = [];
-    if (images && images.length > 0) { images.forEach((img: string) => { const m = img.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? img.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg"; currentParts.push({ inlineData: { mimeType: m, data: img.split(',')[1] || img } }); }); }
-    currentParts.push({ text: message }); contents.push({ role: "user", parts: currentParts });
-    const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents, config: { systemInstruction, responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { text: { type: "STRING" }, exercises: { type: "ARRAY", items: { type: "OBJECT", properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } }, required: ["name", "reps", "sets"] } } }, required: ["text", "exercises"] } } });
+    if (images && images.length > 0) {
+      images.forEach((img: string) => {
+        const m = img.match(/^data:(image\/[a-zA-Z+]+);base64,/) ? img.match(/^data:(image\/[a-zA-Z+]+);base64,/)[1] : "image/jpeg";
+        currentParts.push({ inlineData: { mimeType: m, data: img.split(',')[1] || img } });
+      });
+    }
+    
+    const finalMessage = message && message.trim() ? message : "この写真を見て、今日の食事やトレーニングへのアドバイス、またはモチベーションが上がる言葉をください！";
+    currentParts.push({ text: finalMessage }); 
+    
+    contents.push({ role: "user", parts: currentParts });
+    
+    // 🚨【大改造】一瞬の通信エラーやGoogleのサボりを撃退する「爆速自動リトライ機能」！
+    let response;
+    let attempts = 0;
+    const maxAttempts = 3; // 最大3回まで裏でこっそり再送する
+    
+    while (attempts < maxAttempts) {
+      try {
+        response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents, config: { systemInstruction, responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { text: { type: "STRING" }, exercises: { type: "ARRAY", items: { type: "OBJECT", properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } }, required: ["name", "reps", "sets"] } } }, required: ["text", "exercises"] } } });
+        break; // 成功したらループをスパッと抜ける！
+      } catch (err) {
+        attempts++;
+        if (attempts >= maxAttempts) throw err; // 3回とも全滅した時だけ諦めて外側のエラーへ
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒だけ待ってから自動で再挑戦！
+      }
+    }
+    
     let rawText = response.text || "{}"; rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(rawText);
     res.json({ text: parsed.text || "お返事の作成中に少し迷ってしまいました。もう一度話しかけてみてください！", exercises: Array.isArray(parsed.exercises) ? parsed.exercises : [] });
   } catch (error) {
     const errStr = String(error); const isQuota = errStr.includes("429") || errStr.includes("Quota") || error?.status === 429;
-    res.json({ text: isQuota ? "【Gemini AIの無料制限】1日の無料利用枠（20回）の上限に達しました！数時間〜明日になると自動でリセットされて満タンになりますので、しばらく時間を置いてからもう一度話しかけてみてください！" : "トレーナーAIとの通信に一時的なエラーが発生しました。もう一度だけ送ってみていただけますか？", exercises: [] });
+    res.json({ text: isQuota ? "【Gemini AIの無料制限】1日の無料利用枠（20回）の上限に達しました！数時間〜明日になると自動リセットされて満タンになりますので、しばらく時間を置いてからもう一度話しかけてみてください！" : "トレーナーAIとの通信に一時的なエラーが発生しました。もう一度だけ送ってみていただけますか？", exercises: [] });
   }
 });
 
