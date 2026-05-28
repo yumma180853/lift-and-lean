@@ -66,7 +66,7 @@ app.post("/api/send-test-notification", async (req, res) => {
   } catch (error) { res.status(500).json({ error: String(error) }); }
 });
 
-// 1. 食事の写真解析ルート（ここにも自動リトライを装備！）
+// 1. 食事の写真解析ルート（ここは速度重視でFlashのままキープ！）
 app.post("/api/analyze-diet-image", async (req, res) => {
   try {
     const { image } = req.body;
@@ -111,7 +111,22 @@ app.post("/api/chat-trainer", async (req, res) => {
     const totalF = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.fat) || 0), 0) : 0;
     const totalC = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.carbs) || 0), 0) : 0;
     const totalCal = meals ? meals.reduce((sum: number, m: any) => sum + (Number(m.calories) || 0), 0) : 0;
-    const systemInstruction = `あなたはプロのパーソナルトレーナーAIです。ユーザーとの普通の自然な対話を最も大切にしてください。ユーザーから送られてきた写真は100%完全に見えています。具体的にアドバイスしてください。要望がない限りexercisesは必ず空の配列 [] にしてください。【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal\n【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)`;
+    
+    // 🚨【裏指示書の超・大改造】解剖学、運動生理学、スポーツ栄養学のプロ知識を叩き込むプロンプト！
+    const systemInstruction = `あなたは超一流のプロパーソナルトレーナーAIです。
+【思考・回答プロセス】
+1. ユーザーから食事内容、筋トレログ、写真が送られてきたら、まずその日の努力や成果を必ずポジティブに全力で褒めちぎり、モチベーションを最高潮に引き上げてください。
+2. 解剖学、運動生理学、スポーツ栄養学の科学的エビデンスに基づき、抽象的な表現ではなく「超具体的かつ実践的」にアドバイスを生成してください。
+3. ユーザーの現在の体重、目標体重、目標PFCバランス、および本日入力された「筋トレ履歴」「食事履歴」の数値を完全に分析してください。
+4. 目標値に対して、本日の摂取カロリーやPFCバランスが「あと何g、何kcal足りないか」または「どれくらいオーバーしているか」を明確に数値ベースで指摘してください。
+5. ユーザーが次に行うべき具体的なアクション（例：「あとタンパク質が30g足りないので、コンビニのギリシャヨーグルトとサラダチキンをプラスしよう！」「明日は胸と三頭筋の日だね、この種目を追加すると効果的だよ！🔥」など）を最低1つ以上、明確に提案してください。
+
+【トーン＆マナー】
+* 情熱的でポジティブ、絶対に否定せず、ユーザーの心に寄り添う親切で頼りになるカリスマトレーナーの口調（例：「〜だよ！」「〜していこう！🔥」）。
+* 専門用語を使う場合は、初心者にも一瞬でわかるように噛み砕いて説明すること。
+* 要望がない限りexercisesは必ず空の配列 [] にしてください。
+
+【目標】体重: ${userData?.weight || "--"}kg / 目標: ${userData?.targetWeight || "--"}kg / カロリー: ${userData?.calories || "--"}kcal\n【本日の筋トレ】\n${workoutSummary}\n【本日の食事】\n合計: ${totalCal}kcal (P:${totalP.toFixed(1)}g, F:${totalF.toFixed(1)}g, C:${totalC.toFixed(1)}g)`;
     
     let contents = [];
     if (history && Array.isArray(history)) { contents = history.map((h: any) => ( { role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text || h.message || "" }] } )); }
@@ -126,22 +141,25 @@ app.post("/api/chat-trainer", async (req, res) => {
     
     const finalMessage = message && message.trim() ? message : "この写真を見て、今日の食事やトレーニングへのアドバイス、またはモチベーションが上がる言葉をください！";
     currentParts.push({ text: finalMessage }); 
-    
     contents.push({ role: "user", parts: currentParts });
     
-    // 🚨【大改造】一瞬の通信エラーやGoogleのサボりを撃退する「爆速自動リトライ機能」！
     let response;
     let attempts = 0;
-    const maxAttempts = 3; // 最大3回まで裏でこっそり再送する
+    const maxAttempts = 3;
     
     while (attempts < maxAttempts) {
       try {
-        response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents, config: { systemInstruction, responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { text: { type: "STRING" }, exercises: { type: "ARRAY", items: { type: "OBJECT", properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } }, required: ["name", "reps", "sets"] } } }, required: ["text", "exercises"] } } });
-        break; // 成功したらループをスパッと抜ける！
+        // 🚨【脳みそのコンバート】モデルを「gemini-2.5-flash」から、高度な推論ができる最上位の「gemini-2.5-pro」へ大アップグレード！！！
+        response = await ai.models.generateContent({ 
+          model: "gemini-2.5-pro", 
+          contents, 
+          config: { systemInstruction, responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { text: { type: "STRING" }, exercises: { type: "ARRAY", items: { type: "OBJECT", properties: { name: { type: "STRING" }, reps: { type: "NUMBER" }, sets: { type: "NUMBER" } }, required: ["name", "reps", "sets"] } } }, required: ["text", "exercises"] } } 
+        });
+        break;
       } catch (err) {
         attempts++;
-        if (attempts >= maxAttempts) throw err; // 3回とも全滅した時だけ諦めて外側のエラーへ
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1秒だけ待ってから自動で再挑戦！
+        if (attempts >= maxAttempts) throw err;
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
