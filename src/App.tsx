@@ -36,7 +36,7 @@ export default function App() {
   const [openW, setOpenW] = useState(false);
   const [wVal, setWVal] = useState('');
   const [sending, setSending] = useState(false);
-  const [selDate, setSelDate] = useState<string | null>(null); // 🚨【新設】過去のログを選択するための超重要スイッチ！
+  const [selDate, setSelDate] = useState<string | null>(null); // 🚨過去のログを選択するための超重要スイッチ！
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -122,7 +122,7 @@ export default function App() {
       setChats(prev => [...prev, { id: safeUUID(), role: 'assistant', text: data?.text || 'エラーが発生しました。', exercises: Array.isArray(data?.exercises) ? data.exercises : [], timestamp: new Date().toISOString() }]);
     } catch (error: any) {
       if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。');
-    } finaly {
+    } finally { // 💡 ここを「finally」に修正完了！
       setSending(false);
       abortRef.current = null;
     }
