@@ -44,13 +44,12 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg));
+      if (wg) setWeights(JSON.parse(weights));
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
     } catch (e) { console.error(e); }
     setLoaded(true);
-
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(e => console.error(e));
     }
@@ -85,38 +84,26 @@ export default function App() {
     }
     try {
       const reg = await navigator.serviceWorker.ready;
-
       if (remind) {
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          await fetch('/api/send-test-notification', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subscription: sub, action: 'unsubscribe' })
-          });
+          await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub, action: 'unsubscribe' }) });
           await sub.unsubscribe();
         }
         setRemind(false);
         alert('毎朝のリマインダー通知をオフにしました。');
       } else {
         const p = await Notification.requestPermission();
-        if (p !== 'granted') { alert('通知を許可してください'); return; }
-
+        if (p !== 'granted') {
+          alert('通知を許可してください');
+          return;
+        }
         const keyRes = await fetch('/api/wp-public-key');
         const { publicKey } = await keyRes.json();
         const convertedKey = urlBase64ToUint8Array(publicKey);
-
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedKey
-        });
-
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: convertedKey });
         setRemind(true);
-        await fetch('/api/send-test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscription: sub })
-        });
+        await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) });
         alert('毎朝のリマインダー通知をオンにしました！明日から朝7時に、体重が未入力の場合にお知らせします。🔥');
       }
     } catch (e) { alert('設定エラー: ' + String(e)); }
@@ -130,17 +117,15 @@ export default function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const response = await fetch('/api/chat-trainer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({ message: text, images, workouts: tWorkout ? [tWorkout] : [], meals: tMeals, userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs } })
-      });
+      const response = await fetch('/api/chat-trainer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ message: text, images, workouts: tWorkout ? [tWorkout] : [], meals: tMeals, userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs } }) });
       const data = await response.json();
       setChats(prev => [...prev, { id: safeUUID(), role: 'assistant', text: data?.text || 'エラーが発生しました。', exercises: Array.isArray(data?.exercises) ? data.exercises : [], timestamp: new Date().toISOString() }]);
     } catch (error: any) {
       if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。');
-    } finally { setSending(false); abortRef.current = null; }
+    } finaly {
+      setSending(false);
+      abortRef.current = null;
+    }
   };
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -149,8 +134,22 @@ export default function App() {
   const tWorkout = useMemo(() => workouts.find(w => w.date === today), [workouts, today]);
   const cWeight = useMemo(() => weights.length ? weights[weights.length - 1].weight : null, [weights]);
 
-  const addWorkout = () => { if (tWorkout) return alert("記録済です"); setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); setTab('workout'); };
-  const addWeight = (w: number) => { const r = { id: safeUUID(), date: today, weight: w }, i = weights.findIndex(x => x.date === today); if (i > -1) { const u = [...weights]; u[i] = r; setWeights(u); } else { setWeights([...weights, r]); } };
+  const addWorkout = () => {
+    if (tWorkout) return alert("記録済です");
+    setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]);
+    setTab('workout');
+  };
+
+  const addWeight = (w: number) => {
+    const r = { id: safeUUID(), date: today, weight: w }, i = weights.findIndex(x => x.date === today);
+    if (i > -1) {
+      const u = [...weights];
+      u[i] = r;
+      setWeights(u);
+    } else {
+      setWeights([...weights, r]);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-lime-400 selection:text-black">
@@ -161,91 +160,35 @@ export default function App() {
               {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
               
               {/* 🚨【超進化ログセクション】今日固定ではなく、選択した過去の日にちを動的にバインド！ */}
-              {tab === 'workout' && (
-                selDate === null ? (
-                  // 【モードA】過去の筋トレ履歴タイムライン一覧画面
-                  <div className="space-y-4 pb-24">
-                    <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2">
-                      <Dumbbell size={24} />
-                      <span>TRAINING LOGS</span>
+              {tab === 'workout' && (selDate === null ? (
+                // 【モードA】過去の筋トレ履歴タイムライン一覧画面
+                <div className="space-y-4 pb-24">
+                  <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2">
+                    <Dumbbell size={24} /> <span>TRAINING LOGS</span>
+                  </div>
+                  <button onClick={() => { const hasToday = workouts.some(w => w.date === today); if (!hasToday) { setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); } setSelDate(today); }} className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]" >
+                    <Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
+                  </button>
+                  <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-4">筋トレ履歴</div>
+                  {sortedWorkouts.length === 0 ? (
+                    <div className="text-center py-12 bg-zinc-950 border border-zinc-900 rounded-3xl text-zinc-500 text-xs">
+                      トレーニングの記録がまだありません。<br/>上のボタンから最初の記録を始めましょう！🔥
                     </div>
-                    
-                    <button 
-                      onClick={() => {
-                        const hasToday = workouts.some(w => w.date === today);
-                        if (!hasToday) {
-                          setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]);
-                        }
-                        setSelDate(today);
-                      }}
-                      className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]"
-                    >
-                      <Sparkles size={18} />
-                      {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
-                    </button>
-
-                    <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-4">筋トレ履歴</div>
-                    
-                    {sortedWorkouts.length === 0 ? (
-                      <div className="text-center py-12 bg-zinc-950 border border-zinc-900 rounded-3xl text-zinc-500 text-xs">
-                        トレーニングの記録がまだありません。<br/>上のボタンから最初の記録を始めましょう！🔥
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {sortedWorkouts.map(w => {
-                          const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0);
-                          return (
-                            <div 
-                              key={w.id}
-                              onClick={() => setSelDate(w.date)}
-                              className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer"
-                            >
-                              <div className="space-y-1 max-w-[70%]">
-                                <div className="text-sm font-mono font-bold text-white flex items-center gap-2">
-                                  {w.date.replace(/-/g, '/')}
-                                  {w.date === today && <span className="text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>}
-                                </div>
-                                <div className="text-xs text-zinc-400 truncate">
-                                  {w.exercises.length > 0 
-                                    ? w.exercises.map(e => e.name).join(', ') 
-                                    : '種目の登録がありません'}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg">
-                                  {w.exercises.length}種目 / {totalSets}SET
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  // 【モードB】選択した日付の筋トレ詳細・編集画面
-                  <div className="space-y-4">
-                    <button 
-                      onClick={() => setSelDate(null)}
-                      className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-lime-400 transition-colors mb-1 pt-1"
-                    >
-                      ← 履歴一覧に戻る
-                    </button>
-                    <SectionWorkout 
-                      todayWorkout={workouts.find(w => w.date === selDate)} 
-                      today={selDate} 
-                      setActiveTab={setTab} 
-                      addWorkout={addWorkout} 
-                      addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} 
-                      addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} 
-                      deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} 
-                      deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} 
-                      updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} 
-                    />
-                  </div>
-                )
-              )}
-
+                  ) : (
+                    <div className="space-y-3">
+                      {sortedWorkouts.map(w => { const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0); return (<div key={w.id} onClick={() => setSelDate(w.date)} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer" > <div className="space-y-1 max-w-[70%]"> <div className="text-sm font-mono font-bold text-white flex items-center gap-2"> {w.date.replace(/-/g, '/')} {w.date === today && <span className="text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>} </div> <div className="text-xs text-zinc-400 truncate"> {w.exercises.length > 0 ? w.exercises.map(e => e.name).join(', ') : '種目の登録がありません'} </div> </div> <div className="text-right"> <span className="text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg"> {w.exercises.length}種目 / {totalSets}SET </span> </div> </div>); })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // 【モードB】選択した日付の筋トレ詳細・編集画面
+                <div className="space-y-4">
+                  <button onClick={() => setSelDate(null)} className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-lime-400 transition-colors mb-1 pt-1" > ← 履歴一覧に戻る </button>
+                  {/* 💡 修正ポイント：currentWeight={cWeight} をバケツリレーで追加！ */}
+                  <SectionWorkout todayWorkout={workouts.find(w => w.date === selDate)} today={selDate} setActiveTab={setTab} addWorkout={addWorkout} currentWeight={cWeight} addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />
+                </div>
+              ))}
+              
               {tab === 'diet' && <SectionDiet todayMeals={tMeals} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: today }])} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} />}
               {tab === 'analysis' && <SectionAnalysis weightHistory={weights} meals={meals} workouts={workouts} addWeight={addWeight} today={today} openWeightModal={() => setOpenW(true)} />}
               {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setWorkouts={setWorkouts} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
@@ -253,6 +196,7 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
+        
         <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-6 py-4 flex items-center justify-between z-50">
           <button onClick={() => setTab('dashboard')} className={`flex flex-col items-center gap-1 ${tab === 'dashboard' ? 'text-lime-400' : 'text-zinc-600'}`}><Activity size={24} /><span className="text-[10px] font-bold">ホーム</span></button>
           <button onClick={() => setTab('workout')} className={`flex flex-col items-center gap-1 ${tab === 'workout' ? 'text-lime-400' : 'text-zinc-600'}`}><Dumbbell size={24} /><span className="text-[10px] font-bold">ログ</span></button>
@@ -262,6 +206,7 @@ export default function App() {
           <button onClick={() => setTab('settings')} className={`flex flex-col items-center gap-1 ${tab === 'settings' ? 'text-lime-400' : 'text-zinc-600'}`}><Settings size={24} /><span className="text-[10px] font-bold">設定</span></button>
         </nav>
       </div>
+
       <AnimatePresence>
         {openW && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -285,6 +230,7 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
       <style>{`body { font-family: 'Inter', system-ui, sans-serif; } ::-webkit-scrollbar { display: none; } input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-outer-spin-button {-webkit-appearance: none; margin: 0; }`}</style>
     </div>
   );
