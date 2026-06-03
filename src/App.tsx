@@ -44,7 +44,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(weights));
+      if (wg) setWeights(JSON.parse(wg)); // 💡タイポを「wg」に修正完了！
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
