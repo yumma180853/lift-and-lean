@@ -36,7 +36,7 @@ export default function App() {
   const [openW, setOpenW] = useState(false);
   const [wVal, setWVal] = useState('');
   const [sending, setSending] = useState(false);
-  const [selDate, setSelDate] = useState<string | null>(null); // 🚨過去のログを選択するための超重要スイッチ！
+  const [selDate, setSelDate] = useState<string | null>(null); // 過去のログを選択するための超重要スイッチ！
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(weights));
+      if (wg) setWeights(JSON.parse(wg)); // 💡 ここを「wg」に完全修正！これでリロードしても体重データが絶対に消えません！
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -67,12 +67,12 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // 🚨タブが切り替わったら、自動的にログの選択をリセットして一覧画面に戻す親切設計
+  // タブが切り替わったら、自動的にログの選択をリセットして一覧画面に戻す親切設計
   useEffect(() => {
     setSelDate(null);
   }, [tab]);
 
-  // 🚨過去のトレーニング記録を日付が新しい順（最新が一番上）に自動で並び替えるマシーン
+  // 過去のトレーニング記録を日付が新しい順（最新が一番上）に自動で並び替えるマシーン
   const sortedWorkouts = useMemo(() => {
     return [...workouts].sort((a, b) => b.date.localeCompare(a.date));
   }, [workouts]);
@@ -159,7 +159,7 @@ export default function App() {
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
               {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
               
-              {/* 🚨【超進化ログセクション】 */}
+              {/* 【超進化ログセクション】 */}
               {tab === 'workout' && (selDate === null ? (
                 // 【モードA】過去の筋トレ履歴タイムライン一覧画面
                 <div className="space-y-4 pb-24">
@@ -183,7 +183,6 @@ export default function App() {
               ) : (
                 // 【モードB】選択した日付の筋トレ詳細・編集画面
                 <div className="space-y-4">
-                  {/* 💡 修正箇所：今日だろうが過去だろうが、戻るボタンを押したら一律で絶対に「履歴一覧（selDate = null）」に戻るようにロジックを極限までシンプル化！ */}
                   <SectionWorkout 
                     todayWorkout={workouts.find(w => w.date === selDate)} 
                     today={selDate} 
