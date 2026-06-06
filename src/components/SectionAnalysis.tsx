@@ -80,11 +80,10 @@ export function SectionAnalysis({
     return data;
   }, [workouts, selExercise]);
 
-  // 💡【大幅タイムライン改修】未入力の日があってもカレンダーの枠を崩さず、前日の値を美しく引き継ぐ神ロジック
+  // 💡【修正】入力がない日はガチの「null」にして、一直線になるおかしな現象を完全抹殺！
   const getWeightDataForChart = () => {
     const sorted = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
     
-    // 全期間の場合はそのままソートデータを返す
     if (weightPeriod === 'all') {
       return sorted.map(w => ({
         date: w.date.substring(5).replace('-', '/'),
@@ -92,7 +91,6 @@ export function SectionAnalysis({
       }));
     }
 
-    // 7日間または30日間の固定日付枠を生成（今日を中心に過去へ遡る）
     const count = weightPeriod === '7' ? 7 : 30;
     const daysToInclude = Array.from({ length: count }, (_, i) => {
       const d = new Date();
@@ -100,29 +98,11 @@ export function SectionAnalysis({
       return d.toISOString().split('T')[0];
     }).reverse();
 
-    // 基準値の初期化（データが1件もない場合の保険として65をセット）
-    let lastKnownWeight = 65; 
-    
-    // グラフ表示期間より前にデータが存在する場合、その直近最新の体重をスタート地点にする
-    if (daysToInclude.length > 0) {
-      const firstDay = daysToInclude[0];
-      const priorRecords = sorted.filter(w => w.date < firstDay);
-      if (priorRecords.length > 0) {
-        lastKnownWeight = priorRecords[priorRecords.length - 1].weight;
-      } else if (sorted.length > 0) {
-        lastKnownWeight = sorted[0].weight;
-      }
-    }
-
-    // 1日ずつチェックし、入力がない日は前日の値を自動でキャリーオーバー（引き継ぎ）する
     return daysToInclude.map(date => {
       const found = sorted.find(w => w.date === date);
-      if (found) {
-        lastKnownWeight = found.weight;
-      }
       return {
-        date: date.substring(5).replace('-', '/'), // MM/DD
-        体重: lastKnownWeight
+        date: date.substring(5).replace('-', '/'),
+        体重: found ? found.weight : null // 入力がない日はフェイクを入れずに null
       };
     });
   };
@@ -388,7 +368,18 @@ export function SectionAnalysis({
                   labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px' }}
                   itemStyle={{ color: '#ffffff', fontWeight: 'black' }}
                 />
-                <Area type="monotone" dataKey="体重" stroke="#d9ff00" strokeWidth={2} fillOpacity={1} fill="url(#colorWeight)" />
+                {/* 💡 改善：connectNulls を true にし、常に小さなドット（dot）を出すことで1日だけの入力でもポチッと見えるように大改修！ */}
+                <Area 
+                  type="monotone" 
+                  dataKey="体重" 
+                  stroke="#d9ff00" 
+                  strokeWidth={2} 
+                  fillOpacity={1} 
+                  fill="url(#colorWeight)" 
+                  connectNulls={true}
+                  dot={{ fill: '#d9ff00', r: 3.5, strokeWidth: 0 }}
+                  activeDot={{ r: 5, strokeWidth: 0 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -537,7 +528,7 @@ export function SectionAnalysis({
                 <p className="font-bold text-zinc-300">💡 期間平均アドバイス</p>
                 <p>
                   {avgPfc.pPct < 15 ? (
-                    <span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果적です。</span>
+                    <span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果的です。</span>
                   ) : avgPfc.pPct > 30 ? (
                     <span>高タンパク質をしっかりと維持できています！余剰なタンパク質はエネルギーとして代謝されますが、内臓疲労を避けるために適切な水分補給を怠らないでください。</span>
                   ) : (
