@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2 } from 'lucide-react'; // 💡 Trash2（ゴミ箱）をインポート！
+import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserGoals, WeightRecord, Workout, Meal, ChatMessage, Tab } from './types';
@@ -43,6 +43,9 @@ export default function App() {
   const [cYear, setCYear] = useState(new Date().getFullYear());
   const [cMonth, setCMonth] = useState(new Date().getMonth()); // 0-11
 
+  // 💡【新設】ユーザーが「履歴から消したい」と選んだ日付をがっちり記憶する秘密のブラックリスト
+  const [hiddenDates, setHiddenDates] = useState<string[]>([]);
+
   useEffect(() => {
     try {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
@@ -52,6 +55,10 @@ export default function App() {
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
+
+      // 💡 非表示にされた日付リストをブラウザの記憶から引き出す
+      const hd = localStorage.getItem('hidden_workout_dates');
+      if (hd) setHiddenDates(JSON.parse(hd));
     } catch (e) { console.error(e); }
     setLoaded(true);
     if ('serviceWorker' in navigator) {
@@ -68,10 +75,13 @@ export default function App() {
       localStorage.setItem('user_goals', JSON.stringify(goals));
       localStorage.setItem('reminders_enabled', JSON.stringify(remind));
       localStorage.setItem('chat_messages', JSON.stringify(chats));
+      
+      // 💡 非表示にされた日付リストをがっちりローカルに永続保存
+      localStorage.setItem('hidden_workout_dates', JSON.stringify(hiddenDates));
     } catch (e) { console.warn(e); }
-  }, [workouts, meals, weights, goals, remind, chats, loaded]);
+  }, [workouts, meals, weights, goals, remind, chats, loaded, hiddenDates]);
 
-  // 💡 改善：タブが切り替わったら、自動的に「中身が空っぽのログ」を消去して一覧を綺麗にするスマート設計！
+  // タブが切り替わったら、自動的に「中身が空っぽのログ」を消去して一覧を綺麗にするスマート設計！
   useEffect(() => {
     setWorkouts(p => p.filter(w => w.exercises.length > 0));
     setSelDate(null);
@@ -110,7 +120,7 @@ export default function App() {
     }
   };
 
-  // 💡 改善：詳細画面から一覧画面へ戻るときに、中身が空っぽのログを完全にシュリンクして消し去る関数
+  // 詳細画面から一覧画面へ戻るときに、中身が空っぽのログを完全にシュリンクして消し去る関数
   const handleCloseWorkoutDetail = () => {
     setWorkouts(p => p.filter(w => w.exercises.length > 0));
     setSelDate(null);
@@ -239,6 +249,8 @@ export default function App() {
                               if (!hasData) {
                                 setWorkouts([...workouts, { id: safeUUID(), date: dateStr, exercises: [] }]);
                               }
+                              // 💡【究極UX】もし非表示リストに入っていたら、カレンダーから開いた瞬間に自動で非表示を解除してあげる優しさ！
+                              setHiddenDates(p => p.filter(d => d !== dateStr));
                               setSelDate(dateStr);
                             }}
                             className={`h-8 rounded-xl flex flex-col items-center justify-center relative text-xs font-mono font-bold transition-all active:scale-90 ${
@@ -261,14 +273,15 @@ export default function App() {
                     <Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
                   </button>
                   <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-4">筋トレ履歴</div>
-                  {/* 💡 改善：表示する履歴も「1種目以上あるガチの履歴」だけに美しく制限！ */}
-                  {sortedWorkouts.filter(w => w.exercises.length > 0).length === 0 ? (
+                  
+                  {/* 💡 改善：表示する履歴は「1種目以上あって、かつ非表示（hiddenDates）にされていない日」だけに美しく制限！ */}
+                  {sortedWorkouts.filter(w => w.exercises.length > 0 && !hiddenDates.includes(w.date)).length === 0 ? (
                     <div className="text-center py-12 bg-zinc-950 border border-zinc-900 rounded-3xl text-zinc-500 text-xs">
-                      トレーニングの記録がまだありません。<br/>上のボタンから最初の記録を始めましょう！🔥
+                      表示できるトレーニングの記録はありません。
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {sortedWorkouts.filter(w => w.exercises.length > 0).map(w => { 
+                      {sortedWorkouts.filter(w => w.exercises.length > 0 && !hiddenDates.includes(w.date)).map(w => { 
                         const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0); 
                         return (
                           <div key={w.id} onClick={() => setSelDate(w.date)} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer group" > 
@@ -281,23 +294,23 @@ export default function App() {
                                 {w.exercises.map(e => e.name).join(', ')} 
                               </div> 
                             </div> 
-                            {/* 💡 改善：右側にセット数バッジ ＆ タップで一瞬で消せるゴミ箱削除ボタンを搭載！ */}
                             <div className="flex items-center gap-3">
                               <div className="text-right"> 
                                 <span className="text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg"> 
                                   {w.exercises.length}種目 / {totalSets}SET 
                                 </span> 
                               </div> 
+                              {/* 💡 改善：ゴミ箱を押したときの挙動を「完全削除」から「ブラックリスト（非表示）への追加」に進化！ */}
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation(); // 詳細画面へのワープを阻止
-                                  if (confirm(`${w.date.replace(/-/g, '/')} の筋トレ履歴を完全に削除しますか？`)) {
-                                    setWorkouts(p => p.filter(x => x.id !== w.id));
+                                  if (confirm(`${w.date.replace(/-/g, '/')} の履歴を一覧から非表示にしますか？\n（カレンダーや分析グラフの記録はそのまま残ります）`)) {
+                                    setHiddenDates(p => [...p, w.date]);
                                   }
                                 }}
                                 className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-zinc-900 rounded-xl transition-colors"
-                                title="この日の履歴を削除"
+                                title="この日の履歴を非表示にする"
                               >
                                 <Trash2 size={15} />
                               </button>
@@ -311,7 +324,6 @@ export default function App() {
               ) : (
                 // 【モードB】選択した日付の筋トレ詳細・編集画面
                 <div className="space-y-4">
-                  {/* 💡 改善：setActiveTab のタイミングで handleCloseWorkoutDetail を呼び出し、空ログを全自動クレンジング！ */}
                   <SectionWorkout 
                     todayWorkout={workouts.find(w => w.date === selDate)} 
                     today={selDate} 
@@ -322,8 +334,7 @@ export default function App() {
                     addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} 
                     deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} 
                     deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} 
-                    updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} 
-                  />
+                    updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />
                 </div>
               ))}
               
