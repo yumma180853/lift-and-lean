@@ -67,7 +67,6 @@ export function SectionAnalysis({
         return d.toISOString().split('T')[0];
       }).reverse();
     } else {
-      // 'all' - Gather unique dates chronologically from meals or today
       const mealDates = meals.map(m => m.date);
       const weightDates = weightHistory.map(w => w.date);
       const workoutDates = workouts.map(wk => wk.date);
@@ -88,17 +87,18 @@ export function SectionAnalysis({
       const fKcal = f * 9;
       const cKcal = c * 4;
       
-      // Calculate remaining calories that might exist due to raw calorie manual override/inputs
       const calculatedPfcKcal = pKcal + fKcal + cKcal;
       const otherKcal = Math.max(0, totalCal - calculatedPfcKcal);
 
+      // 💡 改善：すべてのカロリーデータを Math.round で整数化！これで99999999バグを完全抹殺
+      // 💡 改善：キー名自体に [kcal] を明記して、グラフの意味を分かりやすくチューニング
       return {
         date: date.substring(5), // Get MM-DD
-        'タンパク質 (P)': pKcal,
-        '脂質 (F)': fKcal,
-        '炭水化物 (C)': cKcal,
-        'その他 (エネルギー)': otherKcal,
-        合計カロリー: totalCal
+        'タンパク質 (P) [kcal]': Math.round(pKcal),
+        '脂質 (F) [kcal]': Math.round(fKcal),
+        '炭水化物 (C) [kcal]': Math.round(cKcal),
+        'その他 [kcal]': Math.round(otherKcal),
+        合計カロリー: Math.round(totalCal)
       };
     });
   };
@@ -234,18 +234,15 @@ export function SectionAnalysis({
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
-                {/* 💡 修正箇所：データが少ない時・差が小さい時は自動的に最新体重の±5kg（10kg幅）にするプロ仕様のスマートレンジロジック */}
                 <YAxis 
                   stroke="#52525b" 
                   fontSize={10} 
                   domain={([dataMin, dataMax]) => {
                     if (dataMin === undefined || dataMax === undefined) return ['auto', 'auto'];
-                    // データが1つだけ、または体重の最高・最低の差が4kg未満の時は、中心値から上下に5kgずつのマージンを持たせる
                     if (dataMin === dataMax || (dataMax - dataMin) < 4) {
                       const center = (dataMin + dataMax) / 2;
                       return [Math.floor(center - 5), Math.ceil(center + 5)];
                     }
-                    // データが十分に増えて大きな変化がある時は、上下に1kgずつのマージンで綺麗に追従させる
                     return [Math.floor(dataMin - 1), Math.ceil(dataMax + 1)];
                   }} 
                   tickLine={false} 
@@ -299,17 +296,19 @@ export function SectionAnalysis({
             <BarChart data={getNutritionDataForChart()}>
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
               <YAxis stroke="#52525b" fontSize={10} tickLine={false} />
+              {/* 💡 改善：formatter を追加して、数値の横に「 kcal」という単位を強制的に自動表示！ */}
               <Tooltip 
                 contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
                 labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '11px' }}
                 itemStyle={{ fontSize: '11px' }}
+                formatter={(value) => [`${value} kcal`]}
               />
               <Legend verticalAlign="top" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '10px', color: '#a1a1aa' }} />
-              {/* Stacked PFC components (values in kcal) */}
-              <Bar dataKey="タンパク質 (P)" stackId="a" fill="#f43f5e" />
-              <Bar dataKey="脂質 (F)" stackId="a" fill="#eab308" />
-              <Bar dataKey="炭水化物 (C)" stackId="a" fill="#3b82f6" />
-              <Bar dataKey="その他 (エネルギー)" stackId="a" fill="#71717a" />
+              {/* 💡 改善：データバインド先を新しく設定した [kcal] 付きのキー名に修正 */}
+              <Bar dataKey="タンパク質 (P) [kcal]" stackId="a" fill="#f43f5e" />
+              <Bar dataKey="脂質 (F) [kcal]" stackId="a" fill="#eab308" />
+              <Bar dataKey="炭水化物 (C) [kcal]" stackId="a" fill="#3b82f6" />
+              <Bar dataKey="その他 [kcal]" stackId="a" fill="#71717a" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -323,7 +322,6 @@ export function SectionAnalysis({
 
           {avgPfc.avgCalories > 0 ? (
             <div className="space-y-6">
-              {/* Visual Multi-segment bar */}
               <div>
                 <div className="flex justify-between text-xs text-zinc-400 mb-2">
                   <span>摂取エネルギーの構成比 (PFCカロリー比)</span>
@@ -348,7 +346,6 @@ export function SectionAnalysis({
                 </div>
               </div>
 
-              {/* Three detailed column metrics */}
               <div className="grid grid-cols-3 gap-3">
                 {/* Protein */}
                 <div className="bg-zinc-950/60 border border-zinc-800 p-3 rounded-2xl flex flex-col justify-between">
@@ -402,7 +399,6 @@ export function SectionAnalysis({
                 </div>
               </div>
 
-              {/* Feedback Advice based on PFC */}
               <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl text-[11px] text-zinc-400 space-y-1">
                 <p className="font-bold text-zinc-300">💡 期間平均アドバイス</p>
                 <p>
