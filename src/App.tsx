@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles } from 'lucide-react';
+import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2 } from 'lucide-react'; // 💡 Trash2（ゴミ箱）をインポート！
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserGoals, WeightRecord, Workout, Meal, ChatMessage, Tab } from './types';
@@ -39,7 +39,7 @@ export default function App() {
   const [selDate, setSelDate] = useState<string | null>(null); // 過去のログを選択するための超重要スイッチ！
   const abortRef = useRef<AbortController | null>(null);
 
-  // 📅 【新設】筋トレカレンダー用の年月ステート
+  // 📅 筋トレカレンダー用の年月ステート
   const [cYear, setCYear] = useState(new Date().getFullYear());
   const [cMonth, setCMonth] = useState(new Date().getMonth()); // 0-11
 
@@ -71,8 +71,9 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded]);
 
-  // タブが切り替わったら、自動的にログの選択をリセットして一覧画面に戻す親切設計
+  // 💡 改善：タブが切り替わったら、自動的に「中身が空っぽのログ」を消去して一覧を綺麗にするスマート設計！
   useEffect(() => {
+    setWorkouts(p => p.filter(w => w.exercises.length > 0));
     setSelDate(null);
   }, [tab]);
 
@@ -81,7 +82,7 @@ export default function App() {
     return [...workouts].sort((a, b) => b.date.localeCompare(a.date));
   }, [workouts]);
 
-  // 📅 【新設】選択された年月のカレンダーグリッド（日付配列）を爆速計算するロジック
+  // 📅 選択された年月のカレンダーグリッド（日付配列）を爆速計算するロジック
   const calendarDays = useMemo(() => {
     const startDayOfWeek = new Date(cYear, cMonth, 1).getDay();
     const totalDays = new Date(cYear, cMonth + 1, 0).getDate();
@@ -107,6 +108,12 @@ export default function App() {
     } else {
       setCMonth(cMonth + 1);
     }
+  };
+
+  // 💡 改善：詳細画面から一覧画面へ戻るときに、中身が空っぽのログを完全にシュリンクして消し去る関数
+  const handleCloseWorkoutDetail = () => {
+    setWorkouts(p => p.filter(w => w.exercises.length > 0));
+    setSelDate(null);
   };
 
   const toggleNotify = async () => {
@@ -191,7 +198,7 @@ export default function App() {
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
               {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
               
-              {/* 🚨【超進化ログセクション】 */}
+              {/* 【超進化ログセクション】 */}
               {tab === 'workout' && (selDate === null ? (
                 // 【モードA】過去の筋トレ履歴タイムライン一覧画面
                 <div className="space-y-4 pb-24">
@@ -199,7 +206,7 @@ export default function App() {
                     <Dumbbell size={24} /> <span>TRAINING LOGS</span>
                   </div>
 
-                  {/* 📅 【新設】ラグジュアリー・ミニマルカレンダーコンポーネント */}
+                  {/* 📅 ラグジュアリー・ミニマルカレンダーコンポーネント */}
                   <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-top-4 duration-200">
                     <div className="flex justify-between items-center px-1">
                       <div className="text-xs font-black text-white font-mono uppercase tracking-wider">
@@ -219,10 +226,8 @@ export default function App() {
                       {calendarDays.map((day, idx) => {
                         if (!day) return <div key={`empty-${idx}`} className="h-8" />;
                         
-                        // yyyy-MM-ddの文字列を厳密に生成
                         const dateStr = `${cYear}-${String(cMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                         const targetWorkout = workouts.find(w => w.date === dateStr);
-                        // 💡 1種目以上登録されている日だけを、誇り高きライムグリーンにする条件式
                         const hasWorkout = targetWorkout && targetWorkout.exercises.length > 0;
                         const isToday = dateStr === today;
                         
@@ -232,7 +237,6 @@ export default function App() {
                             onClick={() => {
                               const hasData = workouts.some(w => w.date === dateStr);
                               if (!hasData) {
-                                // カレンダーから未記録の日をタップしたら、自動でその日の器を作ってワープ！
                                 setWorkouts([...workouts, { id: safeUUID(), date: dateStr, exercises: [] }]);
                               }
                               setSelDate(dateStr);
@@ -257,23 +261,61 @@ export default function App() {
                     <Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
                   </button>
                   <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-4">筋トレ履歴</div>
-                  {sortedWorkouts.length === 0 ? (
+                  {/* 💡 改善：表示する履歴も「1種目以上あるガチの履歴」だけに美しく制限！ */}
+                  {sortedWorkouts.filter(w => w.exercises.length > 0).length === 0 ? (
                     <div className="text-center py-12 bg-zinc-950 border border-zinc-900 rounded-3xl text-zinc-500 text-xs">
                       トレーニングの記録がまだありません。<br/>上のボタンから最初の記録を始めましょう！🔥
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {sortedWorkouts.map(w => { const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0); return (<div key={w.id} onClick={() => setSelDate(w.date)} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer" > <div className="space-y-1 max-w-[70%]"> <div className="text-sm font-mono font-bold text-white flex items-center gap-2"> {w.date.replace(/-/g, '/')} {w.date === today && <span className="text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>} </div> <div className="text-xs text-zinc-400 truncate"> {w.exercises.length > 0 ? w.exercises.map(e => e.name).join(', ') : '種目の登録がありません'} </div> </div> <div className="text-right"> <span className="text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg"> {w.exercises.length}種目 / {totalSets}SET </span> </div> </div>); })}
+                      {sortedWorkouts.filter(w => w.exercises.length > 0).map(w => { 
+                        const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0); 
+                        return (
+                          <div key={w.id} onClick={() => setSelDate(w.date)} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer group" > 
+                            <div className="space-y-1 max-w-[65%]"> 
+                              <div className="text-sm font-mono font-bold text-white flex items-center gap-2"> 
+                                {w.date.replace(/-/g, '/')} 
+                                {w.date === today && <span className="text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>} 
+                              </div> 
+                              <div className="text-xs text-zinc-400 truncate"> 
+                                {w.exercises.map(e => e.name).join(', ')} 
+                              </div> 
+                            </div> 
+                            {/* 💡 改善：右側にセット数バッジ ＆ タップで一瞬で消せるゴミ箱削除ボタンを搭載！ */}
+                            <div className="flex items-center gap-3">
+                              <div className="text-right"> 
+                                <span className="text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg"> 
+                                  {w.exercises.length}種目 / {totalSets}SET 
+                                </span> 
+                              </div> 
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // 詳細画面へのワープを阻止
+                                  if (confirm(`${w.date.replace(/-/g, '/')} の筋トレ履歴を完全に削除しますか？`)) {
+                                    setWorkouts(p => p.filter(x => x.id !== w.id));
+                                  }
+                                }}
+                                className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-zinc-900 rounded-xl transition-colors"
+                                title="この日の履歴を削除"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        ); 
+                      })}
                     </div>
                   )}
                 </div>
               ) : (
                 // 【モードB】選択した日付の筋トレ詳細・編集画面
                 <div className="space-y-4">
+                  {/* 💡 改善：setActiveTab のタイミングで handleCloseWorkoutDetail を呼び出し、空ログを全自動クレンジング！ */}
                   <SectionWorkout 
                     todayWorkout={workouts.find(w => w.date === selDate)} 
                     today={selDate} 
-                    setActiveTab={() => setSelDate(null)} 
+                    setActiveTab={handleCloseWorkoutDetail} 
                     addWorkout={addWorkout} 
                     currentWeight={cWeight} 
                     addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} 
