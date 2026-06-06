@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   TrendingUp, 
   Plus,
   Flame,
   Zap,
   Coffee,
-  PieChart
+  PieChart,
+  Dumbbell
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -42,6 +43,51 @@ export function SectionAnalysis({
   const [weightPeriod, setWeightPeriod] = useState<Period>('7');
   const [dietPeriod, setDietPeriod] = useState<Period>('7');
 
+  // 💡【新設】現在グラフを表示したい種目を選択するステート
+  const [selExercise, setSelExercise] = useState<string>('');
+
+  // 💡【新設】過去のすべての筋トレデータから、登録されている「ユニークな種目名」を全自動でかき集めるマシーン
+  const allExerciseNames = useMemo(() => {
+    const names = new Set<string>();
+    workouts.forEach(w => {
+      w.exercises.forEach(e => {
+        if (e.name) names.add(e.name); // 手動入力されたカスタム種目も、同じ文字なら100%ここに合流！
+      });
+    });
+    return Array.from(names).sort();
+  }, [workouts]);
+
+  // 💡【新設】種目リストが存在し、まだ何も選ばれていない場合は自動で最初の種目をセットする親切設計
+  useEffect(() => {
+    if (allExerciseNames.length > 0 && !selExercise) {
+      setSelExercise(allExerciseNames[0]);
+    }
+  }, [allExerciseNames, selExercise]);
+
+  // 💡【新設】選択された種目の「過去のMAX重量」の歴史を、日付の古い順からガチ集計するロジック
+  const exerciseChartData = useMemo(() => {
+    if (!selExercise) return [];
+    
+    // 日付の古い順（過去から未来へ）にソート
+    const chronoWorkouts = [...workouts].sort((a, b) => a.date.localeCompare(b.date));
+    
+    const data: { date: string; 'MAX重量': number }[] = [];
+    
+    chronoWorkouts.forEach(w => {
+      const targetEx = w.exercises.find(e => e.name === selExercise);
+      // その種目があり、かつセットが1つ以上打たれている日だけをプロット
+      if (targetEx && targetEx.sets.length > 0) {
+        const maxWeight = Math.max(...targetEx.sets.map(s => Number(s.weight) || 0));
+        data.push({
+          date: w.date.substring(5).replace('-', '/'), // MM/DD
+          'MAX重量': maxWeight
+        });
+      }
+    });
+    
+    return data;
+  }, [workouts, selExercise]);
+
   const getWeightDataForChart = () => {
     const sorted = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
     const sliced = weightPeriod === '7' 
@@ -51,7 +97,7 @@ export function SectionAnalysis({
         : sorted;
 
     return sliced.map(w => ({
-      date: w.date.substring(5), // Get MM-DD
+      date: w.date.substring(5).replace('-', '/'),
       体重: w.weight
     }));
   };
@@ -90,10 +136,8 @@ export function SectionAnalysis({
       const calculatedPfcKcal = pKcal + fKcal + cKcal;
       const otherKcal = Math.max(0, totalCal - calculatedPfcKcal);
 
-      // 💡 改善：すべてのカロリーデータを Math.round で整数化！これで99999999バグを完全抹殺
-      // 💡 改善：キー名自体に [kcal] を明記して、グラフの意味を分かりやすくチューニング
       return {
-        date: date.substring(5), // Get MM-DD
+        date: date.substring(5).replace('-', '/'),
         'タンパク質 (P) [kcal]': Math.round(pKcal),
         '脂質 (F) [kcal]': Math.round(fKcal),
         '炭水化物 (C) [kcal]': Math.round(cKcal),
@@ -196,6 +240,74 @@ export function SectionAnalysis({
         </button>
       </div>
 
+      {/* 📊【新設】超絶カッコいい「種目別MAX重量推移グラフ」 */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-lime-400/10 rounded-xl text-lime-400"><Dumbbell size={20} /></div>
+            <div>
+              <span className="text-[10px] font-black tracking-widest text-lime-400 uppercase font-mono">PROGRESS TRACKER</span>
+              <h3 className="font-bold text-white text-base">種目別MAX重量の推移</h3>
+            </div>
+          </div>
+          
+          {/* 種目選択ドロップダウンセレクト */}
+          {allExerciseNames.length > 0 && (
+            <div className="w-full sm:w-auto">
+              <select 
+                value={selExercise}
+                onChange={(e) => setSelExercise(e.target.value)}
+                className="w-full sm:w-auto bg-zinc-950 border border-zinc-850 text-white text-xs font-black rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors cursor-pointer appearance-none pr-8 relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23a1a1aa%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_auto] bg-[right:14px_center] bg-no-repeat"
+              >
+                {allExerciseNames.map(name => (
+                  <option key={name} value={name} className="bg-zinc-950 text-white font-sans">{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="h-[200px] w-full">
+          {allExerciseNames.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-zinc-600 text-xs italic bg-zinc-950/30 border border-dashed border-zinc-850 rounded-2xl p-4 text-center">
+              ログタブから筋トレを1セット以上記録すると、<br/>ここに種目ごとの成長グラフが自動生成されます！🔥
+            </div>
+          ) : exerciseChartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-zinc-650 text-xs italic">
+              選択された種目の重量データがまだありません
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={exerciseChartData}>
+                <defs>
+                  <linearGradient id="colorExercise" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#a3e635" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#a3e635" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
+                <YAxis 
+                  stroke="#52525b" 
+                  fontSize={10} 
+                  tickLine={false}
+                  domain={[
+                    (dataMin) => Math.max(0, Math.floor(dataMin - 5)), 
+                    (dataMax) => Math.ceil(dataMax + 5)
+                  ]}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
+                  labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px' }}
+                  itemStyle={{ color: '#ffffff', fontWeight: 'black' }}
+                  formatter={(value) => [`${value} kg`]} // 💡 kgの単位をきれいに添える
+                />
+                <Area type="monotone" dataKey="MAX重量" stroke="#a3e635" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExercise)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
       {/* Weight Chart */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
@@ -296,7 +408,6 @@ export function SectionAnalysis({
             <BarChart data={getNutritionDataForChart()}>
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
               <YAxis stroke="#52525b" fontSize={10} tickLine={false} />
-              {/* 💡 改善：formatter を追加して、数値の横に「 kcal」という単位を強制的に自動表示！ */}
               <Tooltip 
                 contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
                 labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '11px' }}
@@ -304,7 +415,6 @@ export function SectionAnalysis({
                 formatter={(value) => [`${value} kcal`]}
               />
               <Legend verticalAlign="top" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '10px', color: '#a1a1aa' }} />
-              {/* 💡 改善：データバインド先を新しく設定した [kcal] 付きのキー名に修正 */}
               <Bar dataKey="タンパク質 (P) [kcal]" stackId="a" fill="#f43f5e" />
               <Bar dataKey="脂質 (F) [kcal]" stackId="a" fill="#eab308" />
               <Bar dataKey="炭水化物 (C) [kcal]" stackId="a" fill="#3b82f6" />
