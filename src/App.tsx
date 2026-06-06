@@ -39,12 +39,16 @@ export default function App() {
   const [selDate, setSelDate] = useState<string | null>(null); // 過去のログを選択するための超重要スイッチ！
   const abortRef = useRef<AbortController | null>(null);
 
+  // 📅 【新設】筋トレカレンダー用の年月ステート
+  const [cYear, setCYear] = useState(new Date().getFullYear());
+  const [cMonth, setCMonth] = useState(new Date().getMonth()); // 0-11
+
   useEffect(() => {
     try {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg)); // 💡 ここを「wg」に完全修正！これでリロードしても体重データが絶対に消えません！
+      if (wg) setWeights(JSON.parse(wg));
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -76,6 +80,34 @@ export default function App() {
   const sortedWorkouts = useMemo(() => {
     return [...workouts].sort((a, b) => b.date.localeCompare(a.date));
   }, [workouts]);
+
+  // 📅 【新設】選択された年月のカレンダーグリッド（日付配列）を爆速計算するロジック
+  const calendarDays = useMemo(() => {
+    const startDayOfWeek = new Date(cYear, cMonth, 1).getDay();
+    const totalDays = new Date(cYear, cMonth + 1, 0).getDate();
+    const days = [];
+    for (let i = 0; i < startDayOfWeek; i++) days.push(null); // 前月の空白埋め
+    for (let i = 1; i <= totalDays; i++) days.push(i); // 今月の日付
+    return days;
+  }, [cYear, cMonth]);
+
+  const prevMonth = () => {
+    if (cMonth === 0) {
+      setCMonth(11);
+      setCYear(cYear - 1);
+    } else {
+      setCMonth(cMonth - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (cMonth === 11) {
+      setCMonth(0);
+      setCYear(cYear + 1);
+    } else {
+      setCMonth(cMonth + 1);
+    }
+  };
 
   const toggleNotify = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -159,13 +191,68 @@ export default function App() {
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
               {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
               
-              {/* 【超進化ログセクション】 */}
+              {/* 🚨【超進化ログセクション】 */}
               {tab === 'workout' && (selDate === null ? (
                 // 【モードA】過去の筋トレ履歴タイムライン一覧画面
                 <div className="space-y-4 pb-24">
                   <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2">
                     <Dumbbell size={24} /> <span>TRAINING LOGS</span>
                   </div>
+
+                  {/* 📅 【新設】ラグジュアリー・ミニマルカレンダーコンポーネント */}
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-top-4 duration-200">
+                    <div className="flex justify-between items-center px-1">
+                      <div className="text-xs font-black text-white font-mono uppercase tracking-wider">
+                        {cYear}年 {cMonth + 1}月 のスタンプ
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button onClick={prevMonth} className="w-7 h-7 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors text-xs font-black flex items-center justify-center active:scale-95" type="button">←</button>
+                        <button onClick={nextMonth} className="w-7 h-7 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors text-xs font-black flex items-center justify-center active:scale-95" type="button">→</button>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-black text-zinc-500 uppercase tracking-widest pb-1 border-b border-zinc-800/40">
+                      <div className="text-rose-500/80">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div className="text-blue-500/80">土</div>
+                    </div>
+                    
+                    <div className="grid grid-cols-7 gap-1">
+                      {calendarDays.map((day, idx) => {
+                        if (!day) return <div key={`empty-${idx}`} className="h-8" />;
+                        
+                        // yyyy-MM-ddの文字列を厳密に生成
+                        const dateStr = `${cYear}-${String(cMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const targetWorkout = workouts.find(w => w.date === dateStr);
+                        // 💡 1種目以上登録されている日だけを、誇り高きライムグリーンにする条件式
+                        const hasWorkout = targetWorkout && targetWorkout.exercises.length > 0;
+                        const isToday = dateStr === today;
+                        
+                        return (
+                          <button
+                            key={`day-${day}`}
+                            onClick={() => {
+                              const hasData = workouts.some(w => w.date === dateStr);
+                              if (!hasData) {
+                                // カレンダーから未記録の日をタップしたら、自動でその日の器を作ってワープ！
+                                setWorkouts([...workouts, { id: safeUUID(), date: dateStr, exercises: [] }]);
+                              }
+                              setSelDate(dateStr);
+                            }}
+                            className={`h-8 rounded-xl flex flex-col items-center justify-center relative text-xs font-mono font-bold transition-all active:scale-90 ${
+                              hasWorkout 
+                                ? 'bg-lime-400 text-black font-black shadow-[0_0_15px_rgba(163,230,53,0.3)] border border-lime-400' 
+                                : isToday
+                                  ? 'border-2 border-lime-400 text-lime-400 font-black bg-lime-400/5 animate-pulse'
+                                  : 'bg-zinc-950 border border-zinc-900 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                            }`}
+                            type="button"
+                          >
+                            <span>{day}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <button onClick={() => { const hasToday = workouts.some(w => w.date === today); if (!hasToday) { setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); } setSelDate(today); }} className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]" >
                     <Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
                   </button>
