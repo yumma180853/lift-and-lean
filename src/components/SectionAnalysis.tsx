@@ -234,7 +234,22 @@ export function SectionAnalysis({
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#52525b" fontSize={10} domain={['auto', 'auto']} tickLine={false} />
+                {/* 💡 修正箇所：データが少ない時・差が小さい時は自動的に最新体重の±5kg（10kg幅）にするプロ仕様のスマートレンジロジック */}
+                <YAxis 
+                  stroke="#52525b" 
+                  fontSize={10} 
+                  domain={([dataMin, dataMax]) => {
+                    if (dataMin === undefined || dataMax === undefined) return ['auto', 'auto'];
+                    // データが1つだけ、または体重の最高・最低の差が4kg未満の時は、中心値から上下に5kgずつのマージンを持たせる
+                    if (dataMin === dataMax || (dataMax - dataMin) < 4) {
+                      const center = (dataMin + dataMax) / 2;
+                      return [Math.floor(center - 5), Math.ceil(center + 5)];
+                    }
+                    // データが十分に増えて大きな変化がある時は、上下に1kgずつのマージンで綺麗に追従させる
+                    return [Math.floor(dataMin - 1), Math.ceil(dataMax + 1)];
+                  }} 
+                  tickLine={false} 
+                />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
                   labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px' }}
