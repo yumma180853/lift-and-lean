@@ -3,11 +3,10 @@ import { Plus, Calendar, Dumbbell, ArrowLeft, Trash2, Award } from 'lucide-react
 import { format, parseISO } from 'date-fns';
 import { Workout } from '../types';
 
-// 🎯 鶴嶌さん専用・筋トレ種目最強マスター辞書（ミリタリープレス搭載版！）
 const PRESET_EXERCISES = [
   { category: '胸', items: ['ベンチプレス', 'インクラインダンベルプレス', 'チェストプレスマシン', 'ペックフライ'] },
   { category: '背中', items: ['チンニング', 'ラットプルダウン', 'デッドリフト', 'シーテッドロー'] },
-  { category: '肩', items: ['ショルダープレス', 'ミリタリープレス', 'サイドレイズ', 'リアレイズ'] }, // 💡 ミリタリープレスを追加！
+  { category: '肩', items: ['ショルダープレス', 'ミリタリープレス', 'サイドレイズ', 'リアレイズ'] },
   { category: '腕', items: ['アームカール', 'プッシュダウン', 'スカルクラッシャー'] },
   { category: '脚', items: ['スクワット', 'レッグプレス', 'レッグエクステンション'] }
 ];
@@ -15,7 +14,7 @@ const PRESET_EXERCISES = [
 export interface SectionWorkoutProps {
   todayWorkout: Workout | undefined;
   addWorkout: () => void;
-  addExercise: (workoutId: string, name: string) => void;
+  addExercise: (workoutId: string, name: string, category: string) => void; // 💡 改善：部位情報（category）も送れるように型を拡張！
   addSet: (workoutId: string, exerciseId: string, weight: number, reps: number) => void;
   today: string;
   deleteExercise: (workoutId: string, exerciseId: string) => void;
@@ -197,7 +196,7 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
 
                 <div className="flex flex-wrap gap-2 pt-1.5">
                   {PRESET_EXERCISES.find(c => c.category === selCat)?.items.map(item => (
-                    <button key={item} type="button" onClick={() => { addExercise(currentWorkout.id, item); setIsAdding(false); }} className="bg-zinc-950 border border-zinc-800 hover:border-lime-400 text-white font-medium text-xs px-3 py-2 rounded-xl transition-all active:scale-95" >
+                    <button key={item} type="button" onClick={() => { addExercise(currentWorkout.id, item, selCat); setIsAdding(false); }} className="bg-zinc-950 border border-zinc-800 hover:border-lime-400 text-white font-medium text-xs px-3 py-2 rounded-xl transition-all active:scale-95" >
                       + {item}
                     </button>
                   ))}
@@ -205,12 +204,13 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
               </div>
 
               <div className="border-t border-zinc-800/60 my-3 pt-3 space-y-3">
-                <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">または手動入力</label>
-                <input type="text" placeholder="マニアックな種目名を入力..." value={tempExercise} onChange={(e) => setTempExercise(e.target.value)} className="w-full bg-zinc-800 border-0 rounded-xl p-3 text-white placeholder:text-zinc-650 focus:ring-1 focus:ring-lime-400 text-sm outline-none font-medium" autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim()); setTempExercise(''); setIsAdding(false); } }} />
+                <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">または自由に入力</label>
+                {/* 💡 改善：プレースホルダーから「マニアック」を排除し、スマートに変更！ */}
+                <input type="text" placeholder="種目名を入力（例: ダンベルフライ）..." value={tempExercise} onChange={(e) => setTempExercise(e.target.value)} className="w-full bg-zinc-800 border-0 rounded-xl p-3 text-white placeholder:text-zinc-650 focus:ring-1 focus:ring-lime-400 text-sm outline-none font-medium" autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim(), selCat); setTempExercise(''); setIsAdding(false); } }} />
               </div>
 
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => { if (tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim()); setTempExercise(''); setIsAdding(false); } }} className="flex-1 bg-lime-400 text-black font-black py-2.5 rounded-xl text-xs uppercase italic tracking-wider shadow-lg shadow-lime-400/10" > 確定 </button>
+                <button type="button" onClick={() => { if (tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim(), selCat); setTempExercise(''); setIsAdding(false); } }} className="flex-1 bg-lime-400 text-black font-black py-2.5 rounded-xl text-xs uppercase italic tracking-wider shadow-lg shadow-lime-400/10" > 確定 </button>
                 <button type="button" onClick={() => { setIsAdding(false); setTempExercise(''); }} className="flex-1 bg-zinc-800 text-zinc-400 font-bold py-2.5 rounded-xl text-xs" > キャンセル </button>
               </div>
             </div>
