@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
-import { Plus, Calendar, Dumbbell, ArrowLeft, Trash2 } from 'lucide-react';
+import { Plus, Calendar, Dumbbell, ArrowLeft, Trash2, Award } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Workout } from '../types';
+
+// 🎯 鶴嶌さん専用・筋トレ種目最強マスター辞書（ミリタリープレス搭載版！）
+const PRESET_EXERCISES = [
+  { category: '胸', items: ['ベンチプレス', 'インクラインダンベルプレス', 'チェストプレスマシン', 'ペックフライ'] },
+  { category: '背中', items: ['チンニング', 'ラットプルダウン', 'デッドリフト', 'シーテッドロー'] },
+  { category: '肩', items: ['ショルダープレス', 'ミリタリープレス', 'サイドレイズ', 'リアレイズ'] }, // 💡 ミリタリープレスを追加！
+  { category: '腕', items: ['アームカール', 'プッシュダウン', 'スカルクラッシャー'] },
+  { category: '脚', items: ['スクワット', 'レッグプレス', 'レッグエクステンション'] }
+];
 
 export interface SectionWorkoutProps {
   todayWorkout: Workout | undefined;
@@ -17,7 +26,6 @@ export interface SectionWorkoutProps {
 }
 
 interface SetRowProps {
-  key?: React.Key | string;
   set: { id: string; weight: number; reps: number };
   idx: number;
   workoutId: string;
@@ -52,11 +60,6 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    deleteSet(workoutId, exerciseId, set.id);
-  };
-
   return (
     <div className="grid grid-cols-5 text-xs py-2 border-b border-zinc-800/50 last:border-0 items-center justify-between gap-1">
       <div className="text-zinc-400 font-mono pl-1">SET {idx + 1}</div>
@@ -72,7 +75,7 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
         {(!isNaN(parseFloat(weight)) && !isNaN(parseInt(reps, 10))) ? (parseFloat(weight) * parseInt(reps, 10)).toFixed(0) : 0}
       </div>
       <div className="text-right pr-1">
-        <button type="button" onClick={handleDeleteClick} className="px-2 py-1 rounded-lg transition-all flex items-center justify-center gap-1 text-[10px] font-bold ml-auto text-zinc-500 hover:text-rose-500 hover:bg-zinc-850" title="このセットを削除" >
+        <button type="button" onClick={() => deleteSet(workoutId, exerciseId, set.id)} className="px-2 py-1 rounded-lg transition-all flex items-center justify-center gap-1 text-[10px] font-bold ml-auto text-zinc-500 hover:text-rose-500 hover:bg-zinc-850" >
           <Trash2 size={13} />
         </button>
       </div>
@@ -81,7 +84,6 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
 }
 
 interface ExerciseCardProps {
-  key?: React.Key | string;
   exercise: { id: string; name: string; sets: { id: string; weight: number; reps: number }[] };
   workoutId: string;
   addSet: (workoutId: string, exerciseId: string, weight: number, reps: number) => void;
@@ -92,25 +94,15 @@ interface ExerciseCardProps {
 }
 
 function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, updateSet, currentWeight }: ExerciseCardProps) {
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    deleteExercise(workoutId, exercise.id);
-  };
-
-  // 📐 【脳汁全開】総挙上ボリューム（重量 × 回数）をベースにした新ロジック！
   const userWeight = currentWeight || 65; 
   const totalVolume = exercise.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
 
   let estimatedCalories = 0;
   if (totalVolume > 0) {
-    // 💡 重量・回数・体重をすべて掛け合わせ、フィットネス科学に基づいた係数(0.0006)で補正
     estimatedCalories = Math.round(totalVolume * 0.0006 * userWeight);
-    
-    // 最低保証（軽すぎる重量の時でもセット数×3kCalは保証する安心設計）
     const floorLimit = Math.round(exercise.sets.length * 5);
     if (estimatedCalories < floorLimit) estimatedCalories = floorLimit;
   } else if (exercise.sets.length > 0) {
-    // 重量0（完全な自重トレ）の場合は、回数とセット数、体重から計算
     const totalReps = exercise.sets.reduce((sum, set) => sum + set.reps, 0);
     estimatedCalories = Math.round(userWeight * totalReps * 0.005 * exercise.sets.length);
   }
@@ -127,7 +119,7 @@ function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, 
               </span>
             )}
           </h3>
-          <button type="button" onClick={handleDeleteClick} className="px-2 py-1 rounded-lg transition-all flex items-center gap-1 text-[10px] font-extrabold text-zinc-500 hover:text-rose-500 hover:bg-zinc-800" title="この種目を削除" >
+          <button type="button" onClick={() => deleteExercise(workoutId, exercise.id)} className="px-2 py-1 rounded-lg transition-all flex items-center justify-center gap-1 text-[10px] font-extrabold text-zinc-500 hover:text-rose-500 hover:bg-zinc-800" >
             <Trash2 size={13} />
           </button>
         </div>
@@ -156,6 +148,7 @@ function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, 
 export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, deleteExercise, deleteSet, updateSet, setActiveTab, currentWeight }: SectionWorkoutProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [tempExercise, setTempExercise] = useState('');
+  const [selCat, setSelCat] = useState('胸');
   const currentWorkout = todayWorkout;
 
   return (
@@ -173,25 +166,52 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
           </button>
         )}
       </div>
+
       {currentWorkout ? (
         <div className="space-y-6">
           <div className="flex items-center gap-2 text-zinc-500 text-sm mb-4">
             <Calendar size={16} />
             <span>{format(parseISO(currentWorkout.date), 'yyyy年MM月dd日')}</span>
           </div>
+
           {currentWorkout.exercises.map((exercise) => (
             <ExerciseCard key={exercise.id} exercise={exercise} workoutId={currentWorkout.id} addSet={addSet} deleteExercise={deleteExercise} deleteSet={deleteSet} updateSet={updateSet} currentWeight={currentWeight} />
           ))}
+
           {!isAdding ? (
             <button type="button" onClick={() => setIsAdding(true)} className="w-full py-4 border-2 border-dashed border-zinc-800 rounded-2xl text-zinc-500 text-sm font-bold flex items-center justify-center gap-2 hover:bg-zinc-900 transition-colors" >
               <Plus size={18} /> 種目を追加
             </button>
           ) : (
-            <div className="bg-zinc-900 p-4 rounded-2xl border border-lime-400/50 space-y-4">
-              <input type="text" placeholder="種目名 (例: ベンチプレス)" value={tempExercise} onChange={(e) => setTempExercise(e.target.value)} className="w-full bg-zinc-800 border-0 rounded-lg p-3 text-white placeholder:text-zinc-650 focus:ring-1 focus:ring-lime-400 text-sm outline-none" autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise); setTempExercise(''); setIsAdding(false); } }} />
-              <div className="flex gap-2">
-                <button type="button" onClick={() => { if (tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise); setTempExercise(''); setIsAdding(false); } }} className="flex-1 bg-lime-400 text-black font-bold py-2 rounded-lg text-sm" > OK </button>
-                <button type="button" onClick={() => setIsAdding(false)} className="flex-1 bg-zinc-800 text-white font-bold py-2 rounded-lg text-sm" > キャンセル </button>
+            <div className="bg-zinc-900 p-5 rounded-2xl border border-lime-400/40 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase flex items-center gap-1"><Award size={12} /> クイック追加（部位別メニュー）</label>
+                
+                <div className="flex bg-zinc-950 p-1 border border-zinc-850 rounded-xl justify-between gap-1 overflow-x-auto">
+                  {PRESET_EXERCISES.map(cat => (
+                    <button key={cat.category} type="button" onClick={() => setSelCat(cat.category)} className={`flex-1 min-w-[50px] text-center py-1.5 rounded-lg text-xs font-black transition-all ${selCat === cat.category ? 'bg-lime-400 text-black shadow-md' : 'text-zinc-500 hover:text-white'}`} >
+                      {cat.category}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1.5">
+                  {PRESET_EXERCISES.find(c => c.category === selCat)?.items.map(item => (
+                    <button key={item} type="button" onClick={() => { addExercise(currentWorkout.id, item); setIsAdding(false); }} className="bg-zinc-950 border border-zinc-800 hover:border-lime-400 text-white font-medium text-xs px-3 py-2 rounded-xl transition-all active:scale-95" >
+                      + {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-800/60 my-3 pt-3 space-y-3">
+                <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">または手動入力</label>
+                <input type="text" placeholder="マニアックな種目名を入力..." value={tempExercise} onChange={(e) => setTempExercise(e.target.value)} className="w-full bg-zinc-800 border-0 rounded-xl p-3 text-white placeholder:text-zinc-650 focus:ring-1 focus:ring-lime-400 text-sm outline-none font-medium" autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim()); setTempExercise(''); setIsAdding(false); } }} />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => { if (tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim()); setTempExercise(''); setIsAdding(false); } }} className="flex-1 bg-lime-400 text-black font-black py-2.5 rounded-xl text-xs uppercase italic tracking-wider shadow-lg shadow-lime-400/10" > 確定 </button>
+                <button type="button" onClick={() => { setIsAdding(false); setTempExercise(''); }} className="flex-1 bg-zinc-800 text-zinc-400 font-bold py-2.5 rounded-xl text-xs" > キャンセル </button>
               </div>
             </div>
           )}
