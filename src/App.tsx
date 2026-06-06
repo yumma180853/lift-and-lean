@@ -44,7 +44,7 @@ export default function App() {
       const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
       if (w) setWorkouts(JSON.parse(w));
       if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg)); // 💡タイポを「wg」に修正完了！
+      if (wg) setWeights(JSON.parse(weights));
       if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
@@ -122,7 +122,7 @@ export default function App() {
       setChats(prev => [...prev, { id: safeUUID(), role: 'assistant', text: data?.text || 'エラーが発生しました。', exercises: Array.isArray(data?.exercises) ? data.exercises : [], timestamp: new Date().toISOString() }]);
     } catch (error: any) {
       if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。');
-    } finally { // 💡 ここを「finally」に修正完了！
+    } finally {
       setSending(false);
       abortRef.current = null;
     }
@@ -159,7 +159,7 @@ export default function App() {
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
               {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
               
-              {/* 🚨【超進化ログセクション】今日固定ではなく、選択した過去の日にちを動的にバインド！ */}
+              {/* 🚨【超進化ログセクション】 */}
               {tab === 'workout' && (selDate === null ? (
                 // 【モードA】過去の筋トレ履歴タイムライン一覧画面
                 <div className="space-y-4 pb-24">
@@ -183,9 +183,27 @@ export default function App() {
               ) : (
                 // 【モードB】選択した日付の筋トレ詳細・編集画面
                 <div className="space-y-4">
-                  <button onClick={() => setSelDate(null)} className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-lime-400 transition-colors mb-1 pt-1" > ← 履歴一覧に戻る </button>
-                  {/* 💡 修正ポイント：currentWeight={cWeight} をバケツリレーで追加！ */}
-                  <SectionWorkout todayWorkout={workouts.find(w => w.date === selDate)} today={selDate} setActiveTab={setTab} addWorkout={addWorkout} currentWeight={cWeight} addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />
+                  {/* 💡 改善：文字だけのダサい「履歴一覧に戻る」を完全消去！
+                         SectionWorkout内のかっこいい矢印戻るボタン（setActiveTab）の挙動を賢くハックして1本化！ */}
+                  <SectionWorkout 
+                    todayWorkout={workouts.find(w => w.date === selDate)} 
+                    today={selDate} 
+                    setActiveTab={() => {
+                      // 過去のログを見ている時は「履歴一覧一覧」に戻し、今日（TODAY）の時は「ホーム」に戻すスマート制御
+                      if (selDate === today) {
+                        setTab('dashboard');
+                      } else {
+                        setSelDate(null);
+                      }
+                    }} 
+                    addWorkout={addWorkout} 
+                    currentWeight={cWeight} 
+                    addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} 
+                    addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} 
+                    deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} 
+                    deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} 
+                    updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} 
+                  />
                 </div>
               ))}
               
