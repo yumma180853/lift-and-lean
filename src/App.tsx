@@ -13,6 +13,15 @@ import { SectionSettings } from './components/SectionSettings';
 const safeUUID = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 const DF_G: UserGoals = { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 70 };
 
+// 💡【新設】アプリの裏側で種目名から「部位」を瞬時にマッピングする賢い辞書
+const EXERCISE_TO_CATEGORY: Record<string, string> = {
+  'ベンチプレス': '胸', 'インクラインダンベルプレス': '胸', 'チェストプレスマシン': '胸', 'ペックフライ': '胸',
+  'チンニング': '背中', 'ラットプルダウン': '背中', 'デッドリフト': '背中', 'シーテッドロー': '背中',
+  'ショルダープレス': '肩', 'ミリタリープレス': '肩', 'サイドレイズ': '肩', 'リアレイズ': '肩',
+  'アームカール': '腕', 'プッシュダウン': '腕', 'スカルクラッシャー': '腕',
+  'スクワット': '脚', 'レッグプレス': '脚', 'レッグエクステンション': '脚'
+};
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
@@ -43,8 +52,11 @@ export default function App() {
   const [cYear, setCYear] = useState(new Date().getFullYear());
   const [cMonth, setCMonth] = useState(new Date().getMonth()); // 0-11
 
-  // 💡【新設】ユーザーが「履歴から消したい」と選んだ日付をがっちり記憶する秘密のブラックリスト
+  // ユーザーが「履歴から消したい」と選んだ日付をがっちり記憶する秘密のブラックリスト
   const [hiddenDates, setHiddenDates] = useState<string[]>([]);
+
+  // 💡【新設】現在選択されている部位フィルターのステート（デフォルトはすべて）
+  const [selFilter, setSelFilter] = useState<string>('すべて');
 
   useEffect(() => {
     try {
@@ -56,7 +68,6 @@ export default function App() {
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
 
-      // 💡 非表示にされた日付リストをブラウザの記憶から引き出す
       const hd = localStorage.getItem('hidden_workout_dates');
       if (hd) setHiddenDates(JSON.parse(hd));
     } catch (e) { console.error(e); }
@@ -75,8 +86,6 @@ export default function App() {
       localStorage.setItem('user_goals', JSON.stringify(goals));
       localStorage.setItem('reminders_enabled', JSON.stringify(remind));
       localStorage.setItem('chat_messages', JSON.stringify(chats));
-      
-      // 💡 非表示にされた日付リストをがっちりローカルに永続保存
       localStorage.setItem('hidden_workout_dates', JSON.stringify(hiddenDates));
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded, hiddenDates]);
@@ -85,12 +94,26 @@ export default function App() {
   useEffect(() => {
     setWorkouts(p => p.filter(w => w.exercises.length > 0));
     setSelDate(null);
+    setSelFilter('すべて'); // タブ切り替えでフィルターもリセット
   }, [tab]);
 
   // 過去のトレーニング記録を日付が新しい順（最新が一番上）に自動で並び替えるマシーン
   const sortedWorkouts = useMemo(() => {
     return [...workouts].sort((a, b) => b.date.localeCompare(a.date));
   }, [workouts]);
+
+  // 💡【新設】選択された部位フィルターに応じて、タイムラインの表示をシュッと切り替える爆速フィルタリングロジック
+  const filteredWorkouts = useMemo(() => {
+    // まず「1種目以上あって非表示にされていないガチのログ」に絞る
+    const basicList = sortedWorkouts.filter(w => w.exercises.length > 0 && !hiddenDates.includes(w.date));
+    
+    if (selFilter === 'すべて') return basicList;
+    
+    // 選択された部位の種目が1つでも含まれる日だけを抽出
+    return basicList.filter(w => 
+      w.exercises.some(e => EXERCISE_TO_CATEGORY[e.name] === selFilter)
+    );
+  }, [sortedWorkouts, hiddenDates, selFilter]);
 
   // 📅 選択された年月のカレンダーグリッド（日付配列）を爆速計算するロジック
   const calendarDays = useMemo(() => {
@@ -249,7 +272,6 @@ export default function App() {
                               if (!hasData) {
                                 setWorkouts([...workouts, { id: safeUUID(), date: dateStr, exercises: [] }]);
                               }
-                              // 💡【究極UX】もし非表示リストに入っていたら、カレンダーから開いた瞬間に自動で非表示を解除してあげる優しさ！
                               setHiddenDates(p => p.filter(d => d !== dateStr));
                               setSelDate(dateStr);
                             }}
@@ -272,16 +294,40 @@ export default function App() {
                   <button onClick={() => { const hasToday = workouts.some(w => w.date === today); if (!hasToday) { setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); } setSelDate(today); }} className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]" >
                     <Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}
                   </button>
-                  <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-4">筋トレ履歴</div>
                   
-                  {/* 💡 改善：表示する履歴は「1種目以上あって、かつ非表示（hiddenDates）にされていない日」だけに美しく制限！ */}
-                  {sortedWorkouts.filter(w => w.exercises.length > 0 && !hiddenDates.includes(w.date)).length === 0 ? (
+                  {/* 💡【新設】横スクロールできる超スタイリッシュな部位フィルターチップ */}
+                  <div className="pt-2">
+                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+                      {['すべて', '胸', '背中', '肩', '腕', '脚'].map(cat => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setSelFilter(cat)}
+                          className={`px-4 py-2 rounded-xl text-xs font-black tracking-wider transition-all whitespace-nowrap active:scale-95 ${
+                            selFilter === cat
+                              ? 'bg-lime-400 text-black shadow-md shadow-lime-400/10'
+                              : 'bg-zinc-900 border border-zinc-850 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          {cat} {selFilter === cat && '✓'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider pt-2 flex justify-between">
+                    <span>筋トレ履歴 {selFilter !== 'すべて' && <span className="text-lime-400 font-mono">({selFilter}のみ)</span>}</span>
+                    <span className="font-mono text-[10px] text-zinc-600">{filteredWorkouts.length}件</span>
+                  </div>
+                  
+                  {/* 💡 改善：表示データを「filteredWorkouts」に差し替え！部位別のスマート絞り込み */}
+                  {filteredWorkouts.length === 0 ? (
                     <div className="text-center py-12 bg-zinc-950 border border-zinc-900 rounded-3xl text-zinc-500 text-xs">
-                      表示できるトレーニングの記録はありません。
+                      {selFilter === 'すべて' ? 'トレーニングの記録がまだありません。' : `${selFilter}のトレーニング記録はありません。`}
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {sortedWorkouts.filter(w => w.exercises.length > 0 && !hiddenDates.includes(w.date)).map(w => { 
+                      {filteredWorkouts.map(w => { 
                         const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0); 
                         return (
                           <div key={w.id} onClick={() => setSelDate(w.date)} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer group" > 
@@ -300,17 +346,15 @@ export default function App() {
                                   {w.exercises.length}種目 / {totalSets}SET 
                                 </span> 
                               </div> 
-                              {/* 💡 改善：ゴミ箱を押したときの挙動を「完全削除」から「ブラックリスト（非表示）への追加」に進化！ */}
                               <button
                                 type="button"
                                 onClick={(e) => {
-                                  e.stopPropagation(); // 詳細画面へのワープを阻止
+                                  e.stopPropagation();
                                   if (confirm(`${w.date.replace(/-/g, '/')} の履歴を一覧から非表示にしますか？\n（カレンダーや分析グラフの記録はそのまま残ります）`)) {
                                     setHiddenDates(p => [...p, w.date]);
                                   }
                                 }}
-                                className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-zinc-900 rounded-xl transition-colors"
-                                title="この日の履歴を非表示にする"
+                                className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-900 rounded-xl transition-colors"
                               >
                                 <Trash2 size={15} />
                               </button>
