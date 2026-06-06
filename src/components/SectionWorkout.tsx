@@ -13,7 +13,7 @@ export interface SectionWorkoutProps {
   deleteSet: (workoutId: string, exerciseId: string, setId: string) => void;
   updateSet: (workoutId: string, exerciseId: string, setId: string, weight: number, reps: number) => void;
   setActiveTab: (tab: any) => void;
-  currentWeight: number | null; // 💡 追加：親から現在の体重を受け取る
+  currentWeight: number | null;
 }
 
 interface SetRowProps {
@@ -52,7 +52,6 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
     }
   };
 
-  // 🚨【大改造】面倒な2段階確認を全カット！押した瞬間に即座に抹消！
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     deleteSet(workoutId, exerciseId, set.id);
@@ -89,19 +88,32 @@ interface ExerciseCardProps {
   deleteExercise: (workoutId: string, exerciseId: string) => void;
   deleteSet: (workoutId: string, exerciseId: string, setId: string) => void;
   updateSet: (workoutId: string, exerciseId: string, setId: string, weight: number, reps: number) => void;
-  currentWeight: number | null; // 💡 追加：カード側でも体重を受け取る
+  currentWeight: number | null;
 }
 
 function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, updateSet, currentWeight }: ExerciseCardProps) {
-  // 🚨【大改造】種目の削除ボタンからも「確定？」の2段階確認を完全消去！
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     deleteExercise(workoutId, exercise.id);
   };
 
-  // 📐 厚労省METs（6.0）を元にした一律のカロリー計算（1セット＝3分想定）
-  const userWeight = currentWeight || 65; // 体重が未入力なら65kgで補正
-  const estimatedCalories = Math.round(userWeight * exercise.sets.length * 0.315);
+  // 📐 【脳汁全開】総挙上ボリューム（重量 × 回数）をベースにした新ロジック！
+  const userWeight = currentWeight || 65; 
+  const totalVolume = exercise.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
+
+  let estimatedCalories = 0;
+  if (totalVolume > 0) {
+    // 💡 重量・回数・体重をすべて掛け合わせ、フィットネス科学に基づいた係数(0.0006)で補正
+    estimatedCalories = Math.round(totalVolume * 0.0006 * userWeight);
+    
+    // 最低保証（軽すぎる重量の時でもセット数×3kCalは保証する安心設計）
+    const floorLimit = Math.round(exercise.sets.length * 5);
+    if (estimatedCalories < floorLimit) estimatedCalories = floorLimit;
+  } else if (exercise.sets.length > 0) {
+    // 重量0（完全な自重トレ）の場合は、回数とセット数、体重から計算
+    const totalReps = exercise.sets.reduce((sum, set) => sum + set.reps, 0);
+    estimatedCalories = Math.round(userWeight * totalReps * 0.005 * exercise.sets.length);
+  }
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
@@ -109,9 +121,8 @@ function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, 
         <div className="flex items-center gap-3">
           <h3 className="font-bold text-white flex items-center gap-2">
             {exercise.name}
-            {/* 💡 種目名の真横に、計算した推定消費カロリーをライム色でバッジ表示 */}
             {exercise.sets.length > 0 && (
-              <span className="text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold">
+              <span className="text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold transition-all animate-pulse">
                 {estimatedCalories} kcal
               </span>
             )}
