@@ -42,64 +42,89 @@ export function SectionAnalysis({
 }: SectionAnalysisProps) {
   const [weightPeriod, setWeightPeriod] = useState<Period>('7');
   const [dietPeriod, setDietPeriod] = useState<Period>('7');
-
-  // 💡【新設】現在グラフを表示したい種目を選択するステート
   const [selExercise, setSelExercise] = useState<string>('');
 
-  // 💡【新設】過去のすべての筋トレデータから、登録されている「ユニークな種目名」を全自動でかき集めるマシーン
+  // 過去のすべての筋トレデータから、登録されている「ユニークな種目名」を全自動でかき集めるマシーン
   const allExerciseNames = useMemo(() => {
     const names = new Set<string>();
     workouts.forEach(w => {
       w.exercises.forEach(e => {
-        if (e.name) names.add(e.name); // 手動入力されたカスタム種目も、同じ文字なら100%ここに合流！
+        if (e.name) names.add(e.name);
       });
     });
     return Array.from(names).sort();
   }, [workouts]);
 
-  // 💡【新設】種目リストが存在し、まだ何も選ばれていない場合は自動で最初の種目をセットする親切設計
   useEffect(() => {
     if (allExerciseNames.length > 0 && !selExercise) {
       setSelExercise(allExerciseNames[0]);
     }
   }, [allExerciseNames, selExercise]);
 
-  // 💡【新設】選択された種目の「過去のMAX重量」の歴史を、日付の古い順からガチ集計するロジック
+  // 選択された種目の「過去のMAX重量」の歴史を、日付の古い順からガチ集計するロジック
   const exerciseChartData = useMemo(() => {
     if (!selExercise) return [];
-    
-    // 日付の古い順（過去から未来へ）にソート
     const chronoWorkouts = [...workouts].sort((a, b) => a.date.localeCompare(b.date));
-    
     const data: { date: string; 'MAX重量': number }[] = [];
     
     chronoWorkouts.forEach(w => {
       const targetEx = w.exercises.find(e => e.name === selExercise);
-      // その種目があり、かつセットが1つ以上打たれている日だけをプロット
       if (targetEx && targetEx.sets.length > 0) {
         const maxWeight = Math.max(...targetEx.sets.map(s => Number(s.weight) || 0));
         data.push({
-          date: w.date.substring(5).replace('-', '/'), // MM/DD
+          date: w.date.substring(5).replace('-', '/'),
           'MAX重量': maxWeight
         });
       }
     });
-    
     return data;
   }, [workouts, selExercise]);
 
+  // 💡【大幅タイムライン改修】未入力の日があってもカレンダーの枠を崩さず、前日の値を美しく引き継ぐ神ロジック
   const getWeightDataForChart = () => {
     const sorted = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
-    const sliced = weightPeriod === '7' 
-      ? sorted.slice(-7) 
-      : weightPeriod === '30' 
-        ? sorted.slice(-30) 
-        : sorted;
+    
+    // 全期間の場合はそのままソートデータを返す
+    if (weightPeriod === 'all') {
+      return sorted.map(w => ({
+        date: w.date.substring(5).replace('-', '/'),
+        体重: w.weight
+      }));
+    }
 
-    return sliced.map(w => ({
-      date: w.date.substring(5).replace('-', '/'),
-      体重: w.weight
-    }));
+    // 7日間または30日間の固定日付枠を生成（今日を中心に過去へ遡る）
+    const count = weightPeriod === '7' ? 7 : 30;
+    const daysToInclude = Array.from({ length: count }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+    }).reverse();
+
+    // 基準値の初期化（データが1件もない場合の保険として65をセット）
+    let lastKnownWeight = 65; 
+    
+    // グラフ表示期間より前にデータが存在する場合、その直近最新の体重をスタート地点にする
+    if (daysToInclude.length > 0) {
+      const firstDay = daysToInclude[0];
+      const priorRecords = sorted.filter(w => w.date < firstDay);
+      if (priorRecords.length > 0) {
+        lastKnownWeight = priorRecords[priorRecords.length - 1].weight;
+      } else if (sorted.length > 0) {
+        lastKnownWeight = sorted[0].weight;
+      }
+    }
+
+    // 1日ずつチェックし、入力がない日は前日の値を自動でキャリーオーバー（引き継ぎ）する
+    return daysToInclude.map(date => {
+      const found = sorted.find(w => w.date === date);
+      if (found) {
+        lastKnownWeight = found.weight;
+      }
+      return {
+        date: date.substring(5).replace('-', '/'), // MM/DD
+        体重: lastKnownWeight
+      };
+    });
   };
 
   const getNutritionDataForChart = () => {
@@ -240,7 +265,7 @@ export function SectionAnalysis({
         </button>
       </div>
 
-      {/* 📊【新設】超絶カッコいい「種目別MAX重量推移グラフ」 */}
+      {/* 📊 種目別MAX重量推移グラフ */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <div className="flex items-center gap-2.5">
@@ -251,7 +276,6 @@ export function SectionAnalysis({
             </div>
           </div>
           
-          {/* 種目選択ドロップダウンセレクト */}
           {allExerciseNames.length > 0 && (
             <div className="w-full sm:w-auto">
               <select 
@@ -299,7 +323,7 @@ export function SectionAnalysis({
                   contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }}
                   labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px' }}
                   itemStyle={{ color: '#ffffff', fontWeight: 'black' }}
-                  formatter={(value) => [`${value} kg`]} // 💡 kgの単位をきれいに添える
+                  formatter={(value) => [`${value} kg`]}
                 />
                 <Area type="monotone" dataKey="MAX重量" stroke="#a3e635" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExercise)" />
               </AreaChart>
@@ -513,7 +537,7 @@ export function SectionAnalysis({
                 <p className="font-bold text-zinc-300">💡 期間平均アドバイス</p>
                 <p>
                   {avgPfc.pPct < 15 ? (
-                    <span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果的です。</span>
+                    <span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果적です。</span>
                   ) : avgPfc.pPct > 30 ? (
                     <span>高タンパク質をしっかりと維持できています！余剰なタンパク質はエネルギーとして代謝されますが、内臓疲労を避けるために適切な水分補給を怠らないでください。</span>
                   ) : (
