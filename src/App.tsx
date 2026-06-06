@@ -183,19 +183,11 @@ export default function App() {
               ) : (
                 // 【モードB】選択した日付の筋トレ詳細・編集画面
                 <div className="space-y-4">
-                  {/* 💡 改善：文字だけのダサい「履歴一覧に戻る」を完全消去！
-                         SectionWorkout内のかっこいい矢印戻るボタン（setActiveTab）の挙動を賢くハックして1本化！ */}
+                  {/* 💡 修正箇所：今日だろうが過去だろうが、戻るボタンを押したら一律で絶対に「履歴一覧（selDate = null）」に戻るようにロジックを極限までシンプル化！ */}
                   <SectionWorkout 
                     todayWorkout={workouts.find(w => w.date === selDate)} 
                     today={selDate} 
-                    setActiveTab={() => {
-                      // 過去のログを見ている時は「履歴一覧一覧」に戻し、今日（TODAY）の時は「ホーム」に戻すスマート制御
-                      if (selDate === today) {
-                        setTab('dashboard');
-                      } else {
-                        setSelDate(null);
-                      }
-                    }} 
+                    setActiveTab={() => setSelDate(null)} 
                     addWorkout={addWorkout} 
                     currentWeight={cWeight} 
                     addExercise={(wid, n) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }))} 
