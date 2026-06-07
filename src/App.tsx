@@ -51,8 +51,6 @@ export default function App() {
   const [cMonth, setCMonth] = useState(new Date().getMonth());
   const [hiddenDates, setHiddenDates] = useState<string[]>([]);
   const [selFilter, setSelFilter] = useState<string>('すべて');
-
-  // 💡【新設】ユーザーが手動入力したカスタム種目の部位をがっちり記憶する「動的AI学習辞書」
   const [customCats, setCustomCats] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -68,7 +66,6 @@ export default function App() {
       const hd = localStorage.getItem('hidden_workout_dates');
       if (hd) setHiddenDates(JSON.parse(hd));
 
-      // 💡 学習したカスタム種目データをロード
       const cc = localStorage.getItem('custom_exercise_categories');
       if (cc) setCustomCats(JSON.parse(cc));
     } catch (e) { console.error(e); }
@@ -88,8 +85,6 @@ export default function App() {
       localStorage.setItem('reminders_enabled', JSON.stringify(remind));
       localStorage.setItem('chat_messages', JSON.stringify(chats));
       localStorage.setItem('hidden_workout_dates', JSON.stringify(hiddenDates));
-      
-      // 💡 学習したカスタム種目データをローカルに永続保存
       localStorage.setItem('custom_exercise_categories', JSON.stringify(customCats));
     } catch (e) { console.warn(e); }
   }, [workouts, meals, weights, goals, remind, chats, loaded, hiddenDates, customCats]);
@@ -104,7 +99,6 @@ export default function App() {
     return [...workouts].sort((a, b) => b.date.localeCompare(a.date));
   }, [workouts]);
 
-  // 💡【進化】固定辞書と、ユーザーが入力して勝手に成長したカスタム辞書をがっちゃんこマージ！
   const allExerciseCategories = useMemo(() => {
     return { ...EXERCISE_TO_CATEGORY, ...customCats };
   }, [customCats]);
@@ -112,8 +106,6 @@ export default function App() {
   const filteredWorkouts = useMemo(() => {
     const basicList = sortedWorkouts.filter(w => w.exercises.length > 0 && !hiddenDates.includes(w.date));
     if (selFilter === 'すべて') return basicList;
-    
-    // 💡 マージされた完全辞書を使って、手動入力データも100%完璧にフィルタリング！
     return basicList.filter(w => 
       w.exercises.some(e => allExerciseCategories[e.name] === selFilter)
     );
@@ -156,7 +148,7 @@ export default function App() {
         const keyRes = await fetch('/api/wp-public-key'); const { publicKey } = await keyRes.json(); const convertedKey = urlBase64ToUint8Array(publicKey);
         const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: convertedKey }); setRemind(true);
         await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) });
-        alert('毎朝のリマインダー通知をオンにしました！明日から朝7時に、体重が未入力の場合にお知らせします。🔥');
+        alert('毎朝のリマインダー通知をオンにしました！明日から朝7時に、体重が未入力の場合におお知らせします。🔥');
       }
     } catch (e) { alert('設定エラー: ' + String(e)); }
   };
@@ -191,7 +183,8 @@ export default function App() {
         <main className="flex-1">
           <AnimatePresence mode="wait">
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
-              {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} />}
+              {/* 💡 改善：SectionDashboard に workouts と meals を丸ごと引き渡し、タイムラグ計算を可能にする！ */}
+              {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} workouts={workouts} meals={meals} />}
               {tab === 'workout' && (selDate === null ? (
                 <div className="space-y-4 pb-24">
                   <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2"><Dumbbell size={24} /> <span>TRAINING LOGS</span></div>
@@ -242,7 +235,6 @@ export default function App() {
                 <div className="space-y-4">
                   <SectionWorkout 
                     todayWorkout={workouts.find(w => w.date === selDate)} today={selDate} setActiveTab={handleCloseWorkoutDetail} addWorkout={addWorkout} currentWeight={cWeight} 
-                    // 💡【進化】addExercise が呼ばれた際、もし未知の種目（自由入力）ならその部位（cat）を自動学習して登録する！
                     addExercise={(wid, n, cat) => {
                       if (cat) { setCustomCats(p => ({ ...p, [n]: cat })); }
                       setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }));
