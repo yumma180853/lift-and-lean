@@ -42,6 +42,9 @@ export function SectionAnalysis({
   const [dietPeriod, setDietPeriod] = useState<Period>('7');
   const [selExercise, setSelExercise] = useState<string>('');
 
+  // 💡【新設】RM換算表を閉じる・開くをコントロールするスイッチ（初期状態は閉じる）
+  const [showRMTable, setShowRMTable] = useState<boolean>(false);
+
   // 過去のすべての筋トレデータから、登録されている「ユニークな種目名」を全自動でかき集めるマシーン
   const allExerciseNames = useMemo(() => {
     const names = new Set<string>();
@@ -53,13 +56,15 @@ export function SectionAnalysis({
     return Array.from(names).sort();
   }, [workouts]);
 
+  // 種目リストが切り替わったら、自動的にRM表の開閉を一旦閉じる親切設計
   useEffect(() => {
     if (allExerciseNames.length > 0 && !selExercise) {
       setSelExercise(allExerciseNames[0]);
     }
+    setShowRMTable(false);
   }, [allExerciseNames, selExercise]);
 
-  // 💡【進化】スポーツ科学の公式（Epley式）を用いて、全セットの中から「その日最も高かった推定1RM」を算出
+  // 選択された種目の「過去のMAX重量」の歴史を、日付の古い順からガチ集計するロジック
   const exerciseChartData = useMemo(() => {
     if (!selExercise) return [];
     const chronoWorkouts = [...workouts].sort((a, b) => a.date.localeCompare(b.date));
@@ -72,32 +77,29 @@ export function SectionAnalysis({
           const wgt = Number(s.weight) || 0;
           const rps = Number(s.reps) || 0;
           if (rps === 0) return wgt;
-          // 📐 公式： 1RM = 重量 * (1 + 回数 / 30)
           return wgt * (1 + rps / 30);
         }));
         
         data.push({
           date: w.date.substring(5).replace('-', '/'),
-          '推定1RM': Math.round(maxRM * 10) / 10 // 小数点第1位まで丸める
+          '推定1RM': Math.round(maxRM * 10) / 10
         });
       }
     });
     return data;
   }, [workouts, selExercise]);
 
-  // 💡【新設】選択された種目の「最新の推定1RM」を取得し、RM表を動的生成するためのベース値
+  // 選択された種目の「最新の推定1RM」を取得し、RM表を動的生成するためのベース値
   const latest1RM = useMemo(() => {
     if (exerciseChartData.length === 0) return 0;
     return exerciseChartData[exerciseChartData.length - 1]['推定1RM'];
   }, [exerciseChartData]);
 
-  // 💡【新設】最新1RMから「何回なら何kg扱えるか」を科学的ベース（Epley逆算）で弾き出すテーブルデータ
+  // 最新1RMから「何回なら何kg扱えるか」を科学的ベース（Epley逆算）で弾き出すテーブルデータ
   const rmTableRows = useMemo(() => {
     if (latest1RM === 0) return [];
-    // 1回、3回、5回、8回、10回、12回 のターゲット
     const repTargets = [1, 3, 5, 8, 10, 12];
     return repTargets.map(reps => {
-      // 重量 = 1RM / (1 + 回数 / 30)
       const targetWeight = latest1RM / (1 + reps / 30);
       return {
         reps,
@@ -132,34 +134,18 @@ export function SectionAnalysis({
     if (dietPeriod === '7' || dietPeriod === '30') {
       const count = dietPeriod === '7' ? 7 : 30;
       daysToInclude = Array.from({ length: count }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        return d.toISOString().split('T')[0];
+        const d = new Date(); d.setDate(d.getDate() - i); return d.toISOString().split('T')[0];
       }).reverse();
     } else {
-      const mealDates = meals.map(m => m.date);
-      const weightDates = weightHistory.map(w => w.date);
-      const workoutDates = workouts.map(wk => wk.date);
-      const allDates = Array.from(new Set([...mealDates, ...weightDates, ...workoutDates, today]));
-      allDates.sort();
-      daysToInclude = allDates;
+      const mealDates = meals.map(m => m.date); const weightDates = weightHistory.map(w => w.date); const workoutDates = workouts.map(wk => wk.date);
+      const allDates = Array.from(new Set([...mealDates, ...weightDates, ...workoutDates, today])); allDates.sort(); daysToInclude = allDates;
     }
     return daysToInclude.map(date => {
-      const dayMeals = meals.filter(m => m.date === date);
-      const totalCal = dayMeals.reduce((acc, m) => acc + m.calories, 0);
-      const p = dayMeals.reduce((acc, m) => acc + (m.protein || 0), 0);
-      const f = dayMeals.reduce((acc, m) => acc + (m.fat || 0), 0);
-      const c = dayMeals.reduce((acc, m) => acc + (m.carbs || 0), 0);
-      const pKcal = p * 4; const fKcal = f * 9; const cKcal = c * 4;
-      const calculatedPfcKcal = pKcal + fKcal + cKcal;
-      const otherKcal = Math.max(0, totalCal - calculatedPfcKcal);
+      const dayMeals = meals.filter(m => m.date === date); const totalCal = dayMeals.reduce((acc, m) => acc + m.calories, 0);
+      const p = dayMeals.reduce((acc, m) => acc + (m.protein || 0), 0); const f = dayMeals.reduce((acc, m) => acc + (m.fat || 0), 0); const c = dayMeals.reduce((acc, m) => acc + (m.carbs || 0), 0);
+      const pKcal = p * 4; const fKcal = f * 9; const cKcal = c * 4; const calculatedPfcKcal = pKcal + fKcal + cKcal; const otherKcal = Math.max(0, totalCal - calculatedPfcKcal);
       return {
-        date: date.substring(5).replace('-', '/'),
-        'タンパク質 (P) [kcal]': Math.round(pKcal),
-        '脂質 (F) [kcal]': Math.round(fKcal),
-        '炭水化物 (C) [kcal]': Math.round(cKcal),
-        'その他 [kcal]': Math.round(otherKcal),
-        合計カロリー: Math.round(totalCal)
+        date: date.substring(5).replace('-', '/'), 'タンパク質 (P) [kcal]': Math.round(pKcal), '脂質 (F) [kcal]': Math.round(fKcal), '炭水化物 (C) [kcal]': Math.round(cKcal), 'その他 [kcal]': Math.round(otherKcal), 合計カロリー: Math.round(totalCal)
       };
     });
   };
@@ -167,27 +153,18 @@ export function SectionAnalysis({
   const getAveragePFC = () => {
     let daysToInclude: string[] = [];
     if (dietPeriod === '7' || dietPeriod === '30') {
-      const count = dietPeriod === '7' ? 7 : 30;
-      daysToInclude = Array.from({ length: count }, (_, i) => {
-        const d = new Date(); d.setDate(d.getDate() - i); return d.toISOString().split('T')[0];
-      }).reverse();
+      const count = dietPeriod === '7' ? 7 : 30; daysToInclude = Array.from({ length: count }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - i); return d.toISOString().split('T')[0]; }).reverse();
     } else {
-      const mealDates = meals.map(m => m.date); const weightDates = weightHistory.map(w => w.date); const workoutDates = workouts.map(wk => wk.date);
-      const allDates = Array.from(new Set([...mealDates, ...weightDates, ...workoutDates, today])); allDates.sort(); daysToInclude = allDates;
+      const mealDates = meals.map(m => m.date); const weightDates = weightHistory.map(w => w.date); const workoutDates = workouts.map(wk => wk.date); const allDates = Array.from(new Set([...mealDates, ...weightDates, ...workoutDates, today])); allDates.sort(); daysToInclude = allDates;
     }
     let totalP = 0; let totalF = 0; let totalC = 0; let totalCal = 0; let daysRecordedCount = 0;
     daysToInclude.forEach(date => {
       const dayMeals = meals.filter(m => m.date === date);
       if (dayMeals.length > 0) {
-        totalP += dayMeals.reduce((acc, m) => acc + (m.protein || 0), 0);
-        totalF += dayMeals.reduce((acc, m) => acc + (m.fat || 0), 0);
-        totalC += dayMeals.reduce((acc, m) => acc + (m.carbs || 0), 0);
-        totalCal += dayMeals.reduce((acc, m) => acc + m.calories, 0);
-        daysRecordedCount++;
+        totalP += dayMeals.reduce((acc, m) => acc + (m.protein || 0), 0); totalF += dayMeals.reduce((acc, m) => acc + (m.fat || 0), 0); totalC += dayMeals.reduce((acc, m) => acc + (m.carbs || 0), 0); totalCal += dayMeals.reduce((acc, m) => acc + m.calories, 0); daysRecordedCount++;
       }
     });
-    const activeDays = daysRecordedCount || 1;
-    const avgP = totalP / activeDays; const avgF = totalF / activeDays; const avgC = totalC / activeDays; const avgCal = totalCal / activeDays;
+    const activeDays = daysRecordedCount || 1; const avgP = totalP / activeDays; const avgF = totalF / activeDays; const avgC = totalC / activeDays; const avgCal = totalCal / activeDays;
     const pKcal = avgP * 4; const fKcal = avgF * 9; const cKcal = avgC * 4; const sumPfcKcal = pKcal + fKcal + cKcal;
     let pPct = 0; let fPct = 0; let cPct = 0;
     if (sumPfcKcal > 0) { pPct = (pKcal / sumPfcKcal) * 100; fPct = (fKcal / sumPfcKcal) * 100; cPct = (cKcal / sumPfcKcal) * 100; }
@@ -246,23 +223,44 @@ export function SectionAnalysis({
           )}
         </div>
 
-        {/* 💡【新設】最新の1RMから自動逆算される「あなた専用のRM換算表（カンペ）」 */}
+        {/* 💡【超絶大改修】ボタンを押したら出現する親切説明付きアコーディオンUI */}
         {latest1RM > 0 && (
-          <div className="bg-zinc-950/80 border border-zinc-850 rounded-2xl p-4 space-y-3 animate-in fade-in duration-300">
-            <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-black uppercase tracking-wider font-mono">
-              <Target size={12} className="text-lime-400" />
-              <span>Current RM Table ({selExercise})</span>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-2">
-              {rmTableRows.map(row => (
-                <div key={row.reps} className="bg-zinc-900/60 border border-zinc-800/40 p-2.5 rounded-xl text-center flex flex-col justify-between">
-                  <div className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{row.reps} REPS</div>
-                  <div className="text-sm font-black text-white font-mono mt-0.5">{row.weight}<span className="text-[9px] text-zinc-500 font-medium ml-0.5">KG</span></div>
+          <div className="space-y-2 pt-2">
+            <button 
+              type="button" 
+              onClick={() => setShowRMTable(!showRMTable)}
+              className={`w-full p-3.5 rounded-2xl flex items-center justify-between transition-all font-black text-xs uppercase tracking-wider font-mono border ${
+                showRMTable 
+                  ? 'bg-lime-400 text-black border-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.25)]' 
+                  : 'bg-zinc-950 border-zinc-850 text-zinc-300 hover:text-white hover:border-zinc-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Target size={15} />
+                <span>RM換算表（重量設定のカンペ）を{showRMTable ? '閉じる' : '表示する'}</span>
+              </div>
+              <span className="font-sans text-[10px] font-bold">{showRMTable ? '▲' : '▼'}</span>
+            </button>
+
+            {showRMTable && (
+              <div className="bg-zinc-950/80 border border-zinc-850 rounded-2xl p-4 space-y-4 animate-in fade-in zoom-in-95 duration-150 shadow-inner">
+                {/* 💡【UX特化】一発で何かが分かる説明書のカード */}
+                <div className="bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl text-[11px] text-zinc-400 leading-relaxed">
+                  <span className="font-black text-lime-400 block mb-1 text-[10px] tracking-widest uppercase font-mono">WHAT IS RM TABLE?</span>
+                  あなたの過去最高1RM（1回限界の重さ＝{latest1RM}kg）をベースに、<strong>「何kgなら何回狙えるか」</strong>を科学的に逆算した早見表です。今日のジムで「10回×3セットで追い込もう」と思ったら、表の「10 REPS」の重量に設定すれば、完璧な強度で限界突破（オーバーロード）を狙えます！🔥
                 </div>
-              ))}
-            </div>
-            <p className="text-[9px] text-zinc-650 text-center font-bold">※あなたの過去最高1RM ({latest1RM}kg) をベースに運動生理学に基づき自動計算しています🔥</p>
+                
+                {/* 換算表の数字グリッド */}
+                <div className="grid grid-cols-3 gap-2">
+                  {rmTableRows.map(row => (
+                    <div key={row.reps} className="bg-zinc-900/60 border border-zinc-800/40 p-2.5 rounded-xl text-center flex flex-col justify-between">
+                      <div className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{row.reps} REPS</div>
+                      <div className="text-sm font-black text-white font-mono mt-0.5">{row.weight}<span className="text-[9px] text-zinc-500 font-medium ml-0.5">KG</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -348,7 +346,7 @@ export function SectionAnalysis({
               </div>
               <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl text-[11px] text-zinc-400 space-y-1">
                 <p className="font-bold text-zinc-300">💡 期間平均アドバイス</p>
-                <p>{avgPfc.pPct < 15 ? (<span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果的です。</span> ) : avgPfc.pPct > 30 ? (<span>高タンパク質をしっかりと維持できています！余剰なタンパク質はエネルギーとして代謝されますが、内臓疲労を避けるために適切な水分補給を怠らないでください。</span> ) : (<span>非常に素晴らしい PFC 比率です！タンパク質が理想的なエネルギー比（15%〜28%）をキープできております。この調子で自重・ウェイトトレーニングに励みましょう。</span> )}</p>
+                <p>{avgPfc.pPct < 15 ? (<span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果的です。</span> ) : avgPfc.pPct > 30 ? (<span>高タンパク質をしっかりと維持できています！余剰なタンパク質化はエネルギーとして代謝されますが、内臓疲労を避けるために適切な水分補給を怠らないでください。</span> ) : (<span>非常に素晴らしい PFC 比率です！タンパク質が理想的なエネルギー比（15%〜28%）をキープできております。この調子で自重・ウェイトトレーニングに励みましょう。</span> )}</p>
               </div>
             </div>
           ) : (<div className="py-8 bg-zinc-950 border border-zinc-850 text-center text-xs text-zinc-600 rounded-2xl italic">食事データを記録すると、この期間の平均 PFC カロリー比率が算出されます。</div> )}
