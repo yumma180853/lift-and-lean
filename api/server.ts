@@ -16,7 +16,6 @@ const ai = new GoogleGenAI({
 
 // Vercelのサーバーレス環境（API Routes）として動くようにエクスポート
 export default async function handler(req: any, res: any) {
-  // CORSなどの暫定対応（必要に応じて）
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -33,7 +32,7 @@ export default async function handler(req: any, res: any) {
       const base64Data = image.split(',')[1] || image;
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash", // 💡 製品版を見据えて安定の爆速1.5-flashに最適化
+        model: "gemini-2.5-flash", // 💡 廃止された旧モデルから、2026年最新の超爆速モデルへリプレイス！
         contents: [
           {
             parts: [
@@ -108,7 +107,7 @@ export default async function handler(req: any, res: any) {
       parts.push({ text: message });
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash", // 💡 制限のない最強の爆速本物ブレイン
+        model: "gemini-2.5-flash", // 💡 404エラーを完全に葬り去る本物の次世代ブレイン！
         contents: [{ role: "user", parts }],
         config: { responseMimeType: "application/json" },
       });
