@@ -1,20 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
-  Activity, 
-  Flame, 
   Dumbbell, 
   Utensils, 
-  Weight, 
-  BellRing 
+  TrendingUp, 
+  Flame, 
+  AlertTriangle, 
+  BatteryCharging, 
+  Zap, 
+  Activity 
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
-import { motion } from 'motion/react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { UserGoals, WeightRecord, Workout, Meal, Tab } from '../types';
-
-const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from 'recharts';
+import { Workout, Meal, UserGoals, WeightRecord } from '../types';
 
 export interface SectionDashboardProps {
   todayStats: { calories: number; protein: number; fat: number; carbs: number };
@@ -25,158 +21,285 @@ export interface SectionDashboardProps {
   todayMeals: Meal[];
   currentWeight: number | null;
   addWeight: (weight: number) => void;
-  setActiveTab: (tab: Tab) => void;
+  setActiveTab: (tab: any) => void;
   openWeightModal: () => void;
+  // 💡 改善：全データを受け取るように型定義を拡張！
+  workouts: Workout[];
+  meals: Meal[];
 }
 
-export function SectionDashboard({ 
-  todayStats, 
-  goals, 
-  weightHistory, 
-  today, 
-  todayWorkout, 
-  todayMeals, 
-  currentWeight, 
-  addWeight, 
-  setActiveTab,
-  openWeightModal
-}: SectionDashboardProps) {
-  const pfcData = [
-    { name: 'タンパク質', value: todayStats.protein * 4, goal: goals.protein * 4, color: '#d9ff00' },
-    { name: '脂質', value: todayStats.fat * 9, goal: goals.fat * 9, color: '#ff3d00' },
-    { name: '炭水化物', value: todayStats.carbs * 4, goal: goals.carbs * 4, color: '#00e5ff' },
-  ];
+const detectCategory = (name: string): string => {
+  const n = name.toLowerCase();
+  if (n.includes('ベンチ') || n.includes('プレス') && (n.includes('チェスト') || n.includes('ダンベル') || n.includes('インクライン')) || n.includes('フライ') || n.includes('胸') || n.includes('ペック')) return '胸';
+  if (n.includes('チンニング') || n.includes('懸垂') || n.includes('ラット') || n.includes('プル') || n.includes('ロー') || n.includes('デッドリフト') || n.includes('背中')) return '背中';
+  if (n.includes('ショルダー') || n.includes('レイズ') || n.includes('ミリタリー' ) || n.includes('肩')) return '肩';
+  if (n.includes('カール') || n.includes('プッシュダウン') || n.includes('スカル') || n.includes('腕') || n.includes('バイセプス') || n.includes('トライセプス')) return '腕';
+  if (n.includes('スクワット') || n.includes('レッグ') || n.includes('プレス') && n.includes('レッグ') || n.includes('脚') || n.includes('ふくらはぎ')) return '脚';
+  return 'その他';
+};
 
-  const hasWeightToday = weightHistory.some(w => w.date === today);
+export function SectionDashboard({
+  todayStats,
+  goals,
+  weightHistory,
+  today,
+  todayWorkout,
+  todayMeals,
+  currentWeight,
+  setActiveTab,
+  openWeightModal,
+  workouts,
+  meals
+}: SectionDashboardProps) {
+
+  // 💡【究極のタイムラグ対応ロジック】昨日と今日の連動マシーン
+  const muscleStatuses = useMemo(() => {
+    // 1. 今日の筋トレ部位を抽出
+    const trainedTodayCategories = new Set<string>();
+    if (todayWorkout) {
+      todayWorkout.exercises.forEach(ex => {
+        if (ex.sets.length > 0) trainedTodayCategories.add(detectCategory(ex.name));
+      });
+    }
+
+    // 2. 「昨日」の日付をスマートに算出
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+
+    // 3. 昨日の筋トレ部位を抽出
+    const yesterdayWorkout = workouts.find(w => w.date === yesterdayStr);
+    const trainedYesterdayCategories = new Set<string>();
+    if (yesterdayWorkout) {
+      yesterdayWorkout.exercises.forEach(ex => {
+        if (ex.sets.length > 0) trainedYesterdayCategories.add(detectCategory(ex.name));
+      });
+    }
+
+    // 4. 昨日のタンパク質が目標をクリアしていたか計算
+    const yesterdayMeals = meals.filter(m => m.date === yesterdayStr);
+    const yesterdayProtein = yesterdayMeals.reduce((sum, m) => sum + (m.protein || 0), 0);
+    const isYesterdayProteinFull = yesterdayProtein >= goals.protein;
+
+    // 5. 今日のタンパク質状況
+    const pRatioToday = goals.protein > 0 ? todayStats.protein / goals.protein : 0;
+    const isProteinFullToday = pRatioToday >= 1.0;
+
+    const categories = ['胸', '背中', '肩', '腕', '脚'];
+    
+    return categories.map(cat => {
+      const isTrainedToday = trainedTodayCategories.has(cat);
+      const isTrainedYesterday = trainedYesterdayCategories.has(cat);
+      
+      let statusText = '休息';
+      let statusColor = 'zinc';
+      let isHighlight = false;
+
+      if (isTrainedToday) {
+        // A. 今日鍛えた場合：今日の栄養がすべて
+        isHighlight = true;
+        if (isProteinFullToday) {
+          statusText = '超回復';
+          statusColor = 'lime';
+        } else {
+          statusText = '枯渇';
+          statusColor = 'rose';
+        }
+      } else if (isTrainedYesterday) {
+        // B. 昨日鍛えた場合：時間差のバフ・デバフ判定！
+        isHighlight = true; // 昨日やった形跡のライトを灯す
+        if (isYesterdayProteinFull) {
+          // 昨日のうちに栄養が満タンなら、今日は安全に「修復中」
+          statusText = '修復中';
+          statusColor = 'emerald';
+        } else {
+          // 昨日の栄養が足りない（夜トレして何も食べずに寝た）場合、今日にダメージを引き継ぐ！
+          if (isProteinFullToday) {
+            // 今日遅れてプロテインを飲めば「超回復」に昇格！
+            statusText = '超回復';
+            statusColor = 'lime';
+          } else {
+            // まだ飲んでなければ、昨日からの「枯渇」警告が継続！
+            statusText = '枯渇';
+            statusColor = 'rose';
+          }
+        }
+      } else if (isProteinFullToday) {
+        statusText = '満タン';
+        statusColor = 'emerald';
+      }
+
+      return {
+        name: cat,
+        isTrained: isHighlight,
+        statusText,
+        statusColor,
+        progress: Math.min(100, Math.round(pRatioToday * 100))
+      };
+    });
+  }, [todayWorkout, workouts, meals, todayStats.protein, goals.protein]);
+
+  const calProgress = goals.calories > 0 ? (todayStats.calories / goals.calories) * 100 : 0;
+  const pProgress = goals.protein > 0 ? (todayStats.protein / goals.protein) * 100 : 0;
+  const fProgress = goals.fat > 0 ? (todayStats.fat / goals.fat) * 100 : 0;
+  const cProgress = goals.carbs > 0 ? (todayStats.carbs / goals.carbs) * 100 : 0;
+
+  const recentWeightData = useMemo(() => {
+    return [...weightHistory]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-5)
+      .map(w => ({ date: w.date.substring(5).replace('-', '/'), weight: w.weight }));
+  }, [weightHistory]);
 
   return (
-    <div className="space-y-6 pb-20">
-      <header className="flex items-center justify-between">
+    <div className="space-y-5 pb-24">
+      {/* HEADER WELCOME */}
+      <div className="flex justify-between items-center bg-zinc-900/40 border border-zinc-900 p-4 rounded-3xl">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">HELLO CHAMPION</h1>
-          <p className="text-gray-400 text-sm">{format(new Date(), 'MM月dd日 (E)', { locale: ja })}</p>
+          <span className="text-[10px] font-black tracking-widest text-zinc-500 uppercase font-mono">WELCOME BACK</span>
+          <h1 className="text-lg font-black text-white italic uppercase tracking-wide flex items-center gap-1.5">
+            LIFT & LEAN <span className="text-lime-400 text-xs font-mono not-italic bg-lime-400/10 border border-lime-400/20 px-1.5 py-0.5 rounded">v2.1</span>
+          </h1>
         </div>
-        <div className="w-12 h-12 bg-lime-400 rounded-full flex items-center justify-center">
-          <Activity className="text-black" size={24} />
-        </div>
-      </header>
+        <button type="button" onClick={openWeightModal} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 p-3 rounded-2xl text-center active:scale-95 transition-all" >
+          <span className="text-[9px] font-black tracking-widest text-zinc-500 block uppercase font-mono">WEIGHT</span>
+          <span className="text-sm font-mono font-black text-lime-400">{currentWeight ? `${currentWeight}kg` : '未測定'}</span>
+        </button>
+      </div>
 
-      {/* Weight Reminder Alert */}
-      {!hasWeightToday && (
-        <motion.div 
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          className="bg-rose-500/10 border border-rose-500/50 rounded-2xl p-4 flex items-center justify-between"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-rose-500 text-white rounded-full flex items-center justify-center animate-bounce">
-              <BellRing size={16} />
+      {/* 🚀 5連ミニメーター（昨日・今日の時間差ハイブリッド版） */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl space-y-3">
+        <div className="flex items-center gap-1.5">
+          <div className="p-1 bg-lime-400/10 rounded-md text-lime-400"><Activity size={14} /></div>
+          <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase font-mono">MUSCLE STATUS</span>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {muscleStatuses.map(status => (
+            <div 
+              key={status.name} 
+              className={`bg-zinc-950/80 border rounded-xl p-2 text-center flex flex-col items-center justify-between min-h-[75px] relative overflow-hidden transition-all ${
+                status.isTrained 
+                  ? status.statusColor === 'rose' 
+                    ? 'border-rose-500/40 bg-rose-500/5 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
+                    : status.statusColor === 'emerald'
+                      ? 'border-emerald-500/30 bg-emerald-500/5'
+                      : 'border-lime-400/40 bg-lime-400/5 shadow-[0_0_15px_rgba(163,230,53,0.1)]'
+                  : 'border-zinc-900/60'
+              }`}
+            >
+              <span className={`text-xs font-black font-mono tracking-tight ${status.isTrained ? 'text-white' : 'text-zinc-600'}`}>
+                {status.name}
+              </span>
+              
+              <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden my-1.5">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    status.statusColor === 'rose' ? 'bg-rose-500' :
+                    status.statusColor === 'lime' ? 'bg-lime-400 animate-pulse' :
+                    status.statusColor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-800'
+                  }`}
+                  style={{ width: `${status.progress}%` }}
+                />
+              </div>
+              
+              <span className={`text-[9px] font-extrabold tracking-tighter block w-full text-center truncate ${
+                status.statusColor === 'rose' ? 'text-rose-400' :
+                status.statusColor === 'lime' ? 'text-lime-400 font-black' :
+                status.statusColor === 'emerald' ? 'text-emerald-400' : 'text-zinc-650'
+              }`}>
+                {status.statusText}
+              </span>
             </div>
+          ))}
+        </div>
+      </div>
+
+      {/* TODAY'S ENERGY ACCUMULATOR */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-400/10 rounded-lg text-indigo-400"><Utensils size={18} /></div>
             <div>
-              <p className="text-white text-xs font-bold">体重が未入力です</p>
-              <p className="text-rose-200 text-[10px]">毎朝の記録が目標達成の鍵です！</p>
+              <span className="text-[9px] font-black tracking-widest text-indigo-400 uppercase font-mono">NUTRITION SUMMARY</span>
+              <h3 className="font-bold text-white text-sm">今日の栄養摂取状況</h3>
             </div>
           </div>
-          <button 
-            onClick={openWeightModal}
-            className="bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95 transition-transform"
-          >
-            今すぐ入力
-          </button>
-        </motion.div>
+          <button type="button" onClick={() => setActiveTab('diet')} className="text-[10px] font-black text-indigo-400 hover:text-white transition-colors uppercase font-mono tracking-wider bg-indigo-400/5 border border-indigo-400/10 px-2.5 py-1 rounded-xl" > 食事ログへ </button>
+        </div>
+
+        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-2xl flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black text-zinc-500 font-mono tracking-widest uppercase block">ENERGY CONSUMED</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-black font-mono text-white tracking-tight">{Math.round(todayStats.calories)}</span>
+              <span className="text-xs font-bold text-zinc-500 font-mono">/ {goals.calories} KCAL</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-full border-4 border-zinc-900 flex items-center justify-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-indigo-500/10" />
+            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 transition-all duration-300" style={{ height: `${Math.min(100, calProgress)}%` }} />
+            <span className="text-[10px] font-black text-white z-10 font-mono">{Math.round(calProgress)}%</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
+            <div className="flex justify-between text-[10px] font-black text-rose-400 font-mono tracking-wider"><span>P (プロテイン)</span><span>{Math.round(pProgress)}%</span></div>
+            <div className="text-base font-black font-mono text-white">{Math.round(todayStats.protein)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.protein}g</span></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all" style={{ width: `${pProgress}%` }} /></div>
+          </div>
+          <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
+            <div className="flex justify-between text-[10px] font-black text-amber-400 font-mono tracking-wider"><span>F (脂質)</span><span>{Math.round(fProgress)}%</span></div>
+            <div className="text-base font-black font-mono text-white">{Math.round(todayStats.fat)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.fat}g</span></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all" style={{ width: `${fProgress}%` }} /></div>
+          </div>
+          <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
+            <div className="flex justify-between text-[10px] font-black text-blue-400 font-mono tracking-wider"><span>C (炭水化物)</span><span>{Math.round(cProgress)}%</span></div>
+            <div className="text-base font-black font-mono text-white">{Math.round(todayStats.carbs)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.carbs}g</span></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: `${cProgress}%` }} /></div>
+          </div>
+        </div>
+      </div>
+
+      {/* WORKOUT ACCUMULATOR QUICK SUMMARY */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400"><Dumbbell size={22} /></div>
+          <div>
+            <span className="text-[9px] font-black tracking-widest text-lime-400 uppercase font-mono block">TRAINING TODAY</span>
+            <h4 className="font-bold text-white text-sm">{todayWorkout ? `${todayWorkout.exercises.length} 種目のログが記録中` : '今日のトレーニング履歴は白紙'}</h4>
+          </div>
+        </div>
+        <button type="button" onClick={() => setActiveTab('workout')} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 text-white font-black px-4 py-3 rounded-xl text-xs uppercase italic tracking-wider active:scale-95 transition-all" >
+          {todayWorkout ? '開く' : '記録開始'}
+        </button>
+      </div>
+
+      {/* MINI MINI WEIGHT PREVIEW GRAPH */}
+      {recentWeightData.length > 1 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-3">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="text-lime-400" size={16} />
+              <span className="text-xs font-bold text-zinc-400">直近の体重トレンド</span>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-zinc-600 uppercase">Latest {recentWeightData.length} entries</span>
+          </div>
+          <div className="h-[50px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={recentWeightData}>
+                <defs>
+                  <linearGradient id="miniWeight" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#a3e635" stopOpacity={0.1}/><stop offset="95%" stopColor="#a3e635" stopOpacity={0}/></linearGradient>
+                </defs>
+                <XAxis dataKey="date" hide />
+                <YAxis domain={['dataMin - 1', 'dataMax + 1']} hide />
+                <Area type="monotone" dataKey="weight" stroke="#a3e635" strokeWidth={1.5} fill="url(#miniWeight)" dot={{ fill: '#a3e635', r: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       )}
-
-      {/* Calories Card 🚨【大改造】タップで設定画面へ一瞬でワープする魔法を実装！ */}
-      <div 
-        onClick={() => setActiveTab('settings')}
-        className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 shadow-xl relative overflow-hidden cursor-pointer hover:border-lime-400/50 active:scale-[0.99] transition-all"
-      >
-        <div className="relative z-10">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <span className="text-xs font-bold text-lime-400 uppercase tracking-widest">CALORIES</span>
-              <div className="flex items-baseline gap-1">
-                <h2 className="text-4xl font-black text-white">{todayStats.calories}</h2>
-                <span className="text-gray-500 font-medium">/ {goals.calories} kcal</span>
-              </div>
-            </div>
-            <Flame className="text-orange-500 animate-pulse" size={32} />
-          </div>
-          
-          <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full bg-lime-400" 
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min((todayStats.calories / goals.calories) * 100, 100)}%` }}
-              transition={{ duration: 1, ease: 'easeOut' }}
-            />
-          </div>
-          
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            {pfcData.map(item => (
-              <div key={item.name}>
-                <div className="text-[10px] text-gray-400 uppercase font-bold mb-1">{item.name}</div>
-                <div className="h-1 w-full bg-zinc-800 rounded-full mb-1">
-                  <div 
-                    className="h-full rounded-full" 
-                    style={{ 
-                      backgroundColor: item.color, 
-                      width: `${Math.min((item.value / item.goal) * 100, 100)}%` 
-                    }} 
-                  />
-                </div>
-                <div className="text-xs font-mono text-white">{(item.value / (item.name === '脂質' ? 9 : 4)).toFixed(0)}g</div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="absolute top-[-20px] right-[-20px] opacity-10 blur-3xl w-40 h-40 bg-lime-400 rounded-full" />
-      </div>
-
-      {/* Action Grid */}
-      <div className="grid grid-cols-2 gap-4">
-        <div 
-          onClick={() => setActiveTab('workout')}
-          className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3 cursor-pointer hover:border-lime-400 transition-colors"
-        >
-          <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-xl flex items-center justify-center">
-            <Dumbbell size={20} />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white">トレーニング</div>
-            <div className="text-xs text-gray-500">{todayWorkout ? `${todayWorkout.exercises.length} 種目` : '未実施'}</div>
-          </div>
-        </div>
-        <div 
-          onClick={() => setActiveTab('diet')}
-          className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3 cursor-pointer hover:border-lime-400 transition-colors"
-        >
-          <div className="w-10 h-10 bg-orange-500/20 text-orange-400 rounded-xl flex items-center justify-center">
-            <Utensils size={20} />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white">食事記録</div>
-            <div className="text-xs text-gray-500">{todayMeals.length} 回の食事</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Current Weight 🚨【大改造】タップでいつでも本日の体重を再入力（修正）できるモーダルを召喚！ */}
-      <div 
-        onClick={openWeightModal}
-        className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-rose-500/50 active:scale-[0.99] transition-all"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-rose-500/20 text-rose-400 rounded-xl flex items-center justify-center">
-            <Weight size={20} />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white">現在の体重</div>
-            <div className="text-xs text-gray-500">目標: {goals.targetWeight} kg</div>
-          </div>
-        </div>
-        <div className="text-xl font-black text-white">{currentWeight ? `${currentWeight} kg` : '-- kg'}</div>
-      </div>
     </div>
   );
 }
