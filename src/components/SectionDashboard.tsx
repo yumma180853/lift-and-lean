@@ -9,7 +9,6 @@ import {
   Zap, 
   Activity 
 } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from 'recharts';
 import { Workout, Meal, UserGoals, WeightRecord } from '../types';
 
 export interface SectionDashboardProps {
@@ -23,7 +22,6 @@ export interface SectionDashboardProps {
   addWeight: (weight: number) => void;
   setActiveTab: (tab: any) => void;
   openWeightModal: () => void;
-  // 💡 改善：全データを受け取るように型定義を拡張！
   workouts: Workout[];
   meals: Meal[];
 }
@@ -52,9 +50,8 @@ export function SectionDashboard({
   meals
 }: SectionDashboardProps) {
 
-  // 💡【究極のタイムラグ対応ロジック】昨日と今日の連動マシーン
+  // 昨日と今日の連動から筋肉の状況を直感的なワードで算出
   const muscleStatuses = useMemo(() => {
-    // 1. 今日の筋トレ部位を抽出
     const trainedTodayCategories = new Set<string>();
     if (todayWorkout) {
       todayWorkout.exercises.forEach(ex => {
@@ -62,12 +59,10 @@ export function SectionDashboard({
       });
     }
 
-    // 2. 「昨日」の日付をスマートに算出
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
 
-    // 3. 昨日の筋トレ部位を抽出
     const yesterdayWorkout = workouts.find(w => w.date === yesterdayStr);
     const trainedYesterdayCategories = new Set<string>();
     if (yesterdayWorkout) {
@@ -76,12 +71,10 @@ export function SectionDashboard({
       });
     }
 
-    // 4. 昨日のタンパク質が目標をクリアしていたか計算
     const yesterdayMeals = meals.filter(m => m.date === yesterdayStr);
     const yesterdayProtein = yesterdayMeals.reduce((sum, m) => sum + (m.protein || 0), 0);
     const isYesterdayProteinFull = yesterdayProtein >= goals.protein;
 
-    // 5. 今日のタンパク質状況
     const pRatioToday = goals.protein > 0 ? todayStats.protein / goals.protein : 0;
     const isProteinFullToday = pRatioToday >= 1.0;
 
@@ -91,41 +84,36 @@ export function SectionDashboard({
       const isTrainedToday = trainedTodayCategories.has(cat);
       const isTrainedYesterday = trainedYesterdayCategories.has(cat);
       
-      let statusText = '休息';
+      // 💡 改善：パッと見で1秒で意味が伝わる言葉へリプレイス
+      let statusText = '通常'; 
       let statusColor = 'zinc';
       let isHighlight = false;
 
       if (isTrainedToday) {
-        // A. 今日鍛えた場合：今日の栄養がすべて
         isHighlight = true;
         if (isProteinFullToday) {
-          statusText = '超回復';
+          statusText = '超回復中';
           statusColor = 'lime';
         } else {
-          statusText = '枯渇';
+          statusText = '要プロテイン';
           statusColor = 'rose';
         }
       } else if (isTrainedYesterday) {
-        // B. 昨日鍛えた場合：時間差のバフ・デバフ判定！
-        isHighlight = true; // 昨日やった形跡のライトを灯す
+        isHighlight = true;
         if (isYesterdayProteinFull) {
-          // 昨日のうちに栄養が満タンなら、今日は安全に「修復中」
-          statusText = '修復中';
+          statusText = '修復完了';
           statusColor = 'emerald';
         } else {
-          // 昨日の栄養が足りない（夜トレして何も食べずに寝た）場合、今日にダメージを引き継ぐ！
           if (isProteinFullToday) {
-            // 今日遅れてプロテインを飲めば「超回復」に昇格！
-            statusText = '超回復';
+            statusText = '超回復中';
             statusColor = 'lime';
           } else {
-            // まだ飲んでなければ、昨日からの「枯渇」警告が継続！
-            statusText = '枯渇';
+            statusText = '要プロテイン';
             statusColor = 'rose';
           }
         }
       } else if (isProteinFullToday) {
-        statusText = '満タン';
+        statusText = '栄養満タン';
         statusColor = 'emerald';
       }
 
@@ -144,21 +132,14 @@ export function SectionDashboard({
   const fProgress = goals.fat > 0 ? (todayStats.fat / goals.fat) * 100 : 0;
   const cProgress = goals.carbs > 0 ? (todayStats.carbs / goals.carbs) * 100 : 0;
 
-  const recentWeightData = useMemo(() => {
-    return [...weightHistory]
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-5)
-      .map(w => ({ date: w.date.substring(5).replace('-', '/'), weight: w.weight }));
-  }, [weightHistory]);
-
   return (
     <div className="space-y-5 pb-24">
-      {/* HEADER WELCOME */}
+      {/* HEADER WELCOME (v2.1 を排除しスッキリ) */}
       <div className="flex justify-between items-center bg-zinc-900/40 border border-zinc-900 p-4 rounded-3xl">
         <div>
           <span className="text-[10px] font-black tracking-widest text-zinc-500 uppercase font-mono">WELCOME BACK</span>
-          <h1 className="text-lg font-black text-white italic uppercase tracking-wide flex items-center gap-1.5">
-            LIFT & LEAN <span className="text-lime-400 text-xs font-mono not-italic bg-lime-400/10 border border-lime-400/20 px-1.5 py-0.5 rounded">v2.1</span>
+          <h1 className="text-lg font-black text-white italic uppercase tracking-wide">
+            LIFT & LEAN
           </h1>
         </div>
         <button type="button" onClick={openWeightModal} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 p-3 rounded-2xl text-center active:scale-95 transition-all" >
@@ -167,55 +148,7 @@ export function SectionDashboard({
         </button>
       </div>
 
-      {/* 🚀 5連ミニメーター（昨日・今日の時間差ハイブリッド版） */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl space-y-3">
-        <div className="flex items-center gap-1.5">
-          <div className="p-1 bg-lime-400/10 rounded-md text-lime-400"><Activity size={14} /></div>
-          <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase font-mono">MUSCLE STATUS</span>
-        </div>
-
-        <div className="grid grid-cols-5 gap-1.5">
-          {muscleStatuses.map(status => (
-            <div 
-              key={status.name} 
-              className={`bg-zinc-950/80 border rounded-xl p-2 text-center flex flex-col items-center justify-between min-h-[75px] relative overflow-hidden transition-all ${
-                status.isTrained 
-                  ? status.statusColor === 'rose' 
-                    ? 'border-rose-500/40 bg-rose-500/5 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
-                    : status.statusColor === 'emerald'
-                      ? 'border-emerald-500/30 bg-emerald-500/5'
-                      : 'border-lime-400/40 bg-lime-400/5 shadow-[0_0_15px_rgba(163,230,53,0.1)]'
-                  : 'border-zinc-900/60'
-              }`}
-            >
-              <span className={`text-xs font-black font-mono tracking-tight ${status.isTrained ? 'text-white' : 'text-zinc-600'}`}>
-                {status.name}
-              </span>
-              
-              <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden my-1.5">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    status.statusColor === 'rose' ? 'bg-rose-500' :
-                    status.statusColor === 'lime' ? 'bg-lime-400 animate-pulse' :
-                    status.statusColor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-800'
-                  }`}
-                  style={{ width: `${status.progress}%` }}
-                />
-              </div>
-              
-              <span className={`text-[9px] font-extrabold tracking-tighter block w-full text-center truncate ${
-                status.statusColor === 'rose' ? 'text-rose-400' :
-                status.statusColor === 'lime' ? 'text-lime-400 font-black' :
-                status.statusColor === 'emerald' ? 'text-emerald-400' : 'text-zinc-650'
-              }`}>
-                {status.statusText}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* TODAY'S ENERGY ACCUMULATOR */}
+      {/* 1️⃣ TODAY'S ENERGY ACCUMULATOR (メインの食事状況を最上部に) */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
@@ -262,7 +195,7 @@ export function SectionDashboard({
         </div>
       </div>
 
-      {/* WORKOUT ACCUMULATOR QUICK SUMMARY */}
+      {/* 2️⃣ WORKOUT QUICK SUMMARY (筋トレ開始ボタン) */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400"><Dumbbell size={22} /></div>
@@ -276,30 +209,51 @@ export function SectionDashboard({
         </button>
       </div>
 
-      {/* MINI MINI WEIGHT PREVIEW GRAPH */}
-      {recentWeightData.length > 1 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-3">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="text-lime-400" size={16} />
-              <span className="text-xs font-bold text-zinc-400">直近の体重トレンド</span>
-            </div>
-            <span className="text-[10px] font-mono font-bold text-zinc-600 uppercase">Latest {recentWeightData.length} entries</span>
-          </div>
-          <div className="h-[50px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={recentWeightData}>
-                <defs>
-                  <linearGradient id="miniWeight" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#a3e635" stopOpacity={0.1}/><stop offset="95%" stopColor="#a3e635" stopOpacity={0}/></linearGradient>
-                </defs>
-                <XAxis dataKey="date" hide />
-                <YAxis domain={['dataMin - 1', 'dataMax + 1']} hide />
-                <Area type="monotone" dataKey="weight" stroke="#a3e635" strokeWidth={1.5} fill="url(#miniWeight)" dot={{ fill: '#a3e635', r: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+      {/* 3️⃣ 5連ミニメーター (鶴嶌さんのリクエスト通り一番下へ美しく配置！) */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl space-y-3">
+        <div className="flex items-center gap-1.5">
+          <div className="p-1 bg-lime-400/10 rounded-md text-lime-400"><Activity size={14} /></div>
+          <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase font-mono">MUSCLE STATUS</span>
         </div>
-      )}
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {muscleStatuses.map(status => (
+            <div 
+              key={status.name} 
+              className={`bg-zinc-950/80 border rounded-xl p-2 text-center flex flex-col items-center justify-between min-h-[75px] relative overflow-hidden transition-all ${
+                status.isTrained 
+                  ? status.statusColor === 'rose' 
+                    ? 'border-rose-500/40 bg-rose-500/5 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
+                    : 'border-lime-400/40 bg-lime-400/5 shadow-[0_0_15px_rgba(163,230,53,0.1)]'
+                  : 'border-zinc-900/60'
+              }`}
+            >
+              <span className={`text-xs font-black font-mono tracking-tight ${status.isTrained ? 'text-white' : 'text-zinc-600'}`}>
+                {status.name}
+              </span>
+              
+              <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden my-1.5">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    status.statusColor === 'rose' ? 'bg-rose-500' :
+                    status.statusColor === 'lime' ? 'bg-lime-400 animate-pulse' :
+                    status.statusColor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-800'
+                  }`}
+                  style={{ width: `${status.progress}%` }}
+                />
+              </div>
+              
+              <span className={`text-[9px] font-extrabold tracking-tighter block w-full text-center truncate ${
+                status.statusColor === 'rose' ? 'text-rose-400' :
+                status.statusColor === 'lime' ? 'text-lime-400 font-black' :
+                status.statusColor === 'emerald' ? 'text-emerald-400' : 'text-zinc-650'
+              }`}>
+                {status.statusText}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
