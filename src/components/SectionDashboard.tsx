@@ -59,7 +59,6 @@ export function SectionDashboard({
       });
     }
 
-    // 💡【ココが修正ポイント！】日本のtoday（例: "2026-06-08"）から確実に1日前をローカルで計算。タイムゾーンを完全無効化！
     const getYesterdayDateStr = (todayStr: string) => {
       const d = new Date(todayStr);
       d.setDate(d.getDate() - 1);
@@ -85,6 +84,8 @@ export function SectionDashboard({
 
     const pRatioToday = goals.protein > 0 ? todayStats.protein / goals.protein : 0;
     const isProteinFullToday = pRatioToday >= 1.0;
+    // 💡 UX改善：摂り始めたことを認める閾値（30%）
+    const isProteinStarted = pRatioToday >= 0.3; 
 
     const categories = ['胸', '背中', '肩', '腕', '脚'];
     
@@ -98,12 +99,16 @@ export function SectionDashboard({
 
       if (isTrainedToday) {
         isHighlight = true;
+        // 💡 UX改善：0%〜29%（赤）、30%〜99%（オレンジ）、100%〜（ライム）のグラデーション判定！
         if (isProteinFullToday) {
           statusText = '超回復中';
           statusColor = 'lime';
+        } else if (isProteinStarted) {
+          statusText = '修復中';
+          statusColor = 'amber'; // オレンジ（アンバー）
         } else {
           statusText = '要プロテイン';
-          statusColor = 'rose';
+          statusColor = 'rose'; // 赤（ローズ）
         }
       } else if (isTrainedYesterday) {
         isHighlight = true;
@@ -111,13 +116,16 @@ export function SectionDashboard({
           statusText = '修復完了';
           statusColor = 'emerald';
         } else {
-          // 💡 昨日の栄養が足りなかった場合、今日のプロテイン状況をきっちり引きずる！
+          // 💡 昨日のペナルティも、今日のプロテイン状況に応じてグラデーション！
           if (isProteinFullToday) {
             statusText = '超回復中';
             statusColor = 'lime';
+          } else if (isProteinStarted) {
+            statusText = '修復中';
+            statusColor = 'amber'; // オレンジ（アンバー）
           } else {
             statusText = '要プロテイン';
-            statusColor = 'rose';
+            statusColor = 'rose'; // 赤（ローズ）
           }
         }
       } else if (isProteinFullToday) {
@@ -160,7 +168,7 @@ export function SectionDashboard({
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-indigo-400/10 rounded-lg text-indigo-400"><Utensils size = { 18 } /></div>
+            <div className="p-1.5 bg-indigo-400/10 rounded-lg text-indigo-400"><Utensils size={18} /></div>
             <div>
               <span className="text-[9px] font-black tracking-widest text-indigo-400 uppercase font-mono">NUTRITION SUMMARY</span>
               <h3 className="font-bold text-white text-sm">今日の栄養摂取状況</h3>
@@ -179,7 +187,7 @@ export function SectionDashboard({
           </div>
           <div className="w-12 h-12 rounded-full border-4 border-zinc-900 flex items-center justify-center relative overflow-hidden">
             <div className="absolute inset-0 bg-indigo-500/10" />
-            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 transition-all duration-300" style={{ height: ` ${Math.min(100, calProgress)}%` }} />
+            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 transition-all duration-300" style={{ height: `${Math.min(100, calProgress)}%` }} />
             <span className="text-[10px] font-black text-white z-10 font-mono">{Math.round(calProgress)}%</span>
           </div>
         </div>
@@ -188,17 +196,17 @@ export function SectionDashboard({
           <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
             <div className="flex justify-between text-[10px] font-black text-rose-400 font-mono tracking-wider"><span>P (プロテイン)</span><span>{Math.round(pProgress)}%</span></div>
             <div className="text-base font-black font-mono text-white">{Math.round(todayStats.protein)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.protein}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all" style={{ width: ` ${pProgress}%` }} /></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all" style={{ width: `${pProgress}%` }} /></div>
           </div>
           <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
             <div className="flex justify-between text-[10px] font-black text-amber-400 font-mono tracking-wider"><span>F (脂質)</span><span>{Math.round(fProgress)}%</span></div>
             <div className="text-base font-black font-mono text-white">{Math.round(todayStats.fat)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.fat}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all" style={{ width: ` ${fProgress}%` }} /></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all" style={{ width: `${fProgress}%` }} /></div>
           </div>
           <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
             <div className="flex justify-between text-[10px] font-black text-blue-400 font-mono tracking-wider"><span>C (炭水化物)</span><span>{Math.round(cProgress)}%</span></div>
             <div className="text-base font-black font-mono text-white">{Math.round(todayStats.carbs)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.carbs}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: ` ${cProgress}%` }} /></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: `${cProgress}%` }} /></div>
           </div>
         </div>
       </div>
@@ -217,7 +225,7 @@ export function SectionDashboard({
         </button>
       </div>
 
-      {/* 3️⃣ 5連ミニメーター */}
+      {/* 3️⃣ 5連ミニメーター (💡 UX改善：グラデーション対応版) */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl space-y-3">
         <div className="flex items-center gap-1.5">
           <div className="p-1 bg-lime-400/10 rounded-md text-lime-400"><Activity size={14} /></div>
@@ -232,7 +240,9 @@ export function SectionDashboard({
                 status.isTrained 
                   ? status.statusColor === 'rose' 
                     ? 'border-rose-500/40 bg-rose-500/5 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
-                    : 'border-lime-400/40 bg-lime-400/5 shadow-[0_0_15px_rgba(163,230,53,0.1)]'
+                    : status.statusColor === 'amber' // 💡 改善：修復中（オレンジ）のスタイルを追加
+                      ? 'border-amber-500/40 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+                      : 'border-lime-400/40 bg-lime-400/5 shadow-[0_0_15px_rgba(163,230,53,0.1)]'
                   : 'border-zinc-900/60'
               }`}
             >
@@ -244,15 +254,17 @@ export function SectionDashboard({
                 <div 
                   className={`h-full rounded-full transition-all duration-500 ${
                     status.statusColor === 'rose' ? 'bg-rose-500' :
+                    status.statusColor === 'amber' ? 'bg-amber-500' : // 💡 改善：バーの色をオレンジに
                     status.statusColor === 'lime' ? 'bg-lime-400 animate-pulse' :
                     status.statusColor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-800'
                   }`}
-                  style={{ width: ` ${status.progress}%` }}
+                  style={{ width: `${status.progress}%` }}
                 />
               </div>
               
               <span className={`text-[9px] font-extrabold tracking-tighter block w-full text-center truncate ${
                 status.statusColor === 'rose' ? 'text-rose-400' :
+                status.statusColor === 'amber' ? 'text-amber-400' : // 💡 改善：文字の色をオレンジに
                 status.statusColor === 'lime' ? 'text-lime-400 font-black' :
                 status.statusColor === 'emerald' ? 'text-emerald-400' : 'text-zinc-650'
               }`}>
