@@ -59,9 +59,17 @@ export function SectionDashboard({
       });
     }
 
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+    // 💡【ココが修正ポイント！】日本のtoday（例: "2026-06-08"）から確実に1日前をローカルで計算。タイムゾーンを完全無効化！
+    const getYesterdayDateStr = (todayStr: string) => {
+      const d = new Date(todayStr);
+      d.setDate(d.getDate() - 1);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const yesterdayStr = getYesterdayDateStr(today);
 
     const yesterdayWorkout = workouts.find(w => w.date === yesterdayStr);
     const trainedYesterdayCategories = new Set<string>();
@@ -103,6 +111,7 @@ export function SectionDashboard({
           statusText = '修復完了';
           statusColor = 'emerald';
         } else {
+          // 💡 昨日の栄養が足りなかった場合、今日のプロテイン状況をきっちり引きずる！
           if (isProteinFullToday) {
             statusText = '超回復中';
             statusColor = 'lime';
@@ -124,7 +133,7 @@ export function SectionDashboard({
         progress: Math.min(100, Math.round(pRatioToday * 100))
       };
     });
-  }, [todayWorkout, workouts, meals, todayStats.protein, goals.protein]);
+  }, [todayWorkout, workouts, meals, todayStats.protein, goals.protein, today]);
 
   const calProgress = goals.calories > 0 ? (todayStats.calories / goals.calories) * 100 : 0;
   const pProgress = goals.protein > 0 ? (todayStats.protein / goals.protein) * 100 : 0;
@@ -151,7 +160,7 @@ export function SectionDashboard({
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-indigo-400/10 rounded-lg text-indigo-400"><Utensils size={18} /></div>
+            <div className="p-1.5 bg-indigo-400/10 rounded-lg text-indigo-400"><Utensils size = { 18 } /></div>
             <div>
               <span className="text-[9px] font-black tracking-widest text-indigo-400 uppercase font-mono">NUTRITION SUMMARY</span>
               <h3 className="font-bold text-white text-sm">今日の栄養摂取状況</h3>
@@ -170,7 +179,7 @@ export function SectionDashboard({
           </div>
           <div className="w-12 h-12 rounded-full border-4 border-zinc-900 flex items-center justify-center relative overflow-hidden">
             <div className="absolute inset-0 bg-indigo-500/10" />
-            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 transition-all duration-300" style={{ height: `${Math.min(100, calProgress)}%` }} />
+            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 transition-all duration-300" style={{ height: ` ${Math.min(100, calProgress)}%` }} />
             <span className="text-[10px] font-black text-white z-10 font-mono">{Math.round(calProgress)}%</span>
           </div>
         </div>
@@ -179,22 +188,22 @@ export function SectionDashboard({
           <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
             <div className="flex justify-between text-[10px] font-black text-rose-400 font-mono tracking-wider"><span>P (プロテイン)</span><span>{Math.round(pProgress)}%</span></div>
             <div className="text-base font-black font-mono text-white">{Math.round(todayStats.protein)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.protein}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all" style={{ width: `${pProgress}%` }} /></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all" style={{ width: ` ${pProgress}%` }} /></div>
           </div>
           <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
             <div className="flex justify-between text-[10px] font-black text-amber-400 font-mono tracking-wider"><span>F (脂質)</span><span>{Math.round(fProgress)}%</span></div>
             <div className="text-base font-black font-mono text-white">{Math.round(todayStats.fat)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.fat}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all" style={{ width: `${fProgress}%` }} /></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all" style={{ width: ` ${fProgress}%` }} /></div>
           </div>
           <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
             <div className="flex justify-between text-[10px] font-black text-blue-400 font-mono tracking-wider"><span>C (炭水化物)</span><span>{Math.round(cProgress)}%</span></div>
             <div className="text-base font-black font-mono text-white">{Math.round(todayStats.carbs)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.carbs}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: `${cProgress}%` }} /></div>
+            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: ` ${cProgress}%` }} /></div>
           </div>
         </div>
       </div>
 
-      {/* 2️⃣ WORKOUT QUICK SUMMARY (💡「白紙」から「未記録」へ超絶スタイリッシュに改修！) */}
+      {/* 2️⃣ WORKOUT QUICK SUMMARY */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400"><Dumbbell size={22} /></div>
@@ -238,7 +247,7 @@ export function SectionDashboard({
                     status.statusColor === 'lime' ? 'bg-lime-400 animate-pulse' :
                     status.statusColor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-800'
                   }`}
-                  style={{ width: `${status.progress}%` }}
+                  style={{ width: ` ${status.progress}%` }}
                 />
               </div>
               
