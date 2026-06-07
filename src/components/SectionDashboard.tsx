@@ -33,7 +33,7 @@ const detectCategory = (name: string): string => {
   if (n.includes('ショルダー') || n.includes('レイズ') || n.includes('ミリタリー' ) || n.includes('肩')) return '肩';
   if (n.includes('カール') || n.includes('プッシュダウン') || n.includes('スカル') || n.includes('腕') || n.includes('バイセプス') || n.includes('トライセプス')) return '腕';
   if (n.includes('スクワット') || n.includes('レッグ') || n.includes('プレス') && n.includes('レッグ') || n.includes('脚') || n.includes('ふくらはぎ')) return '脚';
-  return 'その他';
+  return 'ignore';
 };
 
 export function SectionDashboard({
@@ -84,7 +84,6 @@ export function SectionDashboard({
       const isTrainedToday = trainedTodayCategories.has(cat);
       const isTrainedYesterday = trainedYesterdayCategories.has(cat);
       
-      // 💡 改善：パッと見で1秒で意味が伝わる言葉へリプレイス
       let statusText = '通常'; 
       let statusColor = 'zinc';
       let isHighlight = false;
@@ -134,7 +133,7 @@ export function SectionDashboard({
 
   return (
     <div className="space-y-5 pb-24">
-      {/* HEADER WELCOME (v2.1 を排除しスッキリ) */}
+      {/* HEADER WELCOME */}
       <div className="flex justify-between items-center bg-zinc-900/40 border border-zinc-900 p-4 rounded-3xl">
         <div>
           <span className="text-[10px] font-black tracking-widest text-zinc-500 uppercase font-mono">WELCOME BACK</span>
@@ -148,7 +147,7 @@ export function SectionDashboard({
         </button>
       </div>
 
-      {/* 1️⃣ TODAY'S ENERGY ACCUMULATOR (メインの食事状況を最上部に) */}
+      {/* 1️⃣ TODAY'S ENERGY ACCUMULATOR */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
@@ -195,13 +194,13 @@ export function SectionDashboard({
         </div>
       </div>
 
-      {/* 2️⃣ WORKOUT QUICK SUMMARY (筋トレ開始ボタン) */}
+      {/* 2️⃣ WORKOUT QUICK SUMMARY (💡「白紙」から「未記録」へ超絶スタイリッシュに改修！) */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400"><Dumbbell size={22} /></div>
           <div>
             <span className="text-[9px] font-black tracking-widest text-lime-400 uppercase font-mono block">TRAINING TODAY</span>
-            <h4 className="font-bold text-white text-sm">{todayWorkout ? `${todayWorkout.exercises.length} 種目のログが記録中` : '今日のトレーニング履歴は白紙'}</h4>
+            <h4 className="font-bold text-white text-sm">{todayWorkout ? `${todayWorkout.exercises.length} 種目のログが記録中` : '今日のトレーニングは未記録'}</h4>
           </div>
         </div>
         <button type="button" onClick={() => setActiveTab('workout')} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 text-white font-black px-4 py-3 rounded-xl text-xs uppercase italic tracking-wider active:scale-95 transition-all" >
@@ -209,7 +208,7 @@ export function SectionDashboard({
         </button>
       </div>
 
-      {/* 3️⃣ 5連ミニメーター (鶴嶌さんのリクエスト通り一番下へ美しく配置！) */}
+      {/* 3️⃣ 5連ミニメーター */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl space-y-3">
         <div className="flex items-center gap-1.5">
           <div className="p-1 bg-lime-400/10 rounded-md text-lime-400"><Activity size={14} /></div>
