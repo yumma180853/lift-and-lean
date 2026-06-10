@@ -83,7 +83,9 @@ export default function App() {
       localStorage.setItem('weight_history', JSON.stringify(weights));
       localStorage.setItem('user_goals', JSON.stringify(goals));
       localStorage.setItem('reminders_enabled', JSON.stringify(remind));
-      localStorage.setItem('chat_messages', JSON.stringify(chats));
+      // チャット画像（Base64）はlocalStorage容量を圧迫するため保存しない
+      const chatsForStorage = chats.map(({ images: _images, ...rest }) => rest);
+      localStorage.setItem('chat_messages', JSON.stringify(chatsForStorage));
       localStorage.setItem('hidden_workout_dates', JSON.stringify(hiddenDates));
       localStorage.setItem('custom_exercise_categories', JSON.stringify(customCats));
     } catch (e) { console.warn(e); }
