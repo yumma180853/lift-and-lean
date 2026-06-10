@@ -67,27 +67,69 @@ export default async function handler(req: any, res: any) {
   // 2️⃣ AIパーソナルトレーナー・チャットエンドポイント
   if (req.url.includes("chat-trainer")) {
     try {
-      const { message, images, userData } = req.body;
-      
+      const { message, images, workouts, meals, userData } = req.body;
+
+      // 今日のトレーニング内容を文字列化
+      let workoutSummary = "（未記録）";
+      if (Array.isArray(workouts) && workouts.length > 0) {
+        const workout = workouts[0];
+        if (Array.isArray(workout.exercises) && workout.exercises.length > 0) {
+          workoutSummary = workout.exercises.map((ex: any) => {
+            const sets = Array.isArray(ex.sets) && ex.sets.length > 0
+              ? ex.sets.map((s: any) => `${s.weight}kg×${s.reps}回`).join(', ')
+              : "セットなし";
+            return `  - ${ex.name}：${sets}`;
+          }).join('\n');
+        } else {
+          workoutSummary = "（記録開始済・種目未入力）";
+        }
+      }
+
+      // 今日の食事と摂取合計・目標達成率を文字列化
+      let mealSummary = "（未記録）";
+      let totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0;
+      if (Array.isArray(meals) && meals.length > 0) {
+        mealSummary = meals.map((m: any) =>
+          `  - ${m.name}（${m.calories}kcal / P:${m.protein}g F:${m.fat}g C:${m.carbs}g）`
+        ).join('\n');
+        meals.forEach((m: any) => {
+          totalCalories += Number(m.calories) || 0;
+          totalProtein  += Number(m.protein)  || 0;
+          totalFat      += Number(m.fat)       || 0;
+          totalCarbs    += Number(m.carbs)     || 0;
+        });
+      }
+      const calGoal     = Number(userData?.calories) || 0;
+      const proteinGoal = Number(userData?.protein)  || 0;
+      const calPct     = calGoal     > 0 ? Math.round((totalCalories / calGoal)     * 100) : 0;
+      const proteinPct = proteinGoal > 0 ? Math.round((totalProtein  / proteinGoal) * 100) : 0;
+
       const prompt = `
         あなたはプロのパーソナルトレーナーAIです。
         ユーザーの目標達成のために、具体的で科学的な根拠に基づいたアドバイスを提供してください。
-        
-        【現在の状況】
+
+        【ユーザーの基本情報】
         体重: ${userData?.weight || "未測定"}kg
         目標体重: ${userData?.targetWeight || "未設定"}kg
-        目標カロリー: ${userData?.calories || "未設定"}kcal
-        PFCバランス: P:${userData?.protein || 0}g, F:${userData?.fat || 0}g, C:${userData?.carbs || 0}g
-        
+        1日の目標カロリー: ${calGoal || "未設定"}kcal
+        1日の目標PFC: P:${userData?.protein || 0}g / F:${userData?.fat || 0}g / C:${userData?.carbs || 0}g
+
+        【今日のトレーニング】
+${workoutSummary}
+
+        【今日の食事】
+${mealSummary}
+        摂取合計: ${Math.round(totalCalories)}kcal（目標の${calPct}%）/ P:${Math.round(totalProtein)}g（${proteinPct}%達成）/ F:${Math.round(totalFat)}g / C:${Math.round(totalCarbs)}g
+
         【指示】
-        1. ユーザーからのメッセージに答え、モチベーションを高めてください。
+        1. 上記の今日のトレーニングと食事状況を踏まえて、ユーザーのメッセージに具体的に答えてください。
         2. もし「現在の体」と「目標の体」の画像（2枚）が送られてきた場合、そのギャップを分析し、最適なメニューを提案してください。
-        3. 毎回、必ず「現在の筋肉痛の有無・部位」や「今日の体調」を質問してください。
+        3. タンパク質の達成率が低い場合は、補食のアドバイスを積極的に行ってください。
         4. トレーニングメニューを提案する場合は、以下のJSONフォーマットの配列を "exercises" フィールドに含めてください。
            {"name": "種目名", "reps": 回数, "sets": セット数}
-        
+
         回答は常に元気で親しみやすく、かつ誠実な態度で行ってください。
-        
+
         返信は必ず以下のJSON形式で返してください:
         {
           "text": "ユーザーへのメッセージ",
