@@ -124,13 +124,23 @@ export function SectionAITrainer({
         ))}
 
         {isSending && (
-          <div className="py-4 px-2 space-y-4 max-w-[90%] flex-shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="relative flex items-center justify-center">
+          <div className="py-4 px-2 max-w-[90%] flex-shrink-0">
+            <div className="flex items-start gap-2.5">
+              <div className="relative flex items-center justify-center mt-0.5">
                 <div className="absolute w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-lime-400 blur-md opacity-40 animate-pulse" />
                 <div className="relative p-1.5 bg-zinc-950 text-white rounded-full border border-zinc-800 flex items-center justify-center"><Sparkles size={16} className="text-cyan-400" /></div>
               </div>
-              <div className="text-zinc-400 font-bold text-xs tracking-widest animate-pulse">GEMINI AI IS SYNTHESIZING...</div>
+              <div className="flex flex-col gap-1 pt-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lime-400 font-bold text-xs tracking-wide">AIトレーナーが回答を作成中</span>
+                  <span className="flex gap-0.5 items-end pb-0.5">
+                    <span className="w-1 h-1 rounded-full bg-lime-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1 h-1 rounded-full bg-lime-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1 h-1 rounded-full bg-lime-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </span>
+                </div>
+                <span className="text-zinc-500 text-[10px] tracking-wide">食事内容を分析しています</span>
+              </div>
             </div>
           </div>
         )}
