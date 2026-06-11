@@ -7,6 +7,92 @@ dotenv.config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// 外部検索が必要かキーワードで判定（直近5件の履歴も含めてチェック）
+function shouldUseWebSearch(message: string, history: any[]): boolean {
+  const allText = [message, ...history.slice(-5).map((m: any) => m.text || '')].join(' ');
+  const triggers = [
+    '知ってる', 'この人誰', '誰この', '何位', '実績', 'instagram', 'インスタ', 'フォロワー',
+    '順位', '成績', '出場歴', '近況', '何者', '有名', '大会の結果',
+    '最近どう', '最近どんな', 'ランキング', '何勝', '優勝歴',
+  ];
+  return triggers.some((t) => allText.toLowerCase().includes(t.toLowerCase()));
+}
+
+// Responses API（web_search_preview）を使った検索ルート
+async function handleSearchQuery(
+  message: string,
+  images: any[],
+  history: any[],
+  userData: any,
+): Promise<{ text: string; exercises: any[] }> {
+  const instructions = `あなたはフィットネス・筋トレに詳しいAIトレーナーです。ウェブ検索が使えます。
+
+【検索のルール】
+- フィットネス選手・アスリートの大会結果・実績・近況・SNS情報など外部確認が必要な質問のみ検索する
+- 検索クエリ例：「田口純平 フィジーク 大会 結果」「田口純平 JBBF FWJ 順位」
+- 公式リザルト・本人SNS投稿を優先して確認する
+- 情報が複数ある場合は複数回検索してよい
+
+【情報の扱い方：3種類を必ず分ける】
+A. 画像から見えること → 断定OK（「肩の発達が目立ちます」等）
+B. 検索で見つかった情報 → 出典を明示する（「〇〇大会の公式リザルトでは」等）
+C. AIの推測 → 「〜に見えます」「〜かもしれません」と必ず明示する
+
+【返答フォーマット】
+検索で情報が見つかった場合：
+「〇〇さんの大会結果ですね。確認できた情報では、〇〇大会の〇〇クラスで〇位という情報があります。ただし公式リザルトと本人投稿で内容が異なる場合もあるので、最終確認は公式結果を見るのが確実です。画像を見る限り、〇〇が目立ちます。」
+
+検索しても情報が見つからなかった場合：
+「〇〇さんの情報を調べましたが、公式リザルトとして確認できる情報は見つかりませんでした。本人のInstagramや大会公式ページ（JBBF・FWJ・APF等）を確認すると正確に分かります。画像から見る限り、〇〇に見えます。」
+
+【禁止事項】
+- 検索していないのに「検索しました」と言う
+- 画像だけで順位・大会名・クラスを断定する
+- ユーザーの「〜らしい」を事実として断定する
+- 根拠のない大会結果を作る
+- 出典なしで最新情報を断定する
+
+【会話スタイル】
+- 2〜5文で自然に返す
+- 名前で呼びかけない
+- テンションを上げすぎない
+- AIトレーナーとして体型コメントも自然に添える
+
+【ユーザー情報】
+体重: ${userData?.weight || "未測定"}kg（目標: ${userData?.targetWeight || "未設定"}kg）`;
+
+  const inputMessages: any[] = [];
+  if (Array.isArray(history) && history.length > 0) {
+    history.slice(-8).forEach((msg: any) => {
+      if (msg.role === 'user') {
+        inputMessages.push({ role: 'user', content: msg.text || '' });
+      } else if (msg.role === 'assistant') {
+        inputMessages.push({ role: 'assistant', content: msg.text || '' });
+      }
+    });
+  }
+
+  const currentContent: any[] = [];
+  if (images && images.length > 0) {
+    images.forEach((img: string) => {
+      const base64Data = img.split(',')[1] || img;
+      currentContent.push({ type: 'input_image', image_url: `data:image/jpeg;base64,${base64Data}` });
+    });
+  }
+  currentContent.push({ type: 'input_text', text: message || '画像を送りました。' });
+  inputMessages.push({ role: 'user', content: currentContent });
+
+  const response = await openai.responses.create({
+    model: 'gpt-4o-mini',
+    tools: [{ type: 'web_search_preview' }],
+    instructions,
+    input: inputMessages,
+  });
+
+  const text = response.output_text || '返答を生成できませんでした。';
+  return { text, exercises: [] };
+}
+
 // Vercelのサーバーレス環境（API Routes）として動くようにエクスポート
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -63,6 +149,17 @@ export default async function handler(req: any, res: any) {
   if (req.url.includes("chat-trainer")) {
     try {
       const { message, images, workouts, meals, userData, history } = req.body;
+
+      // 外部検索が必要なら Responses API ルートへ
+      if (shouldUseWebSearch(message || '', Array.isArray(history) ? history : [])) {
+        const result = await handleSearchQuery(
+          message || '',
+          images || [],
+          Array.isArray(history) ? history : [],
+          userData,
+        );
+        return res.json(result);
+      }
 
       // 今日のトレーニング内容を文字列化
       let workoutSummary = "（未記録）";
