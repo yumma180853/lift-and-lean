@@ -284,7 +284,7 @@ export function SectionAnalysis({
                   <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#d9ff00" stopOpacity={0.2}/><stop offset="95%" stopColor="#d9ff00" stopOpacity={0}/></linearGradient>
                 </defs>
                 <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#52525b" fontSize={10} domain={([dataMin, dataMax]) => {if (dataMin === undefined || dataMax === undefined) return ['auto', 'auto']; if (dataMin === dataMax || (dataMax - dataMin) < 4) {const center = (dataMin + dataMax) / 2; return [Math.floor(center - 5), Math.ceil(center + 5)]; } return [Math.floor(dataMin - 1), Math.ceil(dataMax + 1)]; }} tickLine={false} />
+                <YAxis stroke="#52525b" fontSize={10} domain={([dataMin, dataMax]: [number, number]): [number, number] => {if (dataMin === dataMax || (dataMax - dataMin) < 4) {const center = (dataMin + dataMax) / 2; return [Math.floor(center - 5), Math.ceil(center + 5)]; } return [Math.floor(dataMin - 1), Math.ceil(dataMax + 1)]; }} tickLine={false} />
                 <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }} labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '10px' }} itemStyle={{ color: '#ffffff', fontWeight: 'black' }} />
                 <Area type="monotone" dataKey="体重" stroke="#d9ff00" strokeWidth={2} fillOpacity={1} fill="url(#colorWeight)" connectNulls={true} dot={{ fill: '#d9ff00', r: 3.5, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
               </AreaChart>

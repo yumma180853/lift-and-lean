@@ -24,7 +24,7 @@ export interface SectionWorkoutProps {
   currentWeight: number | null;
 }
 
-interface SetRowProps {
+interface SetRowProps extends React.Attributes {
   set: { id: string; weight: number; reps: number };
   idx: number;
   workoutId: string;
@@ -82,7 +82,7 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
   );
 }
 
-interface ExerciseCardProps {
+interface ExerciseCardProps extends React.Attributes {
   exercise: { id: string; name: string; sets: { id: string; weight: number; reps: number }[] };
   workoutId: string;
   addSet: (workoutId: string, exerciseId: string, weight: number, reps: number) => void;
