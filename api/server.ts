@@ -164,15 +164,25 @@ ${mealSummary}
         });
       }
 
-      parts.push({ text: message });
+      // テキストが空の場合（画像のみ送信）はプレースホルダーを使う
+      parts.push({ text: message || "画像を送りました。" });
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash", // 💡 404エラーを完全に葬り去る本物の次世代ブレイン！
+        model: "gemini-2.5-flash",
         contents: [{ role: "user", parts }],
         config: { responseMimeType: "application/json" },
       });
 
-      return res.json(JSON.parse(response.text || "{}"));
+      // マークダウンのコードブロックで包まれていても安全にパースする
+      const rawText = response.text || "{}";
+      const cleaned = rawText.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        parsed = { text: rawText, exercises: [] };
+      }
+      return res.json(parsed);
     } catch (error: any) {
       console.error("Trainer Gemini Error:", error);
       return res.status(500).json({ error: error.message || "Failed to chat with AI trainer" });
