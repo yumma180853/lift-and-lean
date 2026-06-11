@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -13,6 +14,8 @@ const ai = new GoogleGenAI({
     }
   }
 });
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Vercelのサーバーレス環境（API Routes）として動くようにエクスポート
 export default async function handler(req: any, res: any) {
@@ -177,36 +180,40 @@ ${mealSummary}
         }
       `;
 
-      const parts: any[] = [{ text: prompt }];
-      
+      // ユーザーメッセージを組み立て（テキスト＋画像）
+      const userContent: any[] = [];
       if (images && images.length > 0) {
         images.forEach((img: string) => {
           const base64Data = img.split(',')[1] || img;
-          parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
+          userContent.push({
+            type: "image_url",
+            image_url: { url: `data:image/jpeg;base64,${base64Data}` },
+          });
         });
       }
+      userContent.push({ type: "text", text: message || "画像を送りました。" });
 
-      // テキストが空の場合（画像のみ送信）はプレースホルダーを使う
-      parts.push({ text: message || "画像を送りました。" });
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash", // chat用途は速度・安定性重視
-        contents: [{ role: "user", parts }],
-        config: { responseMimeType: "application/json" },
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: userContent },
+        ],
       });
 
-      // マークダウンのコードブロックで包まれていても安全にパースする
-      const rawText = response.text || "{}";
-      const cleaned = rawText.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
+      const rawText = completion.choices[0]?.message?.content || "{}";
       let parsed: any;
       try {
-        parsed = JSON.parse(cleaned);
+        parsed = JSON.parse(rawText);
       } catch {
         parsed = { text: rawText, exercises: [] };
       }
+      if (!parsed.exercises) parsed.exercises = [];
       return res.json(parsed);
     } catch (error: any) {
-      console.error("Trainer Gemini Error:", error);
+      console.error("Trainer OpenAI Error:", error);
       return res.status(500).json({ error: error.message || "Failed to chat with AI trainer" });
     }
   }
