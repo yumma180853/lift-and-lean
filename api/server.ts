@@ -173,7 +173,7 @@ ${mealSummary}
       parts.push({ text: message || "画像を送りました。" });
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash", // chat用途は速度・安定性重視
         contents: [{ role: "user", parts }],
         config: { responseMimeType: "application/json" },
       });

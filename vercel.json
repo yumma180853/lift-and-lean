@@ -1,5 +1,10 @@
 {
   "version": 2,
+  "functions": {
+    "api/server.ts": {
+      "maxDuration": 30
+    }
+  },
   "builds": [
     {
       "src": "api/server.ts",
