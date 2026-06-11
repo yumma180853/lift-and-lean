@@ -160,7 +160,8 @@ export default function App() {
     const userMsg: ChatMessage = { id: safeUUID(), role: 'user', text, images, timestamp: new Date().toISOString() }; setChats(prev => [...prev, userMsg]); setSending(true);
     const controller = new AbortController(); abortRef.current = controller;
     try {
-      const response = await fetch('/api/chat-trainer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ message: text, images, workouts: tWorkout ? [tWorkout] : [], meals: tMeals, userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs } }) });
+      const history = chats.slice(-10).map(m => ({ role: m.role, text: m.text }));
+      const response = await fetch('/api/chat-trainer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ message: text, images, history, workouts: tWorkout ? [tWorkout] : [], meals: tMeals, userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs } }) });
       const data = await response.json(); setChats(prev => [...prev, { id: safeUUID(), role: 'assistant', text: data?.text || 'エラーが発生しました。', exercises: Array.isArray(data?.exercises) ? data.exercises : [], timestamp: new Date().toISOString() }]);
     } catch (error: any) { if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。'); } finally { setSending(false); abortRef.current = null; }
   };

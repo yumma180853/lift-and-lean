@@ -62,7 +62,7 @@ export default async function handler(req: any, res: any) {
   // 2️⃣ AIパーソナルトレーナー・チャットエンドポイント
   if (req.url.includes("chat-trainer")) {
     try {
-      const { message, images, workouts, meals, userData } = req.body;
+      const { message, images, workouts, meals, userData, history } = req.body;
 
       // 今日のトレーニング内容を文字列化
       let workoutSummary = "（未記録）";
@@ -145,11 +145,23 @@ ${mealSummary}
         - 「それだと続きにくいかも。まず〇〇から試そう」のように自然に止める。説教しない。
         - 健康リスクが高い場合は医師や専門家への相談を促す。
 
+        【会話の文脈保持】
+        - 直前の会話で出てきた人名・食品名・種目名・目標は、次の返答でも文脈として使う。
+        - ユーザーが短い言葉（「大会の結果とか」「それどう思う？」）で聞いてきた場合、直前の文脈から何を指しているか補完して返す。
+          例：直前で「田口純平」が出ていたなら「田口純平さんの大会結果ですね」と補完してから答える。
+        - 文脈が不明な場合は「〇〇についてですか？」と1つだけ具体的に確認する。ふわっと「詳しく教えてください」とは聞かない。
+
         【画像が送られた場合】
-        - その体型・雰囲気への感想を一言。
-        - 目標体型の特徴（絞れ具合・筋量・目立つ部位など）を1〜2文で言語化する。
-        - 最後に、今のゴール（減量メイン？増量メイン？両立？）を自然に聞く。
-        - メニュー提案はしない。
+        - 画像に見える情報（体型・筋肉量・絞れ具合・服装・背景など）を使って具体的に返す。画像を無視して聞き返さない。
+        - 人物が写っている場合：体型の特徴（絞れ具合・筋量・目立つ部位）を1〜2文で言語化する。
+        - 人物名が分からない場合でも「フィジーク系の選手のようですね」など画像から読める情報で返す。名前を聞くのは1回まで。
+        - メニュー提案はしない。ゴール確認は自然な流れでのみ行う。
+
+        【外部情報・最新情報が必要な場合】
+        - 大会結果・SNS投稿・最新ランキング・選手の近況など、リアルタイム情報が必要な質問には正直に伝える。
+          例：「田口純平さんの最新の大会結果は、外部で検索して確認するのが確実です。大会名や年度が分かれば絞り込みやすいです。」
+        - 「分かりません」で終わらず、「どう調べればいいか」の一言を添える。
+        - 知っている範囲（体型の特徴・トレーニングスタイル・一般的な大会情報）は答えていい。
 
         【メニュー提案のルール】
         - 「メニュー組んで」「今日何やればいい？」など、明示的に求められた場合のみ提案する。
@@ -185,12 +197,25 @@ ${mealSummary}
       }
       userContent.push({ type: "text", text: message || "画像を送りました。" });
 
+      // 会話履歴をOpenAI messages形式に変換
+      const historyMessages: any[] = [];
+      if (Array.isArray(history) && history.length > 0) {
+        history.forEach((msg: any) => {
+          if (msg.role === 'user') {
+            historyMessages.push({ role: "user", content: msg.text || "" });
+          } else if (msg.role === 'assistant') {
+            historyMessages.push({ role: "assistant", content: msg.text || "" });
+          }
+        });
+      }
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         response_format: { type: "json_object" },
         max_tokens: 500,
         messages: [
           { role: "system", content: prompt },
+          ...historyMessages,
           { role: "user", content: userContent },
         ],
       });
