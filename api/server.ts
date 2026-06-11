@@ -103,42 +103,72 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // 1️⃣ 食事画像解析エンドポイント
+  // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）
   if (req.url.includes("analyze-meal")) {
     try {
-      const { image } = req.body;
-      if (!image) return res.status(400).json({ error: "Image is required" });
-      const base64Data = image.split(',')[1] || image;
+      const { image, images: imagesBody } = req.body;
+      const imageList: string[] = imagesBody && imagesBody.length > 0
+        ? imagesBody
+        : image ? [image] : [];
+      if (imageList.length === 0) return res.status(400).json({ error: "Image is required" });
+
+      const content: any[] = imageList.map((img: string) => ({
+        type: "image_url",
+        image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`, detail: "auto" },
+      }));
+
+      const isSingle = imageList.length === 1;
+      const analysisPrompt = isSingle
+        ? `この画像を分析してください。
+食事写真の場合：料理名とカロリー・PFCを推定（量が不明なら一般的な量を想定）。
+栄養成分表示の場合：表に記載された数値を優先して読み取る（読み取れない項目は0にする）。
+必ず以下のJSON形式で返してください：{"name":"料理名または食品名","calories":数値,"protein":数値,"fat":数値,"carbs":数値}`
+        : `${imageList.length}枚の画像を個別に分析して、合算してください。
+
+各画像について：
+- 食事写真 → 料理名とPFCを推定。量が不明なら一般的な量を想定。
+- 栄養成分表示 → 表に記載された数値を優先して読み取る。ぼやけて読めない項目は0にする。
+- 食事写真と成分表が混在していてもそれぞれ対応する。
+
+食事名のまとめ方（combined_name）：
+- 1品：その料理名そのまま
+- 2〜3品：「A、B、C」または「AとB」のように自然な日本語でまとめる
+- 4品以上：「Aなど${imageList.length}品」
+
+必ず以下のJSON形式で返してください：
+{"items":[{"name":"食品名","type":"food","calories":数値,"protein":数値,"fat":数値,"carbs":数値}],"combined_name":"合計食事名","total":{"calories":数値,"protein":数値,"fat":数値,"carbs":数値}}`;
+
+      content.push({ type: "text", text: analysisPrompt });
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         response_format: { type: "json_object" },
-        max_tokens: 300,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: { url: `data:image/jpeg;base64,${base64Data}`, detail: "low" },
-              },
-              {
-                type: "text",
-                text: "この食事画像を分析してください。料理名、カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)を推定して、必ず以下のJSON形式のみで返してください。{\"name\": \"料理名\", \"calories\": 数値, \"protein\": 数値, \"fat\": 数値, \"carbs\": 数値}",
-              },
-            ],
-          },
-        ],
+        max_tokens: isSingle ? 300 : 800,
+        messages: [{ role: "user", content }],
       });
 
       const rawText = completion.choices[0]?.message?.content || "{}";
       let parsed: any;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        parsed = { name: "不明", calories: 0, protein: 0, fat: 0, carbs: 0 };
+      try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
+
+      if (isSingle) {
+        return res.json({
+          name: parsed.name || '解析された食事',
+          calories: Math.round(parsed.calories || 0),
+          protein: Math.round(parsed.protein || 0),
+          fat: Math.round(parsed.fat || 0),
+          carbs: Math.round(parsed.carbs || 0),
+        });
       }
-      return res.json(parsed);
+
+      const total = parsed.total || {};
+      return res.json({
+        name: parsed.combined_name || parsed.items?.[0]?.name || '解析された食事',
+        calories: Math.round(total.calories || 0),
+        protein: Math.round(total.protein || 0),
+        fat: Math.round(total.fat || 0),
+        carbs: Math.round(total.carbs || 0),
+      });
     } catch (error: any) {
       console.error("Analyze-meal OpenAI Error:", error);
       return res.status(500).json({ error: error.message || "Failed to analyze image" });

@@ -38,64 +38,63 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
     setIsAdding(false);
   };
 
+  const compressImage = (file: File): Promise<string> =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 1024;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
+        } else {
+          if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+    });
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    if (files.length > 5) {
+      alert('一度に解析できる画像は5枚までです');
+      e.target.value = '';
+      return;
+    }
+
     setAiAnalyzing(true);
     setIsAdding(true);
 
-    const img = new Image();
-    img.src = URL.createObjectURL(file);
-    img.onload = async () => {
-      // 🚨 スマホのバカデカい生写真を1024px以下に自動縮小してメモリ破裂(真っ白)を完璧に防ぐ！
-      const canvas = document.createElement('canvas');
-      const maxDim = 1024;
-      let width = img.width;
-      let height = img.height;
-      if (width > height) {
-        if (width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        }
-      } else {
-        if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      
-      // 画質を少し落として超軽量のBase64データに変換
-      const base64Data = canvas.toDataURL('image/jpeg', 0.7);
+    try {
+      const compressedImages = await Promise.all(files.map(compressImage));
+      const response = await fetch('/api/analyze-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: compressedImages }),
+      });
+      const data = await response.json();
 
-      try {
-        const response = await fetch('/api/analyze-meal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64Data }),
-        });
-        const data = await response.json();
-        
-        // 新旧どちらのサーバーデータ形式が届いても100%安全に受け取る全方位ガード
-        if (data.success || data.mealName || data.name) {
-          setMealName(data.mealName || data.name || '解析された食事');
-          setCalories(data.calories?.toString() || '0');
-          setProtein(data.protein?.toString() || '0');
-          setFat(data.fat?.toString() || '0');
-          setCarbs(data.carbs?.toString() || '0');
-        } else {
-          alert('画像の解析に失敗しました。');
-        }
-      } catch (error) {
-        console.error(error);
-        alert('エラーが発生しました。手動で入力してください。');
-      } finally {
-        setAiAnalyzing(false);
+      if (data.name || data.mealName) {
+        setMealName(data.mealName || data.name || '解析された食事');
+        setCalories(String(Math.round(data.calories || 0)));
+        setProtein(String(Math.round(data.protein || 0)));
+        setFat(String(Math.round(data.fat || 0)));
+        setCarbs(String(Math.round(data.carbs || 0)));
+      } else {
+        alert('画像の解析に失敗しました。手動で入力してください。');
       }
-    };
+    } catch (error) {
+      console.error(error);
+      alert('エラーが発生しました。手動で入力してください。');
+    } finally {
+      setAiAnalyzing(false);
+      e.target.value = '';
+    }
   };
 
   return (
@@ -118,7 +117,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
             <Plus size={16} /> 手動追加
           </button>
         </div>
-        <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" className="hidden" />
+        <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" multiple className="hidden" />
       </div>
 
       {isAdding && (
