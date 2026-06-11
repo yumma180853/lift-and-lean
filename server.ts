@@ -1,18 +1,11 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function startServer() {
   const app = express();
@@ -23,116 +16,46 @@ async function startServer() {
   // API Route: Analyze Meal Image
   app.post("/api/analyze-meal", async (req, res) => {
     try {
-      const { image } = req.body; // base64 string
-      if (!image) {
-        return res.status(400).json({ error: "Image is required" });
-      }
-
-      // Extract base64 part
+      const { image } = req.body;
+      if (!image) return res.status(400).json({ error: "Image is required" });
       const base64Data = image.split(',')[1] || image;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        max_tokens: 300,
+        messages: [
           {
-            parts: [
+            role: "user",
+            content: [
               {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: base64Data,
-                },
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${base64Data}`, detail: "low" },
               },
               {
-                text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Provide reasonable estimates based on the visual contents. Return the result in Japanese.",
+                type: "text",
+                text: "この食事画像を分析してください。料理名、カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)を推定して、必ず以下のJSON形式のみで返してください。{\"name\": \"料理名\", \"calories\": 数値, \"protein\": 数値, \"fat\": 数値, \"carbs\": 数値}",
               },
             ],
           },
         ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              calories: { type: Type.NUMBER },
-              protein: { type: Type.NUMBER },
-              fat: { type: Type.NUMBER },
-              carbs: { type: Type.NUMBER },
-            },
-            required: ["name", "calories", "protein", "fat", "carbs"],
-          },
-        },
       });
 
-      const result = JSON.parse(response.text || "{}");
-      res.json(result);
+      const rawText = completion.choices[0]?.message?.content || "{}";
+      let parsed: any;
+      try { parsed = JSON.parse(rawText); }
+      catch { parsed = { name: "不明", calories: 0, protein: 0, fat: 0, carbs: 0 }; }
+      res.json(parsed);
     } catch (error: any) {
-      console.error("Gemini Error:", error);
+      console.error("Analyze-meal OpenAI Error:", error);
       res.status(500).json({ error: error.message || "Failed to analyze image" });
     }
   });
 
-  // API Route: AI Personal Trainer Chat
+  // API Route: AI Personal Trainer Chat (delegates to api/server.ts handler)
   app.post("/api/chat-trainer", async (req, res) => {
-    try {
-      const { message, images, userData } = req.body;
-      
-      const prompt = `
-        あなたはプロのパーソナルトレーナーAIです。
-        ユーザーの目標達成のために、具体的で科学的な根拠に基づいたアドバイスを提供してください。
-        
-        【現在の状況】
-        体重: ${userData.weight}kg
-        目標体重: ${userData.targetWeight}kg
-        目標カロリー: ${userData.calories}kcal
-        PFCバランス: P:${userData.protein}g, F:${userData.fat}g, C:${userData.carbs}g
-        
-        【指示】
-        1. ユーザーからのメッセージに答え、モチベーションを高めてください。
-        2. もし「現在の体」と「目標の体」の画像（2枚）が送られてきた場合、そのギャップを分析し、最適なメニューを提案してください。
-        3. 毎回、必ず「現在の筋肉痛の有無・部位」や「今日の体調」を質問してください。
-        4. トレーニングメニューを提案する場合は、以下のJSONフォーマットの配列を "exercises" フィールドに含めてください。
-           {"name": "種目名", "reps": 回数, "sets": セット数}
-        
-        回答は常に元気で親しみやすく、かつ誠実な態度で行ってください。
-        
-        返信は必ず以下のJSON形式で返してください:
-        {
-          "text": "ユーザーへのメッセージ",
-          "exercises": [{"name": "種目名", "reps": 10, "sets": 3}] // 提案がある場合のみ
-        }
-      `;
-
-      const parts: any[] = [{ text: prompt }];
-      
-      if (images && images.length > 0) {
-        images.forEach((img: string) => {
-          const base64Data = img.split(',')[1] || img;
-          parts.push({
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: base64Data,
-            },
-          });
-        });
-      }
-
-      parts.push({ text: message });
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: "user", parts }],
-        config: {
-          responseMimeType: "application/json",
-        },
-      });
-
-      const result = JSON.parse(response.text || "{}");
-      res.json(result);
-    } catch (error: any) {
-      console.error("Trainer Gemini Error:", error);
-      res.status(500).json({ error: error.message || "Failed to chat with AI trainer" });
-    }
+    const { default: handler } = await import("./api/server.js");
+    return handler(req, res);
   });
 
   // Vite middleware for development

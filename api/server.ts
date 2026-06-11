@@ -1,19 +1,9 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -34,35 +24,37 @@ export default async function handler(req: any, res: any) {
       if (!image) return res.status(400).json({ error: "Image is required" });
       const base64Data = image.split(',')[1] || image;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash", // 💡 廃止された旧モデルから、2026年最新の超爆速モデルへリプレイス！
-        contents: [
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        max_tokens: 300,
+        messages: [
           {
-            parts: [
-              { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-              { text: "Analyze this meal image. Estimate the following: meal name, total calories (kcal), protein (g), fat (g), and carbohydrates (g). Provide reasonable estimates based on the visual contents. Return the result in Japanese." },
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${base64Data}`, detail: "low" },
+              },
+              {
+                type: "text",
+                text: "この食事画像を分析してください。料理名、カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)を推定して、必ず以下のJSON形式のみで返してください。{\"name\": \"料理名\", \"calories\": 数値, \"protein\": 数値, \"fat\": 数値, \"carbs\": 数値}",
+              },
             ],
           },
         ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              calories: { type: Type.NUMBER },
-              protein: { type: Type.NUMBER },
-              fat: { type: Type.NUMBER },
-              carbs: { type: Type.NUMBER },
-            },
-            required: ["name", "calories", "protein", "fat", "carbs"],
-          },
-        },
       });
 
-      return res.json(JSON.parse(response.text || "{}"));
+      const rawText = completion.choices[0]?.message?.content || "{}";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        parsed = { name: "不明", calories: 0, protein: 0, fat: 0, carbs: 0 };
+      }
+      return res.json(parsed);
     } catch (error: any) {
-      console.error("Gemini Error:", error);
+      console.error("Analyze-meal OpenAI Error:", error);
       return res.status(500).json({ error: error.message || "Failed to analyze image" });
     }
   }
