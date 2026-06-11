@@ -123,20 +123,25 @@ export default async function handler(req: any, res: any) {
 食事写真の場合：料理名とカロリー・PFCを推定（量が不明なら一般的な量を想定）。
 栄養成分表示の場合：表に記載された数値を優先して読み取る（読み取れない項目は0にする）。
 必ず以下のJSON形式で返してください：{"name":"料理名または食品名","calories":数値,"protein":数値,"fat":数値,"carbs":数値}`
-        : `${imageList.length}枚の画像を個別に分析して、合算してください。
+        : `${imageList.length}枚の画像を個別に分析してください。合計は計算しないでください。
 
 各画像について：
-- 食事写真 → 料理名とPFCを推定。量が不明なら一般的な量を想定。
-- 栄養成分表示 → 表に記載された数値を優先して読み取る。ぼやけて読めない項目は0にする。
+- 食事写真 → 料理名とカロリー・PFCを推定。量が不明なら一般的な量を想定。
+- 栄養成分表示 → 表に記載された数値をそのまま読み取る。ぼやけて読めない項目は0にする。
 - 食事写真と成分表が混在していてもそれぞれ対応する。
+
+【重要】
+- PFCはカロリーに合わせて再推定・補正しない。成分表の数値をそのまま記録すること。
+- カロリーとP/F/Cが数学的に一致しなくても、それは正常。表に書かれた値を優先する。
+- 合計の計算はしない。itemsの各行だけ返せばよい。
 
 食事名のまとめ方（combined_name）：
 - 1品：その料理名そのまま
 - 2〜3品：「A、B、C」または「AとB」のように自然な日本語でまとめる
 - 4品以上：「Aなど${imageList.length}品」
 
-必ず以下のJSON形式で返してください：
-{"items":[{"name":"食品名","type":"food","calories":数値,"protein":数値,"fat":数値,"carbs":数値}],"combined_name":"合計食事名","total":{"calories":数値,"protein":数値,"fat":数値,"carbs":数値}}`;
+必ず以下のJSON形式で返してください（totalフィールドは不要）：
+{"items":[{"name":"食品名","calories":数値,"protein":数値,"fat":数値,"carbs":数値}],"combined_name":"合計食事名"}`;
 
       content.push({ type: "text", text: analysisPrompt });
 
@@ -161,13 +166,17 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      const total = parsed.total || {};
+      const items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
+      const sumCalories = items.reduce((s: number, item: any) => s + (parseFloat(item.calories) || 0), 0);
+      const sumProtein  = items.reduce((s: number, item: any) => s + (parseFloat(item.protein)  || 0), 0);
+      const sumFat      = items.reduce((s: number, item: any) => s + (parseFloat(item.fat)      || 0), 0);
+      const sumCarbs    = items.reduce((s: number, item: any) => s + (parseFloat(item.carbs)    || 0), 0);
       return res.json({
-        name: parsed.combined_name || parsed.items?.[0]?.name || '解析された食事',
-        calories: Math.round(total.calories || 0),
-        protein: Math.round(total.protein || 0),
-        fat: Math.round(total.fat || 0),
-        carbs: Math.round(total.carbs || 0),
+        name: parsed.combined_name || items[0]?.name || '解析された食事',
+        calories: Math.round(sumCalories),
+        protein:  Math.round(sumProtein),
+        fat:      Math.round(sumFat),
+        carbs:    Math.round(sumCarbs),
       });
     } catch (error: any) {
       console.error("Analyze-meal OpenAI Error:", error);
