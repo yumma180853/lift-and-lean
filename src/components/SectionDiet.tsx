@@ -72,7 +72,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
       const base64Data = canvas.toDataURL('image/jpeg', 0.7);
 
       try {
-        const response = await fetch('/api/analyze-diet-image', {
+        const response = await fetch('/api/analyze-meal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64Data }),
