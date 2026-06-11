@@ -127,12 +127,23 @@ export default async function handler(req: any, res: any) {
 
 各画像について：
 - 食事写真 → 料理名とカロリー・PFCを推定。量が不明なら一般的な量を想定。
-- 栄養成分表示 → 表に記載された数値をそのまま読み取る。ぼやけて読めない項目は0にする。
-- 食事写真と成分表が混在していてもそれぞれ対応する。
+- 栄養成分表示 → 表に記載された数値をそのまま読み取る。
 
-【重要】
-- PFCはカロリーに合わせて再推定・補正しない。成分表の数値をそのまま記録すること。
-- カロリーとP/F/Cが数学的に一致しなくても、それは正常。表に書かれた値を優先する。
+【炭水化物の読み取りルール（最重要）】
+日本の栄養成分表示は以下のような階層になっている場合がある：
+  炭水化物  35.8g
+    糖質    34.0g
+    食物繊維  1.8g
+この場合、carbsには「炭水化物」の数値（35.8g）を使う。「糖質」の数値（34.0g）は使わない。
+炭水化物の行が見当たらない場合のみ、糖質を使う。
+
+【脂質の読み取りルール】
+- 脂質が0gと記載されていればcarbsは0を記録する。推定で補わない。
+- 脂質0.1g未満は0として扱う。
+
+【PFCの補正禁止】
+- カロリーに合わせてPFCを再推定・再計算しない。
+- カロリーとP/F/Cが数学的に一致しなくても、成分表の値を優先する。
 - 合計の計算はしない。itemsの各行だけ返せばよい。
 
 食事名のまとめ方（combined_name）：
@@ -167,10 +178,12 @@ export default async function handler(req: any, res: any) {
       }
 
       const items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
+      console.log('[analyze-meal] AI items:', JSON.stringify(items, null, 2));
       const sumCalories = items.reduce((s: number, item: any) => s + (parseFloat(item.calories) || 0), 0);
       const sumProtein  = items.reduce((s: number, item: any) => s + (parseFloat(item.protein)  || 0), 0);
       const sumFat      = items.reduce((s: number, item: any) => s + (parseFloat(item.fat)      || 0), 0);
       const sumCarbs    = items.reduce((s: number, item: any) => s + (parseFloat(item.carbs)    || 0), 0);
+      console.log('[analyze-meal] sums before round:', { sumCalories, sumProtein, sumFat, sumCarbs });
       return res.json({
         name: parsed.combined_name || items[0]?.name || '解析された食事',
         calories: Math.round(sumCalories),
