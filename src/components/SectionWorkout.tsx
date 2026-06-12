@@ -256,7 +256,7 @@ export function SectionWorkout({ todayWorkout, workouts, addWorkout, addExercise
               <div className="border-t border-zinc-800/60 my-3 pt-3 space-y-3">
                 <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">または自由に入力</label>
                 {/* 💡 改善：プレースホルダーから「マニアック」を排除し、スマートに変更！ */}
-                <input type="text" placeholder="種目名を入力（例: ダンベルフライ）..." value={tempExercise} onChange={(e) => setTempExercise(e.target.value)} className="w-full bg-zinc-800 border-0 rounded-xl p-3 text-white placeholder:text-zinc-650 focus:ring-1 focus:ring-lime-400 text-sm outline-none font-medium" autoFocus onKeyDown={(e) => { if (e.key === 'Enter' && tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim(), selCat); setTempExercise(''); setIsAdding(false); } }} />
+                <input type="text" placeholder="種目名を入力（例: ダンベルフライ）..." value={tempExercise} onChange={(e) => setTempExercise(e.target.value)} className="w-full bg-zinc-800 border-0 rounded-xl p-3 text-white placeholder:text-zinc-650 focus:ring-1 focus:ring-lime-400 text-sm outline-none font-medium" onKeyDown={(e) => { if (e.key === 'Enter' && tempExercise.trim()) { addExercise(currentWorkout.id, tempExercise.trim(), selCat); setTempExercise(''); setIsAdding(false); } }} />
               </div>
 
               <div className="flex gap-2 pt-1">
