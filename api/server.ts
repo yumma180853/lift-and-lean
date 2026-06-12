@@ -1,11 +1,13 @@
 import express from "express";
 import path from "path";
 import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const geminiAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // 外部検索が必要かキーワードで判定（直近5件の履歴も含めてチェック）
 function shouldUseWebSearch(message: string, history: any[]): boolean {
@@ -103,7 +105,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）
+  // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）Gemini 2.0 Flash
   if (req.url.includes("analyze-meal")) {
     try {
       const { image, images: imagesBody } = req.body;
@@ -112,12 +114,22 @@ export default async function handler(req: any, res: any) {
         : image ? [image] : [];
       if (imageList.length === 0) return res.status(400).json({ error: "Image is required" });
 
-      const content: any[] = imageList.map((img: string) => ({
-        type: "image_url",
-        image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`, detail: "auto" },
-      }));
-
       const isSingle = imageList.length === 1;
+
+      // Gemini用に画像パーツを変換（data URLからmimeTypeとbase64dataを分離）
+      const geminiParts: any[] = imageList.map((img: string) => {
+        let mimeType = "image/jpeg";
+        let data = img;
+        if (img.startsWith('data:')) {
+          const sepIdx = img.indexOf(';base64,');
+          if (sepIdx !== -1) {
+            mimeType = img.slice(5, sepIdx);
+            data = img.slice(sepIdx + 8);
+          }
+        }
+        return { inlineData: { mimeType, data } };
+      });
+
       const analysisPrompt = isSingle
         ? `この画像を分析してください。
 食事写真の場合：料理名とカロリー・PFCを推定（量が不明なら一般的な量を想定）。
@@ -175,16 +187,18 @@ export default async function handler(req: any, res: any) {
 必ず以下のJSON形式で返してください（totalフィールドは不要）：
 {"items":[{"name":"食品名","calories":数値,"protein":数値,"fat":数値,"carbs":数値}],"combined_name":"合計食事名"}`;
 
-      content.push({ type: "text", text: analysisPrompt });
+      geminiParts.push({ text: analysisPrompt });
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        max_tokens: isSingle ? 300 : 800,
-        messages: [{ role: "user", content }],
+      const geminiModel = geminiAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: isSingle ? 300 : 800,
+        },
       });
 
-      const rawText = completion.choices[0]?.message?.content || "{}";
+      const geminiResult = await geminiModel.generateContent(geminiParts);
+      const rawText = geminiResult.response.text();
       let parsed: any;
       try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
 
@@ -199,7 +213,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
-      console.log('[analyze-meal] AI items:', JSON.stringify(items, null, 2));
+      console.log('[analyze-meal] Gemini items:', JSON.stringify(items, null, 2));
       const sumCalories = items.reduce((s: number, item: any) => s + (parseFloat(item.calories) || 0), 0);
       const sumProtein  = items.reduce((s: number, item: any) => s + (parseFloat(item.protein)  || 0), 0);
       const sumFat      = items.reduce((s: number, item: any) => s + (parseFloat(item.fat)      || 0), 0);
@@ -213,7 +227,7 @@ export default async function handler(req: any, res: any) {
         carbs:    Math.round(sumCarbs),
       });
     } catch (error: any) {
-      console.error("Analyze-meal OpenAI Error:", error);
+      console.error("Analyze-meal Gemini Error:", error);
       return res.status(500).json({ error: error.message || "Failed to analyze image" });
     }
   }
