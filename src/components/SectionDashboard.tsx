@@ -172,12 +172,9 @@ export function SectionDashboard({
         <div className="bg-zinc-900/40 border border-zinc-800/60 px-4 py-2.5 rounded-2xl flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-sm">📅</span>
+            <span className="text-xs text-zinc-400">食事記録</span>
             <span className="text-sm font-black font-mono text-white">{streakData.currentStreak}日</span>
-            <span className="text-xs text-zinc-400">
-              {streakData.status === 'active' && '記録中'}
-              {streakData.status === 'ongoing' && '継続中'}
-              {streakData.status === 'freeze_used' && '継続中'}
-            </span>
+            <span className="text-xs text-zinc-400">継続中</span>
             {streakData.status === 'freeze_used' && (
               <span className="text-[10px] text-zinc-600">（1日お休みあり）</span>
             )}
