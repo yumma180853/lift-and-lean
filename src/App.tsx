@@ -322,8 +322,8 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <SectionWorkout 
-                    todayWorkout={workouts.find(w => w.date === selDate)} today={selDate} setActiveTab={handleCloseWorkoutDetail} addWorkout={addWorkout} currentWeight={cWeight} 
+                  <SectionWorkout
+                    todayWorkout={workouts.find(w => w.date === selDate)} workouts={workouts} today={selDate} setActiveTab={handleCloseWorkoutDetail} addWorkout={addWorkout} currentWeight={cWeight}
                     addExercise={(wid, n, cat) => {
                       if (cat) { setCustomCats(p => ({ ...p, [n]: cat })); }
                       setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }));

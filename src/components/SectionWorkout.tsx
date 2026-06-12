@@ -14,6 +14,7 @@ const PRESET_EXERCISES = [
 
 export interface SectionWorkoutProps {
   todayWorkout: Workout | undefined;
+  workouts: Workout[];
   addWorkout: () => void;
   addExercise: (workoutId: string, name: string, category: string) => void; // 💡 改善：部位情報（category）も送れるように型を拡張！
   addSet: (workoutId: string, exerciseId: string, weight: number, reps: number) => void;
@@ -86,6 +87,7 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
 interface ExerciseCardProps extends React.Attributes {
   exercise: { id: string; name: string; sets: { id: string; weight: number; reps: number }[] };
   workoutId: string;
+  previousSet: { weight: number; reps: number } | null;
   addSet: (workoutId: string, exerciseId: string, weight: number, reps: number) => void;
   deleteExercise: (workoutId: string, exerciseId: string) => void;
   deleteSet: (workoutId: string, exerciseId: string, setId: string) => void;
@@ -93,7 +95,7 @@ interface ExerciseCardProps extends React.Attributes {
   currentWeight: number | null;
 }
 
-function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, updateSet, currentWeight }: ExerciseCardProps) {
+function ExerciseCard({ exercise, workoutId, previousSet, addSet, deleteExercise, deleteSet, updateSet, currentWeight }: ExerciseCardProps) {
   const userWeight = currentWeight || 65; 
   const totalVolume = exercise.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
 
@@ -123,7 +125,7 @@ function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, 
             <Trash2 size={13} />
           </button>
         </div>
-        <button type="button" onClick={() => { const lastSet = exercise.sets[exercise.sets.length - 1]; const defaultWeight = lastSet ? lastSet.weight : 60; const defaultReps = lastSet ? lastSet.reps : 10; addSet(workoutId, exercise.id, defaultWeight, defaultReps); }} className="text-[10px] font-black uppercase text-lime-400 border border-lime-400/30 px-2.5 py-1.5 rounded-lg hover:bg-lime-400/10 transition-colors" > セットを追加 </button>
+        <button type="button" onClick={() => { const lastSet = exercise.sets[exercise.sets.length - 1]; const fallback = previousSet ?? { weight: 0, reps: 10 }; const defaultWeight = lastSet ? lastSet.weight : fallback.weight; const defaultReps = lastSet ? lastSet.reps : fallback.reps; addSet(workoutId, exercise.id, defaultWeight, defaultReps); }} className="text-[10px] font-black uppercase text-lime-400 border border-lime-400/30 px-2.5 py-1.5 rounded-lg hover:bg-lime-400/10 transition-colors" > セットを追加 </button>
       </div>
       <div className="p-4 space-y-2">
         {exercise.sets.length > 0 ? (
@@ -145,11 +147,26 @@ function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, 
   );
 }
 
-export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, deleteExercise, deleteSet, updateSet, setActiveTab, currentWeight }: SectionWorkoutProps) {
+export function SectionWorkout({ todayWorkout, workouts, addWorkout, addExercise, addSet, deleteExercise, deleteSet, updateSet, setActiveTab, currentWeight }: SectionWorkoutProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [tempExercise, setTempExercise] = useState('');
   const [selCat, setSelCat] = useState('胸');
   const currentWorkout = todayWorkout;
+
+  const pastWorkouts = workouts
+    .filter(w => w.id !== currentWorkout?.id)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  function getPreviousSet(exerciseName: string): { weight: number; reps: number } | null {
+    for (const w of pastWorkouts) {
+      const ex = w.exercises.find(e => e.name === exerciseName);
+      if (ex && ex.sets.length > 0) {
+        const last = ex.sets[ex.sets.length - 1];
+        return { weight: last.weight, reps: last.reps };
+      }
+    }
+    return null;
+  }
 
   return (
     <div className="space-y-6 pb-24">
@@ -175,7 +192,7 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
           </div>
 
           {currentWorkout.exercises.map((exercise) => (
-            <ExerciseCard key={exercise.id} exercise={exercise} workoutId={currentWorkout.id} addSet={addSet} deleteExercise={deleteExercise} deleteSet={deleteSet} updateSet={updateSet} currentWeight={currentWeight} />
+            <ExerciseCard key={exercise.id} exercise={exercise} workoutId={currentWorkout.id} previousSet={getPreviousSet(exercise.name)} addSet={addSet} deleteExercise={deleteExercise} deleteSet={deleteSet} updateSet={updateSet} currentWeight={currentWeight} />
           ))}
 
           {(() => {
