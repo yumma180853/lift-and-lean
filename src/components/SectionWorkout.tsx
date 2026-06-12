@@ -63,12 +63,12 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
   return (
     <div className="grid grid-cols-5 text-xs py-2 border-b border-zinc-800/50 last:border-0 items-center justify-between gap-1">
       <div className="text-zinc-400 font-mono pl-1">SET {idx + 1}</div>
-      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 justify-center">
-        <input type="number" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
+      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center">
+        <input type="number" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
         <span className="text-[9px] text-zinc-500 font-black ml-1">KG</span>
       </div>
-      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 justify-center">
-        <input type="number" step="1" value={reps} onChange={(e) => setReps(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
+      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center">
+        <input type="number" step="1" value={reps} onChange={(e) => setReps(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
         <span className="text-[9px] text-zinc-500 font-black ml-1">R</span>
       </div>
       <div className="text-right text-lime-400 font-bold font-mono text-[11px] pr-2">
