@@ -115,7 +115,7 @@ function ExerciseCard({ exercise, workoutId, addSet, deleteExercise, deleteSet, 
             {exercise.name}
             {exercise.sets.length > 0 && (
               <span className="text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold transition-all animate-pulse">
-                {estimatedCalories} kcal
+                推定 {estimatedCalories}kcal
               </span>
             )}
           </h3>
@@ -202,8 +202,8 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">今日の合計</span>
                 <div className="flex gap-4 text-xs font-mono">
                   <span className="text-zinc-400">{totalSets} セット</span>
-                  <span className="text-zinc-400">VOL {totalVol.toLocaleString()} kg</span>
-                  <span className="text-lime-400 font-bold">〜 {totalKcal} kcal</span>
+                  <span className="text-zinc-400">総負荷 {totalVol.toLocaleString()}kg</span>
+                  <span className="text-lime-400 font-bold">消費目安 {totalKcal}kcal</span>
                 </div>
               </div>
             );
