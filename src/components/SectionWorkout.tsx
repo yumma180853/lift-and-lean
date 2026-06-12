@@ -177,6 +177,37 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
             <ExerciseCard key={exercise.id} exercise={exercise} workoutId={currentWorkout.id} addSet={addSet} deleteExercise={deleteExercise} deleteSet={deleteSet} updateSet={updateSet} currentWeight={currentWeight} />
           ))}
 
+          {(() => {
+            const userWeight = currentWeight || 65;
+            const totalSets = currentWorkout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+            if (totalSets === 0) return null;
+            const totalVol = currentWorkout.exercises.reduce((sum, ex) =>
+              sum + ex.sets.reduce((s, set) => s + set.weight * set.reps, 0), 0);
+            const totalKcal = currentWorkout.exercises.reduce((sum, ex) => {
+              const vol = ex.sets.reduce((s, set) => s + set.weight * set.reps, 0);
+              let kcal = 0;
+              if (vol > 0) {
+                kcal = Math.round(vol * 0.0006 * userWeight);
+                const floor = Math.round(ex.sets.length * 5);
+                if (kcal < floor) kcal = floor;
+              } else if (ex.sets.length > 0) {
+                const reps = ex.sets.reduce((s, set) => s + set.reps, 0);
+                kcal = Math.round(userWeight * reps * 0.005 * ex.sets.length);
+              }
+              return sum + kcal;
+            }, 0);
+            return (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-3 flex justify-between items-center">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">今日の合計</span>
+                <div className="flex gap-4 text-xs font-mono">
+                  <span className="text-zinc-400">{totalSets} セット</span>
+                  <span className="text-zinc-400">VOL {totalVol.toLocaleString()} kg</span>
+                  <span className="text-lime-400 font-bold">〜 {totalKcal} kcal</span>
+                </div>
+              </div>
+            );
+          })()}
+
           {!isAdding ? (
             <button type="button" onClick={() => setIsAdding(true)} className="w-full py-4 border-2 border-dashed border-zinc-800 rounded-2xl text-zinc-500 text-sm font-bold flex items-center justify-center gap-2 hover:bg-zinc-900 transition-colors" >
               <Plus size={18} /> 種目を追加

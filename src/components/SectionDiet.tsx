@@ -17,19 +17,34 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
   const [fat, setFat] = useState('');
   const [carbs, setCarbs] = useState('');
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleManualAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!mealName) return;
-    addMeal({
+    const newMeal = {
       date: new Date().toISOString().split('T')[0],
       name: mealName,
       calories: parseFloat(calories) || 0,
       protein: parseFloat(protein) || 0,
       fat: parseFloat(fat) || 0,
       carbs: parseFloat(carbs) || 0,
-    });
+    };
+    addMeal(newMeal);
+
+    const totalKcal = todayMeals.reduce((s, m) => s + m.calories, 0) + newMeal.calories;
+    const totalProtein = todayMeals.reduce((s, m) => s + m.protein, 0) + newMeal.protein;
+    const remainKcal = Math.round(goals.calories - totalKcal);
+    const remainProtein = Math.round(goals.protein - totalProtein);
+    const msg = remainKcal < 0
+      ? `✓ ${mealName}を記録  今日はしっかり食べた日`
+      : `✓ ${mealName}を記録  残り ${remainKcal}kcal · P あと ${remainProtein}g`;
+    setFeedbackMsg(msg);
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedbackMsg(null), 1500);
+
     setMealName('');
     setCalories('');
     setProtein('');
@@ -197,6 +212,12 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
             </button>
           </div>
         </form>
+      )}
+
+      {feedbackMsg && (
+        <div className="text-xs font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 rounded-xl px-4 py-2.5 animate-in fade-in duration-200">
+          {feedbackMsg}
+        </div>
       )}
 
       {todayMeals.length > 0 ? (
