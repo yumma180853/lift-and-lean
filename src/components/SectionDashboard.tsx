@@ -88,7 +88,7 @@ export function SectionDashboard({
     // 💡 UX改善：摂り始めたことを認める閾値（30%）
     const isProteinStarted = pRatioToday >= 0.3; 
 
-    const categories = ['胸', '背中', '肩', '腕', '脚', '腹筋'];
+    const categories = ['胸', '背中', '肩', '腕', '脚'];
     
     return categories.map(cat => {
       const isTrainedToday = trainedTodayCategories.has(cat);
