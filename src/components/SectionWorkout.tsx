@@ -8,7 +8,8 @@ const PRESET_EXERCISES = [
   { category: '背中', items: ['チンニング', 'ラットプルダウン', 'デッドリフト', 'シーテッドロー'] },
   { category: '肩', items: ['ショルダープレス', 'ミリタリープレス', 'サイドレイズ', 'リアレイズ'] },
   { category: '腕', items: ['アームカール', 'プッシュダウン', 'スカルクラッシャー'] },
-  { category: '脚', items: ['スクワット', 'レッグプレス', 'レッグエクステンション'] }
+  { category: '脚', items: ['スクワット', 'レッグプレス', 'レッグエクステンション'] },
+  { category: '腹筋', items: ['クランチ', 'レッグレイズ', 'プランク', 'アブローラー', 'ケーブルクランチ'] },
 ];
 
 export interface SectionWorkoutProps {

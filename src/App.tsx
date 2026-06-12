@@ -18,7 +18,8 @@ const EXERCISE_TO_CATEGORY: Record<string, string> = {
   'チンニング': '背中', 'ラットプルダウン': '背中', 'デッドリフト': '背中', 'シーテッドロー': '背中',
   'ショルダープレス': '肩', 'ミリタリープレス': '肩', 'サイドレイズ': '肩', 'リアレイズ': '肩',
   'アームカール': '腕', 'プッシュダウン': '腕', 'スカルクラッシャー': '腕',
-  'スクワット': '脚', 'レッグプレス': '脚', 'レッグエクステンション': '脚'
+  'スクワット': '脚', 'レッグプレス': '脚', 'レッグエクステンション': '脚',
+  'クランチ': '腹筋', 'レッグレイズ': '腹筋', 'プランク': '腹筋', 'アブローラー': '腹筋', 'ケーブルクランチ': '腹筋'
 };
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -219,7 +220,7 @@ export default function App() {
                   <button onClick={() => { const hasToday = workouts.some(w => w.date === today); if (!hasToday) { setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); } setSelDate(today); }} className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]" ><Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}</button>
                   <div className="pt-2">
                     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-                      {['すべて', '胸', '背中', '肩', '腕', '脚'].map(cat => (
+                      {['すべて', '胸', '背中', '肩', '腕', '脚', '腹筋'].map(cat => (
                         <button key={cat} type="button" onClick={() => setSelFilter(cat)} className={`px-4 py-2 rounded-xl text-xs font-black tracking-wider transition-all whitespace-nowrap active:scale-95 ${selFilter === cat ? 'bg-lime-400 text-black shadow-md shadow-lime-400/10' : 'bg-zinc-900 border border-zinc-850 text-zinc-400 hover:text-white'}`} Orient-Category={cat} >{cat} {selFilter === cat && '✓'}</button>
                       ))}
                     </div>

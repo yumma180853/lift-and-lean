@@ -28,6 +28,7 @@ export interface SectionDashboardProps {
 
 const detectCategory = (name: string): string => {
   const n = name.toLowerCase();
+  if (n.includes('クランチ') || n.includes('レッグレイズ') || n.includes('プランク') || n.includes('アブローラー') || n.includes('腹筋') || n.includes('シットアップ')) return '腹筋';
   if (n.includes('ベンチ') || n.includes('プレス') && (n.includes('チェスト') || n.includes('ダンベル') || n.includes('インクライン')) || n.includes('フライ') || n.includes('胸') || n.includes('ペック')) return '胸';
   if (n.includes('チンニング') || n.includes('懸垂') || n.includes('ラット') || n.includes('プル') || n.includes('ロー') || n.includes('デッドリフト') || n.includes('背中')) return '背中';
   if (n.includes('ショルダー') || n.includes('レイズ') || n.includes('ミリタリー' ) || n.includes('肩')) return '肩';
@@ -87,7 +88,7 @@ export function SectionDashboard({
     // 💡 UX改善：摂り始めたことを認める閾値（30%）
     const isProteinStarted = pRatioToday >= 0.3; 
 
-    const categories = ['胸', '背中', '肩', '腕', '脚'];
+    const categories = ['胸', '背中', '肩', '腕', '脚', '腹筋'];
     
     return categories.map(cat => {
       const isTrainedToday = trainedTodayCategories.has(cat);
