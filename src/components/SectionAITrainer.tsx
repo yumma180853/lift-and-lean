@@ -69,7 +69,7 @@ export function SectionAITrainer({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - max(1.5rem, env(safe-area-inset-top)) - 80px)' }}>
       <header className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 bg-lime-400 rounded-full flex items-center justify-center text-black"><Sparkles size={20} /></div>
@@ -80,7 +80,7 @@ export function SectionAITrainer({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pt-2 pb-4">
         {chatMessages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
             <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700"><MessageSquare size={32} /></div>
