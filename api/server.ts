@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import OpenAI from "openai";
+import webpush from "web-push";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -99,8 +100,33 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
+  // VAPIDキー取得（GET）
+  if (req.url.includes("wp-public-key")) {
+    const pubKey = process.env.VAPID_PUBLIC_KEY;
+    if (!pubKey) return res.status(503).json({ error: "VAPID_PUBLIC_KEY not configured" });
+    return res.json({ publicKey: pubKey });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // プッシュ通知送信
+  if (req.url.includes("send-test-notification")) {
+    const pubKey = process.env.VAPID_PUBLIC_KEY;
+    const privKey = process.env.VAPID_PRIVATE_KEY;
+    if (!pubKey || !privKey) return res.status(503).json({ error: "VAPID keys not configured" });
+    const { subscription, action } = req.body;
+    if (action === 'unsubscribe') return res.json({ success: true });
+    try {
+      webpush.setVapidDetails('mailto:admin@lift-lean.app', pubKey, privKey);
+      await webpush.sendNotification(subscription, JSON.stringify({
+        title: 'Lift & Lean', body: 'おはようございます！今日の体重を記録しましょう 💪', icon: '/icon.png'
+      }));
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）OpenAI gpt-4o

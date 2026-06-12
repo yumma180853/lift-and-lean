@@ -202,7 +202,10 @@ export default function App() {
   };
 
   const toggleNotify = async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { alert('ホーム画面（アプリモード）から起動してください。'); return; }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('プッシュ通知はPWAモード（ホーム画面に追加）でのみ利用できます。');
+      return;
+    }
     try {
       const reg = await navigator.serviceWorker.ready;
       if (remind) {
@@ -211,15 +214,26 @@ export default function App() {
           await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub, action: 'unsubscribe' }) });
           await sub.unsubscribe();
         }
-        setRemind(false); alert('毎朝のリマインダー通知をオフにしました。');
+        setRemind(false);
+        alert('リマインダー通知をオフにしました。');
       } else {
-        const p = await Notification.requestPermission(); if (p !== 'granted') { alert('通知を許可してください'); return; }
-        const keyRes = await fetch('/api/wp-public-key'); const { publicKey } = await keyRes.json(); const convertedKey = urlBase64ToUint8Array(publicKey);
-        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: convertedKey }); setRemind(true);
+        const p = await Notification.requestPermission();
+        if (p === 'denied') { alert('通知がブロックされています。iOSの「設定」→「通知」からアプリの通知を許可してください。'); return; }
+        if (p !== 'granted') { alert('通知の許可が必要です。'); return; }
+        const keyRes = await fetch('/api/wp-public-key');
+        if (!keyRes.ok) { alert('通知サーバーへの接続に失敗しました。時間をおいて再度お試しください。'); return; }
+        const { publicKey } = await keyRes.json();
+        if (!publicKey || typeof publicKey !== 'string') { alert('通知キーの取得に失敗しました。'); return; }
+        const convertedKey = urlBase64ToUint8Array(publicKey);
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: convertedKey });
+        setRemind(true);
         await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) });
-        alert('毎朝のリマインダー通知をオンにしました！明日から朝7時に、体重が未入力の場合におお知らせします。🔥');
+        alert('リマインダー通知をオンにしました！毎朝7時に、体重が未入力の場合にお知らせします。');
       }
-    } catch (e) { alert('設定エラー: ' + String(e)); }
+    } catch (e) {
+      console.error('通知設定エラー:', e);
+      alert('通知の設定に失敗しました。時間をおいて再度お試しください。');
+    }
   };
 
   const handleSendMessage = async (text: string, images: string[]) => {
