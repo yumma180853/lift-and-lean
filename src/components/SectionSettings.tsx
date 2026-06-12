@@ -29,20 +29,23 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
           <h3 className="text-xs font-bold uppercase tracking-wider">リマインダー通知</h3>
         </div>
         <div className="flex items-center justify-between bg-zinc-900/50 border border-zinc-900 rounded-2xl p-4">
-          <div className="space-y-0.5 max-w-[70%]">
+          <div className="space-y-0.5 flex-1 min-w-0 pr-4">
             <p className="text-sm font-bold text-white">毎朝の体重記録リマインダー</p>
-            <p className="text-xs text-zinc-500">毎朝7時、体重が未入力の場合のみ通知を飛ばします</p>
+            <p className="text-xs text-zinc-500">毎朝7時、体重が未入力の場合のみ通知</p>
           </div>
-          <button
-            onClick={toggleNotification}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all tracking-tight ${
-              remind 
-                ? 'bg-red-500/10 text-red-400 border border-red-500/20 active:bg-red-500/20' 
-                : 'bg-lime-400 text-black font-black active:scale-95'
-            }`}
-          >
-            {remind ? 'オフにする' : 'オンにする'}
-          </button>
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={toggleNotification}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${remind ? 'bg-lime-400' : 'bg-zinc-700'}`}
+              aria-label={remind ? '通知をオフにする' : '通知をオンにする'}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200 ${remind ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <span className={`text-[10px] font-black ${remind ? 'text-lime-400' : 'text-zinc-500'}`}>
+              {remind ? 'ON' : 'OFF'}
+            </span>
+          </div>
         </div>
       </div>
 
