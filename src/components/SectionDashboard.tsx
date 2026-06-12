@@ -9,7 +9,7 @@ import {
   Zap, 
   Activity 
 } from 'lucide-react';
-import { Workout, Meal, UserGoals, WeightRecord } from '../types';
+import { Workout, Meal, UserGoals, WeightRecord, StreakData } from '../types';
 
 export interface SectionDashboardProps {
   todayStats: { calories: number; protein: number; fat: number; carbs: number };
@@ -24,6 +24,7 @@ export interface SectionDashboardProps {
   openWeightModal: () => void;
   workouts: Workout[];
   meals: Meal[];
+  streakData: StreakData;
 }
 
 const detectCategory = (name: string): string => {
@@ -48,7 +49,8 @@ export function SectionDashboard({
   setActiveTab,
   openWeightModal,
   workouts,
-  meals
+  meals,
+  streakData,
 }: SectionDashboardProps) {
 
   // 昨日と今日の連動から筋肉の状況を直感的なワードで算出
@@ -164,6 +166,30 @@ export function SectionDashboard({
           <span className="text-sm font-mono font-black text-lime-400">{currentWeight ? `${currentWeight}kg` : '未測定'}</span>
         </button>
       </div>
+
+      {/* STREAK */}
+      {streakData.currentStreak >= 1 && (
+        <div className="bg-zinc-900/40 border border-zinc-800/60 px-4 py-2.5 rounded-2xl flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">📅</span>
+            <span className="text-sm font-black font-mono text-white">{streakData.currentStreak}日</span>
+            <span className="text-xs text-zinc-400">
+              {streakData.status === 'active' && '記録中'}
+              {streakData.status === 'ongoing' && '継続中'}
+              {streakData.status === 'freeze_used' && '継続中'}
+            </span>
+            {streakData.status === 'freeze_used' && (
+              <span className="text-[10px] text-zinc-600">（1日お休みあり）</span>
+            )}
+          </div>
+          {streakData.longestStreak >= 3 && streakData.longestStreak > streakData.currentStreak && (
+            <span className="text-[10px] font-mono text-zinc-600">最長 {streakData.longestStreak}日</span>
+          )}
+        </div>
+      )}
+      {streakData.currentStreak === 0 && streakData.status === 'new' && (
+        <div className="text-xs text-zinc-600 px-1">今日から記録を始めよう</div>
+      )}
 
       {/* 1️⃣ TODAY'S ENERGY ACCUMULATOR */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">

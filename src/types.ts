@@ -51,3 +51,11 @@ export interface ChatMessage {
 }
 
 export type Tab = 'dashboard' | 'workout' | 'diet' | 'analysis' | 'aitrainer' | 'settings';
+
+export interface StreakData {
+  currentStreak: number;
+  lastRecordedDate: string;
+  freezeUsedDates: string[];
+  longestStreak: number;
+  status: 'active' | 'ongoing' | 'freeze_used' | 'new';
+}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserGoals, WeightRecord, Workout, Meal, ChatMessage, Tab } from './types';
+import { UserGoals, WeightRecord, Workout, Meal, ChatMessage, Tab, StreakData } from './types';
 import { SectionDashboard } from './components/SectionDashboard';
 import { SectionWorkout } from './components/SectionWorkout';
 import { SectionDiet } from './components/SectionDiet';
@@ -12,6 +12,63 @@ import { SectionSettings } from './components/SectionSettings';
 
 const safeUUID = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 const DF_G: UserGoals = { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 70 };
+
+// --- Streak helpers ---
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function weekMonday(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = d.getDay();
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  return d.toISOString().slice(0, 10);
+}
+function computeStreak(meals: Meal[], today: string, prevFreeze: string[], prevLongest: number): StreakData {
+  const mealDates = new Set(meals.map(m => m.date));
+  const todayMon = weekMonday(today);
+  const newFreeze = [...prevFreeze];
+  const todayHasMeal = mealDates.has(today);
+  let streak = 0;
+  let usedNewFreeze = false;
+  let cursor = todayHasMeal ? today : addDays(today, -1);
+  for (let i = 0; i < 400; i++) {
+    if (mealDates.has(cursor)) {
+      streak++;
+      cursor = addDays(cursor, -1);
+    } else if (newFreeze.includes(cursor)) {
+      // previously frozen day — counts toward streak continuity
+      streak++;
+      cursor = addDays(cursor, -1);
+    } else {
+      // gap — try to apply new freeze (1-day gap, weekly quota not exhausted)
+      const freezesThisWeek = newFreeze.filter(d => weekMonday(d) === todayMon).length;
+      const next = addDays(cursor, -1);
+      if (!usedNewFreeze && freezesThisWeek < 1 && streak > 0 && mealDates.has(next)) {
+        usedNewFreeze = true;
+        newFreeze.push(cursor);
+        streak++;
+        cursor = next;
+      } else {
+        break;
+      }
+    }
+  }
+  let status: StreakData['status'] = 'new';
+  if (streak > 0) {
+    if (todayHasMeal) status = usedNewFreeze ? 'freeze_used' : 'active';
+    else status = 'ongoing';
+  }
+  return {
+    currentStreak: streak,
+    lastRecordedDate: todayHasMeal ? today : (streak > 0 ? addDays(today, -1) : ''),
+    freezeUsedDates: newFreeze,
+    longestStreak: Math.max(prevLongest, streak),
+    status,
+  };
+}
+// --- End Streak helpers ---
 
 const EXERCISE_TO_CATEGORY: Record<string, string> = {
   'ベンチプレス': '胸', 'インクラインダンベルプレス': '胸', 'チェストプレスマシン': '胸', 'ペックフライ': '胸',
@@ -53,6 +110,8 @@ export default function App() {
   const [hiddenDates, setHiddenDates] = useState<string[]>([]);
   const [selFilter, setSelFilter] = useState<string>('すべて');
   const [customCats, setCustomCats] = useState<Record<string, string>>({});
+  const [freezeUsedDates, setFreezeUsedDates] = useState<string[]>([]);
+  const [longestStreak, setLongestStreak] = useState<number>(0);
 
   useEffect(() => {
     try {
@@ -69,6 +128,11 @@ export default function App() {
 
       const cc = localStorage.getItem('custom_exercise_categories');
       if (cc) setCustomCats(JSON.parse(cc));
+
+      const fd = localStorage.getItem('freeze_used_dates');
+      if (fd) setFreezeUsedDates(JSON.parse(fd));
+      const ls = localStorage.getItem('longest_streak');
+      if (ls) setLongestStreak(JSON.parse(ls));
     } catch (e) { console.error(e); }
     setLoaded(true);
     if ('serviceWorker' in navigator) {
@@ -89,8 +153,10 @@ export default function App() {
       localStorage.setItem('chat_messages', JSON.stringify(chatsForStorage));
       localStorage.setItem('hidden_workout_dates', JSON.stringify(hiddenDates));
       localStorage.setItem('custom_exercise_categories', JSON.stringify(customCats));
+      localStorage.setItem('freeze_used_dates', JSON.stringify(freezeUsedDates));
+      localStorage.setItem('longest_streak', JSON.stringify(longestStreak));
     } catch (e) { console.warn(e); }
-  }, [workouts, meals, weights, goals, remind, chats, loaded, hiddenDates, customCats]);
+  }, [workouts, meals, weights, goals, remind, chats, loaded, hiddenDates, customCats, freezeUsedDates, longestStreak]);
 
   useEffect(() => {
     setWorkouts(p => p.filter(w => w.exercises.length > 0));
@@ -174,6 +240,20 @@ export default function App() {
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const tMeals = useMemo(() => meals.filter(m => m.date === today), [meals, today]);
+
+  const streakData = useMemo(
+    () => computeStreak(meals, today, freezeUsedDates, longestStreak),
+    [meals, today, freezeUsedDates, longestStreak]
+  );
+  useEffect(() => {
+    if (!loaded) return;
+    if (streakData.freezeUsedDates.length !== freezeUsedDates.length) {
+      setFreezeUsedDates(streakData.freezeUsedDates);
+    }
+    if (streakData.currentStreak > longestStreak) {
+      setLongestStreak(streakData.currentStreak);
+    }
+  }, [streakData.currentStreak, streakData.freezeUsedDates.length, loaded]);
   const tStats = useMemo(() => tMeals.reduce((acc, m) => ({ calories: acc.calories + (Number(m.calories) || 0), protein: acc.protein + (Number(m.protein) || 0), fat: acc.fat + (Number(m.fat) || 0), carbs: acc.carbs + (Number(m.carbs) || 0) }), { calories: 0, protein: 0, fat: 0, carbs: 0 }), [tMeals]);
   const tWorkout = useMemo(() => workouts.find(w => w.date === today), [workouts, today]);
   const cWeight = useMemo(() => weights.length ? weights[weights.length - 1].weight : null, [weights]);
@@ -193,7 +273,7 @@ export default function App() {
           <AnimatePresence mode="wait">
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
               {/* 💡 改善：SectionDashboard に workouts と meals を丸ごと引き渡し、タイムラグ計算を可能にする！ */}
-              {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} workouts={workouts} meals={meals} />}
+              {tab === 'dashboard' && <SectionDashboard todayStats={tStats} goals={goals} weightHistory={weights} today={today} todayWorkout={tWorkout} todayMeals={tMeals} currentWeight={cWeight} addWeight={addWeight} setActiveTab={setTab} openWeightModal={() => setOpenW(true)} workouts={workouts} meals={meals} streakData={streakData} />}
               {tab === 'workout' && (selDate === null ? (
                 <div className="space-y-4 pb-24">
                   <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2"><Dumbbell size={24} /> <span>TRAINING LOGS</span></div>
