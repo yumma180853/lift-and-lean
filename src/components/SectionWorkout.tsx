@@ -218,12 +218,13 @@ export function SectionWorkout({ todayWorkout, addWorkout, addExercise, addSet, 
               <div className="space-y-2">
                 <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase flex items-center gap-1"><Award size={12} /> クイック追加（部位別メニュー）</label>
                 
-                <div className="flex bg-zinc-950 p-1 border border-zinc-850 rounded-xl justify-between gap-1 overflow-x-auto">
+                <div className="flex bg-zinc-950 py-1 pl-1 border border-zinc-850 rounded-xl justify-between gap-1 overflow-x-auto">
                   {PRESET_EXERCISES.map(cat => (
                     <button key={cat.category} type="button" onClick={() => setSelCat(cat.category)} className={`flex-1 min-w-[50px] text-center py-1.5 rounded-lg text-xs font-black transition-all ${selCat === cat.category ? 'bg-lime-400 text-black shadow-md' : 'text-zinc-500 hover:text-white'}`} >
                       {cat.category}
                     </button>
                   ))}
+                  <div className="w-1 shrink-0" />
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1.5">
