@@ -19,6 +19,29 @@ import {
 } from 'recharts';
 import { WeightRecord, Meal, Workout } from '../types';
 
+function PfcTooltip({ active, payload, label }: any) {
+  if (!active || !payload || !payload.length) return null;
+  const total: number = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+  const baseStyle: React.CSSProperties = { backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px', padding: '8px 12px' };
+  const labelStyle: React.CSSProperties = { color: '#a1a1aa', fontWeight: 'bold', fontSize: '11px', marginBottom: '4px' };
+  if (total === 0) {
+    return (
+      <div style={baseStyle}>
+        <p style={labelStyle}>{label}</p>
+        <p style={{ color: '#52525b', fontSize: '11px' }}>記録なし</p>
+      </div>
+    );
+  }
+  return (
+    <div style={baseStyle}>
+      <p style={labelStyle}>{label}</p>
+      {payload.map((entry: any, i: number) => (
+        <p key={i} style={{ color: entry.color || '#ffffff', fontSize: '11px' }}>{entry.name.replace(' [kcal]', '')}: {entry.value} kcal</p>
+      ))}
+    </div>
+  );
+}
+
 export interface SectionAnalysisProps {
   weightHistory: WeightRecord[];
   meals: Meal[];
@@ -309,7 +332,7 @@ export function SectionAnalysis({
             <BarChart data={getNutritionDataForChart()}>
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
               <YAxis stroke="#52525b" fontSize={10} tickLine={false} />
-              <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '12px' }} labelStyle={{ color: '#a1a1aa', fontWeight: 'bold', fontSize: '11px' }} itemStyle={{ fontSize: '11px' }} formatter={(value) => [ ` ${ value } kcal` ]} />
+              <Tooltip content={<PfcTooltip />} />
               <Legend verticalAlign="top" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '10px', color: '#a1a1aa' }} />
               <Bar dataKey="タンパク質 (P) [kcal]" stackId="a" fill="#f43f5e" />
               <Bar dataKey="脂質 (F) [kcal]" stackId="a" fill="#eab308" />
