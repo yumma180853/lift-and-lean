@@ -108,6 +108,11 @@ export default async function handler(req: any, res: any) {
   // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）Gemini 2.0 Flash
   if (req.url.includes("analyze-meal")) {
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        console.error("[analyze-meal] GEMINI_API_KEY is not set");
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
+      }
+
       const { image, images: imagesBody } = req.body;
       const imageList: string[] = imagesBody && imagesBody.length > 0
         ? imagesBody
@@ -115,6 +120,7 @@ export default async function handler(req: any, res: any) {
       if (imageList.length === 0) return res.status(400).json({ error: "Image is required" });
 
       const isSingle = imageList.length === 1;
+      console.log(`[analyze-meal] images: ${imageList.length}, isSingle: ${isSingle}`);
 
       // Gemini用に画像パーツを変換（data URLからmimeTypeとbase64dataを分離）
       const geminiParts: any[] = imageList.map((img: string) => {
@@ -189,8 +195,10 @@ export default async function handler(req: any, res: any) {
 
       geminiParts.push({ text: analysisPrompt });
 
+      const modelName = "gemini-2.0-flash-exp";
+      console.log(`[analyze-meal] calling Gemini model: ${modelName}`);
       const geminiModel = geminiAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
+        model: modelName,
         generationConfig: {
           responseMimeType: "application/json",
           maxOutputTokens: isSingle ? 300 : 800,
@@ -199,6 +207,7 @@ export default async function handler(req: any, res: any) {
 
       const geminiResult = await geminiModel.generateContent(geminiParts);
       const rawText = geminiResult.response.text();
+      console.log(`[analyze-meal] Gemini raw response: ${rawText?.slice(0, 200)}`);
       let parsed: any;
       try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
 
@@ -227,8 +236,16 @@ export default async function handler(req: any, res: any) {
         carbs:    Math.round(sumCarbs),
       });
     } catch (error: any) {
-      console.error("Analyze-meal Gemini Error:", error);
-      return res.status(500).json({ error: error.message || "Failed to analyze image" });
+      console.error("[analyze-meal] Gemini Error:", {
+        message: error.message,
+        status: error.status,
+        statusText: error.statusText,
+        errorDetails: error.errorDetails,
+      });
+      return res.status(500).json({
+        error: error.message || "Failed to analyze image",
+        status: error.status,
+      });
     }
   }
 
