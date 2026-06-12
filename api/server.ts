@@ -1,13 +1,11 @@
 import express from "express";
 import path from "path";
 import OpenAI from "openai";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const geminiAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // 外部検索が必要かキーワードで判定（直近5件の履歴も含めてチェック）
 function shouldUseWebSearch(message: string, history: any[]): boolean {
@@ -105,48 +103,36 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）Gemini 2.0 Flash
+  // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）OpenAI gpt-4o
   if (req.url.includes("analyze-meal")) {
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        console.error("[analyze-meal] GEMINI_API_KEY is not set");
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
-      }
-
       const { image, images: imagesBody } = req.body;
       const imageList: string[] = imagesBody && imagesBody.length > 0
         ? imagesBody
         : image ? [image] : [];
       if (imageList.length === 0) return res.status(400).json({ error: "Image is required" });
 
+      const content: any[] = imageList.map((img: string) => ({
+        type: "image_url",
+        image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`, detail: "auto" },
+      }));
+
       const isSingle = imageList.length === 1;
-      console.log(`[analyze-meal] images: ${imageList.length}, isSingle: ${isSingle}`);
-
-      // Gemini用に画像パーツを変換（data URLからmimeTypeとbase64dataを分離）
-      const geminiParts: any[] = imageList.map((img: string) => {
-        let mimeType = "image/jpeg";
-        let data = img;
-        if (img.startsWith('data:')) {
-          const sepIdx = img.indexOf(';base64,');
-          if (sepIdx !== -1) {
-            mimeType = img.slice(5, sepIdx);
-            data = img.slice(sepIdx + 8);
-          }
-        }
-        return { inlineData: { mimeType, data } };
-      });
-
       const analysisPrompt = isSingle
         ? `この画像を分析してください。
 食事写真の場合：料理名とカロリー・PFCを推定（量が不明なら一般的な量を想定）。
 
+【料理名の断定ルール】
+- 確信が持てない場合は「〇〇系の料理」「〇〇と思われる料理」のように柔らかく表現する。断定しない。
+
 【麺料理の識別ルール（重要）】
-麺料理を見た場合、以下の視覚的な特徴から種類を判断する。「ラーメン」とは雑に断定しない。
-- 太い白い麺＋透明〜薄い色の出汁 → うどん系（うどん・カスうどん・肉うどん・きつねうどん等）と推定する
-- 細い黄色い縮れ麺＋濃い茶色・白濁スープ → ラーメン系と推定する
+麺料理を見た場合は以下の視覚的な特徴から種類を判断する。「ラーメン」とは雑に断定しない。
+- 太い白い麺＋透明〜薄い色の出汁 → うどん・カスうどん・肉うどん・きつねうどん等のうどん系を優先する
+- 太い白い麺で確信が持てない場合は「うどん系の麺料理」と表現する
+- 細い黄色い縮れ麺＋濃い茶色または白濁スープ → ラーメン系と推定する
 - 白くて平らな麺 → きしめん・フォー等の可能性を考慮する
-- 視覚的に麺の種類が断定できない場合は「〇〇系の麺料理」と表現し、「ラーメン」と断定しない
-- 油かす・ちくわ天・油揚げ等の具材が見えたらうどん系の可能性を優先する
+- 視覚的に麺の種類が断定できない場合は「麺料理として推定」と表現し「ラーメン」と断定しない
+- 油かす・ちくわ天・油揚げ等の具材が見えたらうどん系の可能性を強く優先する
 - カスうどんの場合の栄養目安：炭水化物中心（carbs高め）・油かすにより脂質やや高め（fat 15〜25g程度）・タンパク質は低め
 
 栄養成分表示の場合：表に記載された数値を優先して読み取る（読み取れない項目は0にする）。
@@ -157,11 +143,15 @@ export default async function handler(req: any, res: any) {
 - 食事写真 → 料理名とカロリー・PFCを推定。量が不明なら一般的な量を想定。
 - 栄養成分表示 → 表に記載された数値をそのまま読み取る。
 
-【麺料理の識別ルール】
-- 太い白い麺＋透明〜薄い色の出汁 → うどん系（うどん・カスうどん・肉うどん等）と推定する
+【料理名の断定ルール】
+- 確信が持てない場合は「〇〇系の料理」「〇〇と思われる料理」のように柔らかく表現する。断定しない。
+
+【麺料理の識別ルール（重要）】
+- 太い白い麺＋透明〜薄い色の出汁 → うどん・カスうどん・肉うどん等のうどん系を優先する
+- 太い白い麺で確信が持てない場合は「うどん系の麺料理」と表現する
 - 細い黄色い縮れ麺＋濃いスープ → ラーメン系と推定する
-- 視覚的に断定できない場合は「〇〇系の麺料理」と表現し、「ラーメン」と断定しない
-- 油かすが見えたらうどん系の可能性を優先する
+- 視覚的に断定できない場合は「麺料理として推定」と表現し「ラーメン」と断定しない
+- 油かすが見えたらうどん系の可能性を強く優先する
 
 【炭水化物の読み取りルール（最重要）】
 日本の栄養成分表示には2つのパターンがある。どちらでも「糖質の値だけ」をcarbsに使ってはいけない。
@@ -193,21 +183,16 @@ export default async function handler(req: any, res: any) {
 必ず以下のJSON形式で返してください（totalフィールドは不要）：
 {"items":[{"name":"食品名","calories":数値,"protein":数値,"fat":数値,"carbs":数値}],"combined_name":"合計食事名"}`;
 
-      geminiParts.push({ text: analysisPrompt });
+      content.push({ type: "text", text: analysisPrompt });
 
-      const modelName = "gemini-2.0-flash-exp";
-      console.log(`[analyze-meal] calling Gemini model: ${modelName}`);
-      const geminiModel = geminiAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: isSingle ? 300 : 800,
-        },
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        response_format: { type: "json_object" },
+        max_tokens: isSingle ? 300 : 800,
+        messages: [{ role: "user", content }],
       });
 
-      const geminiResult = await geminiModel.generateContent(geminiParts);
-      const rawText = geminiResult.response.text();
-      console.log(`[analyze-meal] Gemini raw response: ${rawText?.slice(0, 200)}`);
+      const rawText = completion.choices[0]?.message?.content || "{}";
       let parsed: any;
       try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
 
@@ -222,7 +207,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
-      console.log('[analyze-meal] Gemini items:', JSON.stringify(items, null, 2));
+      console.log('[analyze-meal] AI items:', JSON.stringify(items, null, 2));
       const sumCalories = items.reduce((s: number, item: any) => s + (parseFloat(item.calories) || 0), 0);
       const sumProtein  = items.reduce((s: number, item: any) => s + (parseFloat(item.protein)  || 0), 0);
       const sumFat      = items.reduce((s: number, item: any) => s + (parseFloat(item.fat)      || 0), 0);
@@ -236,16 +221,8 @@ export default async function handler(req: any, res: any) {
         carbs:    Math.round(sumCarbs),
       });
     } catch (error: any) {
-      console.error("[analyze-meal] Gemini Error:", {
-        message: error.message,
-        status: error.status,
-        statusText: error.statusText,
-        errorDetails: error.errorDetails,
-      });
-      return res.status(500).json({
-        error: error.message || "Failed to analyze image",
-        status: error.status,
-      });
+      console.error("Analyze-meal OpenAI Error:", error);
+      return res.status(500).json({ error: error.message || "Failed to analyze image" });
     }
   }
 
