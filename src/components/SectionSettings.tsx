@@ -105,6 +105,39 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
           </div>
         </div>
       </div>
+
+      {/* AIのしゃべり方 */}
+      <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5 space-y-4">
+        <div>
+          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">AIのしゃべり方</h3>
+          <p className="text-xs text-zinc-600 mt-1">AIトレーナーのトーンを選べます</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { value: 'buddy', label: '伴走型', desc: '友達感覚で一緒に' },
+            { value: 'coach', label: 'コーチ型', desc: '短く、現実的に' },
+            { value: 'stoic', label: 'ストイック型', desc: '数字中心で淡々と' },
+            { value: 'cheer', label: '励まし型', desc: 'まず受け止めて次へ' },
+          ] as const).map(({ value, label, desc }) => {
+            const selected = (goals.trainerStyle || 'buddy') === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setGoals({ ...goals, trainerStyle: value })}
+                className={`p-3 rounded-2xl border text-left transition-all ${
+                  selected
+                    ? 'bg-lime-400/10 border-lime-400/40 text-lime-400'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                }`}
+              >
+                <div className={`text-xs font-black ${selected ? 'text-lime-400' : 'text-white'}`}>{label}</div>
+                <div className="text-[10px] mt-0.5 text-zinc-500">{desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

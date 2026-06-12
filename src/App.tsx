@@ -166,7 +166,7 @@ export default function App() {
           ? `[画像を送信]${m.text ? ' ' + m.text : ''}`
           : m.text,
       }));
-      const response = await fetch('/api/chat-trainer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ message: text, images, history, workouts: tWorkout ? [tWorkout] : [], meals: tMeals, userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs } }) });
+      const response = await fetch('/api/chat-trainer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ message: text, images, history, workouts: tWorkout ? [tWorkout] : [], meals: tMeals, userData: { weight: cWeight || 0, targetWeight: goals.targetWeight, calories: goals.calories, protein: goals.protein, fat: goals.fat, carbs: goals.carbs, trainerStyle: goals.trainerStyle || 'buddy' } }) });
       const data = await response.json(); setChats(prev => [...prev, { id: safeUUID(), role: 'assistant', text: data?.text || 'エラーが発生しました。', exercises: Array.isArray(data?.exercises) ? data.exercises : [], timestamp: new Date().toISOString() }]);
     } catch (error: any) { if (error.name !== 'AbortError') alert('AIとの通信に失敗しました。'); } finally { setSending(false); abortRef.current = null; }
   };

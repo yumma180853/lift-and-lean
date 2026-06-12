@@ -38,6 +38,7 @@ export interface UserGoals {
   fat: number;
   carbs: number;
   targetWeight: number;
+  trainerStyle?: 'buddy' | 'coach' | 'stoic' | 'cheer';
 }
 
 export interface ChatMessage {
