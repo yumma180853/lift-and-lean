@@ -1,21 +1,30 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Plus, Camera, Calendar, Sparkles, Trash2 } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
 
 export interface SectionDietProps {
   todayMeals: Meal[];
+  allMeals: Meal[];
   addMeal: (meal: Omit<Meal, 'id'>) => void;
   deleteMeal: (id: string) => void;
   goals: UserGoals;
 }
 
-export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionDietProps) {
+export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }: SectionDietProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [mealName, setMealName] = useState('');
   const [calories, setCalories] = useState('');
   const [protein, setProtein] = useState('');
   const [fat, setFat] = useState('');
   const [carbs, setCarbs] = useState('');
+  const suggestions = useMemo(() => {
+    const seen = new Map<string, Meal>();
+    [...allMeals].sort((a, b) => b.date.localeCompare(a.date)).forEach(m => {
+      if (!seen.has(m.name)) seen.set(m.name, m);
+    });
+    return Array.from(seen.values()).slice(0, 5);
+  }, [allMeals]);
+
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [isAiResult, setIsAiResult] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -155,6 +164,29 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
                 <span className="text-[9px] font-bold text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 tracking-widest font-mono uppercase">AI推定</span>
               )}
             </div>
+            {!isAiResult && mealName === '' && suggestions.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[9px] text-zinc-600 font-bold tracking-widest uppercase font-mono">最近の食品</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.map(s => (
+                    <button
+                      type="button"
+                      key={s.name}
+                      onClick={() => {
+                        setMealName(s.name);
+                        setCalories(String(s.calories));
+                        setProtein(String(s.protein));
+                        setFat(String(s.fat));
+                        setCarbs(String(s.carbs));
+                      }}
+                      className="text-[10px] text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-full px-2.5 py-1 font-medium"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <input
               id="meal-name-input"
               type="text"
