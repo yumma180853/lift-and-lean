@@ -40,10 +40,17 @@ function getPFCFeedback(
   goalProtein: number
 ): string {
   const remaining = Math.max(0, Math.round(goalProtein - protein));
+  const pRate = goalProtein > 0 ? protein / goalProtein : 0;
   switch (status) {
     case 'no_record':     return '今日はまだ記録がないよ。1食でも入れてみて。';
-    case 'p_low':         return `Pあと${remaining}g。プロテイン1杯で届くよ。`;
-    case 'p_low_cal_low': return '食事量もPも少なめ。次は鶏むねやサラダチキンを1品足してみて。';
+    case 'p_low':
+      return pRate >= 0.5
+        ? `Pあと${remaining}g。次は鶏むねやプロテインで届かせよう。`
+        : `Pあと${remaining}g。プロテイン1杯で届くよ。`;
+    case 'p_low_cal_low':
+      return pRate >= 0.5
+        ? `Pあと${remaining}g。次は鶏むねやプロテインで届かせよう。`
+        : '食事量もPも少なめ。次は鶏むねやサラダチキンを1品足してみて。';
     case 'f_high_p_low':  return '脂質が多めでPはまだ少ない。次はサラダチキンや豆腐が合いそう。';
     case 'f_high':        return '脂質はやや多め。次は低脂質なタンパク質に寄せよう。';
     case 'cal_over':      return '今日はしっかり食べた日。明日から戻せばOK。';
@@ -288,13 +295,13 @@ export function SectionDashboard({
                 {Math.round(todayStats.protein)}g <span className="text-zinc-600">/ {goals.protein}g</span>
               </span>
             </div>
-            <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: '#3A3A46' }}>
+            <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#3A3A46' }}>
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${Math.min(100, pProgress)}%`,
                   background: 'linear-gradient(to right, #FF2D75, #FF4D8D, #FF6FA8)',
-                  boxShadow: '0 0 10px rgba(255, 77, 141, 0.18)',
+                  boxShadow: '0 0 8px rgba(255, 77, 141, 0.13)',
                 }}
               />
             </div>
