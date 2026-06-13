@@ -11,6 +11,48 @@ import {
 } from 'lucide-react';
 import { Workout, Meal, UserGoals, WeightRecord, StreakData } from '../types';
 
+type PFCStatus =
+  | 'no_record' | 'p_low' | 'p_low_cal_low' | 'f_high_p_low'
+  | 'f_high' | 'cal_over' | 'cal_low' | 'good' | 'balanced';
+
+function evaluatePFC(
+  stats: { protein: number; fat: number; calories: number },
+  goals: { protein: number; fat: number; calories: number },
+  hasMeals: boolean
+): PFCStatus {
+  if (!hasMeals) return 'no_record';
+  const p   = goals.protein  > 0 ? stats.protein  / goals.protein  : null;
+  const f   = goals.fat      > 0 ? stats.fat       / goals.fat      : null;
+  const cal = goals.calories > 0 ? stats.calories  / goals.calories : null;
+  if (p !== null && p < 0.7 && cal !== null && cal < 0.6) return 'p_low_cal_low';
+  if (p !== null && p < 0.7 && f !== null && f > 1.2)    return 'f_high_p_low';
+  if (p !== null && p < 0.7)                              return 'p_low';
+  if (f !== null && f > 1.2)                              return 'f_high';
+  if (cal !== null && cal > 1.2)                          return 'cal_over';
+  if (cal !== null && cal < 0.6)                          return 'cal_low';
+  if (p !== null && p >= 0.85)                            return 'good';
+  return 'balanced';
+}
+
+function getPFCFeedback(
+  status: PFCStatus,
+  protein: number,
+  goalProtein: number
+): string {
+  const remaining = Math.max(0, Math.round(goalProtein - protein));
+  switch (status) {
+    case 'no_record':     return '今日はまだ記録がないよ。1食でも入れてみて。';
+    case 'p_low':         return `Pあと${remaining}g。プロテイン1杯で届くよ。`;
+    case 'p_low_cal_low': return '食事量もPも少なめ。次は鶏むねやサラダチキンを1品足してみて。';
+    case 'f_high_p_low':  return '脂質が多めでPはまだ少ない。次はサラダチキンや豆腐が合いそう。';
+    case 'f_high':        return '脂質はやや多め。次は低脂質なタンパク質に寄せよう。';
+    case 'cal_over':      return '今日はしっかり食べた日。明日から戻せばOK。';
+    case 'cal_low':       return '今日は少なめ。意図的ならOK、無理な制限は避けよう。';
+    case 'good':          return 'Pしっかり取れてる。この調子。';
+    case 'balanced':      return 'カロリーは良い感じ。PFCもかなり整ってる。';
+  }
+}
+
 export interface SectionDashboardProps {
   todayStats: { calories: number; protein: number; fat: number; carbs: number };
   goals: UserGoals;
@@ -151,6 +193,9 @@ export function SectionDashboard({
   const fProgress = goals.fat > 0 ? (todayStats.fat / goals.fat) * 100 : 0;
   const cProgress = goals.carbs > 0 ? (todayStats.carbs / goals.carbs) * 100 : 0;
 
+  const pfcStatus = evaluatePFC(todayStats, goals, todayMeals.length > 0);
+  const pfcFeedback = getPFCFeedback(pfcStatus, todayStats.protein, goals.protein);
+
   return (
     <div className="space-y-5 pb-24">
       {/* HEADER WELCOME */}
@@ -233,6 +278,25 @@ export function SectionDashboard({
             <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: `${cProgress}%` }} /></div>
           </div>
         </div>
+
+        {/* タンパク質バー + PFCフィードバック */}
+        {goals.protein > 0 && (
+          <div className="space-y-2 pt-1">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-black text-zinc-500 tracking-widest uppercase font-mono">今日のタンパク質</span>
+              <span className={`text-[10px] font-mono font-bold ${pProgress >= 70 ? 'text-lime-400' : 'text-zinc-400'}`}>
+                {Math.round(todayStats.protein)}g <span className="text-zinc-600">/ {goals.protein}g</span>
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${pProgress >= 80 ? 'bg-lime-400' : pProgress >= 50 ? 'bg-zinc-500' : 'bg-zinc-700'}`}
+                style={{ width: `${Math.min(100, pProgress)}%` }}
+              />
+            </div>
+            <p className="text-xs text-zinc-400 pt-0.5">{pfcFeedback}</p>
+          </div>
+        )}
       </div>
 
       {/* 2️⃣ WORKOUT QUICK SUMMARY */}
