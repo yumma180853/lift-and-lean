@@ -288,10 +288,14 @@ export function SectionDashboard({
                 {Math.round(todayStats.protein)}g <span className="text-zinc-600">/ {goals.protein}g</span>
               </span>
             </div>
-            <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden">
+            <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: '#3A3A46' }}>
               <div
-                className={`h-full rounded-full transition-all duration-500 ${pProgress >= 80 ? 'bg-lime-400' : pProgress >= 50 ? 'bg-zinc-500' : 'bg-zinc-700'}`}
-                style={{ width: `${Math.min(100, pProgress)}%` }}
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, pProgress)}%`,
+                  background: 'linear-gradient(to right, #FF2D75, #FF4D8D, #FF6FA8)',
+                  boxShadow: '0 0 10px rgba(255, 77, 141, 0.18)',
+                }}
               />
             </div>
             <p className="text-xs text-zinc-400 pt-0.5">{pfcFeedback}</p>
