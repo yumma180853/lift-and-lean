@@ -32,10 +32,13 @@ export function SectionAITrainer({
 }: SectionAITrainerProps) {
   const [inputText, setInputText] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, isSending]);
+  useEffect(() => {
+    const el = scrollAreaRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [chatMessages, isSending]);
 
   // 🚨【大手術】チャット側にも「自動画像圧縮機能」をがっちり搭載！
   // スマホの巨大な生写真を一瞬で超軽量化し、容量上限による真っ白クラッシュを完全に根絶します！
@@ -80,7 +83,7 @@ export function SectionAITrainer({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pt-2 pb-4">
+      <div ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pt-2 pb-4">
         {chatMessages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
             <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700"><MessageSquare size={32} /></div>
@@ -144,7 +147,6 @@ export function SectionAITrainer({
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <div className="space-y-2 py-4 border-t border-zinc-800 flex-shrink-0">
