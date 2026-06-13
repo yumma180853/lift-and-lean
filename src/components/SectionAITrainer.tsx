@@ -72,7 +72,7 @@ export function SectionAITrainer({
   };
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - max(1.5rem, env(safe-area-inset-top)) - 80px)' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px)' }}>
       <header className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 bg-lime-400 rounded-full flex items-center justify-center text-black"><Sparkles size={20} /></div>
@@ -149,7 +149,7 @@ export function SectionAITrainer({
         )}
       </div>
 
-      <div className="space-y-2 py-4 border-t border-zinc-800 flex-shrink-0">
+      <div className="space-y-2 pt-4 border-t border-zinc-800 flex-shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         {pendingImages.length > 0 && (
           <div className="flex gap-2 bg-zinc-900/50 p-2.5 rounded-2xl border border-zinc-800/80 items-center overflow-x-auto">
             {pendingImages.map((img, i) => (
