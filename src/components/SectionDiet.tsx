@@ -148,13 +148,13 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
               </div>
             </div>
           )}
-          {isAiResult && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-bold text-zinc-400 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 tracking-widest font-mono uppercase">AI推定</span>
-            </div>
-          )}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-400" htmlFor="meal-name-input">食事名 / メニュー</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-zinc-400" htmlFor="meal-name-input">食事名 / メニュー</label>
+              {isAiResult && (
+                <span className="text-[9px] font-bold text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 tracking-widest font-mono uppercase">AI推定</span>
+              )}
+            </div>
             <input
               id="meal-name-input"
               type="text"
@@ -212,7 +212,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
             </div>
           </div>
           {isAiResult && (
-            <p className="text-[11px] text-zinc-500 text-center">量が違う場合は、保存前に調整できます</p>
+            <p className="text-[10px] text-zinc-600 text-center -mt-1">量が違う場合は、保存前に調整できます</p>
           )}
           <div className="flex gap-2">
             <button type="submit" className="flex-1 bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm shadow-md">
