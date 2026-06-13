@@ -17,6 +17,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
   const [fat, setFat] = useState('');
   const [carbs, setCarbs] = useState('');
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [isAiResult, setIsAiResult] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +51,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
     setProtein('');
     setFat('');
     setCarbs('');
+    setIsAiResult(false);
     setIsAdding(false);
   };
 
@@ -100,6 +102,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
         setProtein(String(Math.round(data.protein || 0)));
         setFat(String(Math.round(data.fat || 0)));
         setCarbs(String(Math.round(data.carbs || 0)));
+        setIsAiResult(true);
       } else {
         alert('画像の解析に失敗しました。手動で入力してください。');
       }
@@ -126,7 +129,7 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
           </button>
           <button
             type="button"
-            onClick={() => setIsAdding(!isAdding)}
+            onClick={() => { setIsAdding(!isAdding); setIsAiResult(false); }}
             className="bg-lime-400 text-black px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 shadow-lg shadow-lime-400/20"
           >
             <Plus size={16} /> 手動追加
@@ -143,6 +146,11 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
               <div className="flex items-center gap-1.5 text-lime-400 font-bold text-xs animate-pulse">
                 <Sparkles size={14} /> <span>AI食事解析中...</span>
               </div>
+            </div>
+          )}
+          {isAiResult && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-bold text-zinc-400 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 tracking-widest font-mono uppercase">AI推定</span>
             </div>
           )}
           <div className="space-y-2">
@@ -203,11 +211,14 @@ export function SectionDiet({ todayMeals, addMeal, deleteMeal, goals }: SectionD
               />
             </div>
           </div>
+          {isAiResult && (
+            <p className="text-[11px] text-zinc-500 text-center">量が違う場合は、保存前に調整できます</p>
+          )}
           <div className="flex gap-2">
             <button type="submit" className="flex-1 bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm shadow-md">
               保存する
             </button>
-            <button type="button" onClick={() => setIsAdding(false)} className="flex-1 bg-zinc-800 text-white py-2.5 rounded-xl font-bold text-sm">
+            <button type="button" onClick={() => { setIsAdding(false); setIsAiResult(false); }} className="flex-1 bg-zinc-800 text-white py-2.5 rounded-xl font-bold text-sm">
               キャンセル
             </button>
           </div>
