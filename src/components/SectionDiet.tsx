@@ -20,7 +20,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
   const suggestions = useMemo(() => {
     const seen = new Map<string, Meal>();
     [...allMeals].sort((a, b) => b.date.localeCompare(a.date)).forEach(m => {
-      if (!seen.has(m.name)) seen.set(m.name, m);
+      if (m.name.length > 2 && !seen.has(m.name)) seen.set(m.name, m);
     });
     return Array.from(seen.values()).slice(0, 5);
   }, [allMeals]);
@@ -165,9 +165,9 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
               )}
             </div>
             {!isAiResult && mealName === '' && suggestions.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[9px] text-zinc-600 font-bold tracking-widest uppercase font-mono">最近の食品</p>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="space-y-1">
+                <p className="text-[9px] text-zinc-700 tracking-wider font-mono">最近の食品</p>
+                <div className="flex gap-2 overflow-x-auto pb-0.5">
                   {suggestions.map(s => (
                     <button
                       type="button"
@@ -179,7 +179,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
                         setFat(String(s.fat));
                         setCarbs(String(s.carbs));
                       }}
-                      className="text-[10px] text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-full px-2.5 py-1 font-medium"
+                      className="shrink-0 text-[10px] text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-full px-2.5 py-1 font-medium"
                     >
                       {s.name}
                     </button>
