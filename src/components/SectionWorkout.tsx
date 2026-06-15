@@ -62,7 +62,7 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
   };
 
   return (
-    <div className="grid grid-cols-5 text-xs py-2 border-b border-zinc-800/50 last:border-0 items-center justify-between gap-1">
+    <div className="grid grid-cols-[1.8rem_5fr_3fr_3fr_1.8rem] text-xs py-2 border-b border-zinc-800/50 last:border-0 items-center justify-between gap-1">
       <div className="text-zinc-400 font-mono pl-1">SET {idx + 1}</div>
       <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center">
         <input type="number" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
@@ -129,7 +129,7 @@ function ExerciseCard({ exercise, workoutId, previousSet, addSet, deleteExercise
       </div>
       <div className="p-4 space-y-2">
         {exercise.sets.length > 0 ? (
-          <div className="grid grid-cols-5 text-[10px] font-bold text-zinc-500 uppercase pb-2 border-b border-zinc-800 gap-1">
+          <div className="grid grid-cols-[1.8rem_5fr_3fr_3fr_1.8rem] text-[10px] font-bold text-zinc-500 uppercase pb-2 border-b border-zinc-800 gap-1">
             <div>SET</div>
             <div className="text-center">KG (重量)</div>
             <div className="text-center">REPS (回数)</div>
