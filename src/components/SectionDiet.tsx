@@ -147,6 +147,8 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
         <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" multiple className="hidden" />
       </div>
 
+      <p className="text-[10px] text-zinc-600 -mt-3">写真はAI解析のため外部サービスに送信されます</p>
+
       {isAdding && (
         <form onSubmit={handleManualAdd} className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 relative">
           {aiAnalyzing && (

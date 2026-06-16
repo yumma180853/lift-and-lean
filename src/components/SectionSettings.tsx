@@ -141,6 +141,18 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
           })}
         </div>
       </div>
+
+      {/* プライバシーポリシー */}
+      <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5">
+        <a
+          href="/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-bold text-zinc-400 hover:text-lime-400 transition-colors"
+        >
+          プライバシーポリシー
+        </a>
+      </div>
     </div>
   );
 }
