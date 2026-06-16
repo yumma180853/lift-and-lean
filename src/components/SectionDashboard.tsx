@@ -250,7 +250,7 @@ export function SectionDashboard({
               <h3 className="font-bold text-white text-sm">今日の栄養摂取状況</h3>
             </div>
           </div>
-          <button type="button" onClick={() => setActiveTab('diet')} className="text-[10px] font-black text-indigo-400 hover:text-white transition-colors uppercase font-mono tracking-wider bg-indigo-400/5 border border-indigo-400/10 px-2.5 py-1 rounded-xl" > 食事ログへ </button>
+          <button type="button" onClick={() => setActiveTab('diet')} className="shrink-0 whitespace-nowrap leading-none text-[10px] font-black text-indigo-400 hover:text-white transition-colors uppercase font-mono tracking-wider bg-indigo-400/5 border border-indigo-400/10 px-2.5 py-1 rounded-xl" > 食事ログへ </button>
         </div>
 
         <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-2xl flex items-center justify-between">
