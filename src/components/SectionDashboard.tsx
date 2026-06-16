@@ -319,7 +319,7 @@ export function SectionDashboard({
             <h4 className="font-bold text-white text-sm">{todayWorkout ? `${todayWorkout.exercises.length} 種目のログが記録中` : '今日のトレーニングは未記録'}</h4>
           </div>
         </div>
-        <button type="button" onClick={() => setActiveTab('workout')} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 text-white font-black px-4 py-3 rounded-xl text-xs uppercase italic tracking-wider active:scale-95 transition-all" >
+        <button type="button" onClick={() => setActiveTab('workout')} className="shrink-0 whitespace-nowrap bg-zinc-950 border border-zinc-850 hover:border-zinc-700 text-white font-black px-4 py-3 rounded-xl text-xs uppercase italic tracking-wider leading-none active:scale-95 transition-all" >
           {todayWorkout ? '開く' : '記録開始'}
         </button>
       </div>
