@@ -290,7 +290,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
           ))}
         </div>
       ) : (
-        <div className="h-[40vh] flex flex-col items-center justify-center text-center space-y-4 p-8">
+        <div className="flex flex-col items-center text-center space-y-4 py-10 px-8">
           <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
             <Calendar size={32} />
           </div>
