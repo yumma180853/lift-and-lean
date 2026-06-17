@@ -312,9 +312,9 @@ export function SectionDashboard({
 
       {/* 2️⃣ WORKOUT QUICK SUMMARY */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400"><Dumbbell size={22} /></div>
-          <div>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400 shrink-0"><Dumbbell size={22} /></div>
+          <div className="min-w-0">
             <span className="text-[9px] font-black tracking-widest text-lime-400 uppercase font-mono block">TRAINING TODAY</span>
             <h4 className="font-bold text-white text-sm break-keep">{todayWorkout ? `${todayWorkout.exercises.length} 種目のログが記録中` : '今日のトレーニングは未記録'}</h4>
           </div>
