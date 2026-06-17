@@ -290,7 +290,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center text-center space-y-4 px-8" style={{ minHeight: 'calc(50dvh - 80px)' }}>
+        <div className="flex flex-col items-center justify-center text-center space-y-4 px-8" style={{ minHeight: 'calc(60dvh - 80px)' }}>
           <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
             <Calendar size={32} />
           </div>
