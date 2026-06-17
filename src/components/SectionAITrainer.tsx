@@ -85,7 +85,7 @@ export function SectionAITrainer({
 
       <div ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pt-2 pb-4">
         {chatMessages.length === 0 && (
-          <div className="flex flex-col items-center text-center px-8 pt-20 space-y-4">
+          <div className="flex flex-col items-center text-center px-8 pt-12 space-y-4">
             <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700"><MessageSquare size={32} /></div>
             <div>
               <p className="text-white font-bold">LIFT & LEAN AI</p>
