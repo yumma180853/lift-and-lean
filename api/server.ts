@@ -108,6 +108,42 @@ export default async function handler(req: any, res: any) {
     return res.json({ publicKey: pubKey });
   }
 
+  // 朝通知 cron（vercel.json: "0 22 * * *" = JST 7:00）VercelCronはGETで叩く
+  // CRON_SECRET が設定されている場合は Authorization: Bearer <CRON_SECRET> を検証する
+  if (req.url.includes("cron-morning-reminder")) {
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const auth = req.headers['authorization'] ?? '';
+      if (auth !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+    const pubKey = process.env.VAPID_PUBLIC_KEY;
+    const privKey = process.env.VAPID_PRIVATE_KEY;
+    if (!pubKey || !privKey) return res.status(503).json({ error: "VAPID keys not configured" });
+    try {
+      const raw = await kv.get<string>("push:subscription");
+      if (!raw) {
+        console.log("cron-morning-reminder: no subscription saved, skipping");
+        return res.json({ skipped: true });
+      }
+      const subscription = typeof raw === "string" ? JSON.parse(raw) : raw;
+      webpush.setVapidDetails("mailto:admin@lift-lean.app", pubKey, privKey);
+      await webpush.sendNotification(
+        subscription,
+        JSON.stringify({ title: "Lift & Lean", body: "おはよう。今日も1食だけ記録してみよう。", icon: "/icon.png" })
+      );
+      console.log("cron-morning-reminder: notification sent");
+      return res.json({ success: true });
+    } catch (e: any) {
+      console.error("cron-morning-reminder error:", e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -132,31 +168,6 @@ export default async function handler(req: any, res: any) {
       return res.json({ success: true });
     } catch (e: any) {
       console.error("delete-subscription error:", e);
-      return res.status(500).json({ error: e.message });
-    }
-  }
-
-  // 朝通知 cron（vercel.json: "0 22 * * *" = JST 7:00）
-  if (req.url.includes("cron-morning-reminder")) {
-    const pubKey = process.env.VAPID_PUBLIC_KEY;
-    const privKey = process.env.VAPID_PRIVATE_KEY;
-    if (!pubKey || !privKey) return res.status(503).json({ error: "VAPID keys not configured" });
-    try {
-      const raw = await kv.get<string>("push:subscription");
-      if (!raw) {
-        console.log("cron-morning-reminder: no subscription saved, skipping");
-        return res.json({ skipped: true });
-      }
-      const subscription = typeof raw === "string" ? JSON.parse(raw) : raw;
-      webpush.setVapidDetails("mailto:admin@lift-lean.app", pubKey, privKey);
-      await webpush.sendNotification(
-        subscription,
-        JSON.stringify({ title: "Lift & Lean", body: "おはよう。今日も1食だけ記録してみよう。", icon: "/icon.png" })
-      );
-      console.log("cron-morning-reminder: notification sent");
-      return res.json({ success: true });
-    } catch (e: any) {
-      console.error("cron-morning-reminder error:", e);
       return res.status(500).json({ error: e.message });
     }
   }
