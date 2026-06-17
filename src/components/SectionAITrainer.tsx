@@ -85,7 +85,7 @@ export function SectionAITrainer({
 
       <div ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pt-2 pb-4">
         {chatMessages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center px-8 space-y-4 pb-16">
+          <div className="h-full flex flex-col items-center justify-center text-center px-8 space-y-4 pt-28">
             <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700"><MessageSquare size={32} /></div>
             <div>
               <p className="text-white font-bold">LIFT & LEAN AI</p>
@@ -149,7 +149,7 @@ export function SectionAITrainer({
         )}
       </div>
 
-      <div className="space-y-2 pt-4 border-t border-zinc-800 flex-shrink-0" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+      <div className="space-y-2 pt-4 border-t border-zinc-800 flex-shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         {pendingImages.length > 0 && (
           <div className="flex gap-2 bg-zinc-900/50 p-2.5 rounded-2xl border border-zinc-800/80 items-center overflow-x-auto">
             {pendingImages.map((img, i) => (
