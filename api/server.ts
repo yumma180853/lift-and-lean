@@ -3,6 +3,7 @@ import path from "path";
 import OpenAI from "openai";
 import webpush from "web-push";
 import dotenv from "dotenv";
+import { kv } from "@vercel/kv";
 
 dotenv.config();
 
@@ -109,6 +110,55 @@ export default async function handler(req: any, res: any) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Push subscription 保存
+  if (req.url.includes("save-subscription")) {
+    const { subscription } = req.body;
+    if (!subscription) return res.status(400).json({ error: "subscription required" });
+    try {
+      await kv.set("push:subscription", JSON.stringify(subscription));
+      return res.json({ success: true });
+    } catch (e: any) {
+      console.error("save-subscription error:", e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // Push subscription 削除（通知OFF時）
+  if (req.url.includes("delete-subscription")) {
+    try {
+      await kv.del("push:subscription");
+      return res.json({ success: true });
+    } catch (e: any) {
+      console.error("delete-subscription error:", e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // 朝通知 cron（vercel.json: "0 22 * * *" = JST 7:00）
+  if (req.url.includes("cron-morning-reminder")) {
+    const pubKey = process.env.VAPID_PUBLIC_KEY;
+    const privKey = process.env.VAPID_PRIVATE_KEY;
+    if (!pubKey || !privKey) return res.status(503).json({ error: "VAPID keys not configured" });
+    try {
+      const raw = await kv.get<string>("push:subscription");
+      if (!raw) {
+        console.log("cron-morning-reminder: no subscription saved, skipping");
+        return res.json({ skipped: true });
+      }
+      const subscription = typeof raw === "string" ? JSON.parse(raw) : raw;
+      webpush.setVapidDetails("mailto:admin@lift-lean.app", pubKey, privKey);
+      await webpush.sendNotification(
+        subscription,
+        JSON.stringify({ title: "Lift & Lean", body: "おはよう。今日も1食だけ記録してみよう。", icon: "/icon.png" })
+      );
+      console.log("cron-morning-reminder: notification sent");
+      return res.json({ success: true });
+    } catch (e: any) {
+      console.error("cron-morning-reminder error:", e);
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   // プッシュ通知送信

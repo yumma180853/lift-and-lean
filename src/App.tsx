@@ -214,6 +214,7 @@ export default function App() {
           await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub, action: 'unsubscribe' }) });
           await sub.unsubscribe();
         }
+        await fetch('/api/delete-subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         setRemind(false);
         alert('リマインダー通知をオフにしました。');
       } else {
@@ -227,8 +228,9 @@ export default function App() {
         const convertedKey = urlBase64ToUint8Array(publicKey);
         const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: convertedKey });
         setRemind(true);
+        await fetch('/api/save-subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) });
         await fetch('/api/send-test-notification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) });
-        alert('リマインダー通知をオンにしました！毎朝7時に、体重が未入力の場合にお知らせします。');
+        alert('リマインダー通知をオンにしました！毎朝7時にお知らせします。');
       }
     } catch (e) {
       console.error('通知設定エラー:', e);
