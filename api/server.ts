@@ -128,13 +128,20 @@ export default async function handler(req: any, res: any) {
       const raw = await kv.get<string>("push:subscription");
       if (!raw) {
         console.log("cron-morning-reminder: no subscription saved, skipping");
-        return res.json({ skipped: true });
+        return res.json({ skipped: true, reason: "no subscription" });
+      }
+      // 今日すでに体重を記録済みなら通知しない（数値は保存しない・日付のみ確認）
+      const todayJST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const lastRecorded = await kv.get<string>("weight:last-recorded-date");
+      if (lastRecorded === todayJST) {
+        console.log("cron-morning-reminder: weight already recorded today, skipping");
+        return res.json({ skipped: true, reason: "already recorded" });
       }
       const subscription = typeof raw === "string" ? JSON.parse(raw) : raw;
       webpush.setVapidDetails("mailto:admin@lift-lean.app", pubKey, privKey);
       await webpush.sendNotification(
         subscription,
-        JSON.stringify({ title: "Lift & Lean", body: "おはよう。今日も1食だけ記録してみよう。", icon: "/icon.png" })
+        JSON.stringify({ title: "体重記録のリマインダー", body: "おはようございます。今日の体重を測って記録しましょう。", icon: "/icon.png" })
       );
       console.log("cron-morning-reminder: notification sent");
       return res.json({ success: true });
@@ -146,6 +153,19 @@ export default async function handler(req: any, res: any) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // 体重を記録した日付だけ保存（数値は保存しない）
+  if (req.url.includes("save-weight-date")) {
+    const { date } = req.body;
+    if (!date || typeof date !== 'string') return res.status(400).json({ error: "date required" });
+    try {
+      await kv.set("weight:last-recorded-date", date);
+      return res.json({ success: true });
+    } catch (e: any) {
+      console.error("save-weight-date error:", e);
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   // Push subscription 保存
@@ -182,7 +202,7 @@ export default async function handler(req: any, res: any) {
     try {
       webpush.setVapidDetails('mailto:admin@lift-lean.app', pubKey, privKey);
       await webpush.sendNotification(subscription, JSON.stringify({
-        title: 'Lift & Lean', body: 'おはようございます！今日の体重を記録しましょう 💪', icon: '/icon.png'
+        title: '体重記録のリマインダー', body: 'おはようございます。今日の体重を測って記録しましょう。', icon: '/icon.png'
       }));
       return res.json({ success: true });
     } catch (e: any) {

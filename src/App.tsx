@@ -280,6 +280,7 @@ export default function App() {
   const addWeight = (w: number) => {
     const r = { id: safeUUID(), date: today, weight: w }, i = weights.findIndex(x => x.date === today);
     if (i > -1) { const u = [...weights]; u[i] = r; setWeights(u); } else { setWeights([...weights, r]); }
+    fetch('/api/save-weight-date', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: today }) }).catch(() => {});
   };
 
   return (
