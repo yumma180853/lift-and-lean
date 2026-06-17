@@ -149,7 +149,7 @@ export function SectionAITrainer({
         )}
       </div>
 
-      <div className="space-y-2 pt-4 border-t border-zinc-800 flex-shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+      <div className="space-y-2 pt-4 border-t border-zinc-800 flex-shrink-0" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
         {pendingImages.length > 0 && (
           <div className="flex gap-2 bg-zinc-900/50 p-2.5 rounded-2xl border border-zinc-800/80 items-center overflow-x-auto">
             {pendingImages.map((img, i) => (
