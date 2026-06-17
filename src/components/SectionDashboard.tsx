@@ -213,7 +213,7 @@ export function SectionDashboard({
             LIFT & LEAN
           </h1>
         </div>
-        <button type="button" onClick={openWeightModal} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 p-3 rounded-2xl text-center active:scale-95 transition-all" >
+        <button type="button" onClick={openWeightModal} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 p-3 rounded-2xl text-center active:scale-95 transition-all min-w-max" >
           <span className="text-[9px] font-black tracking-widest text-zinc-500 block uppercase font-mono">WEIGHT</span>
           <span className="text-sm font-mono font-black text-lime-400 whitespace-nowrap">{currentWeight ? `${currentWeight}kg` : '未測定'}</span>
         </button>
