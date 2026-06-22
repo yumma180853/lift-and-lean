@@ -111,21 +111,23 @@ function ExerciseCard({ exercise, workoutId, previousSet, addSet, deleteExercise
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-      <div className="p-4 bg-zinc-850 flex justify-between items-center whitespace-nowrap">
-        <div className="flex items-center gap-3">
-          <h3 className="font-bold text-white flex items-center gap-2">
-            {exercise.name}
-            {exercise.sets.length > 0 && (
-              <span className="text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold transition-all animate-pulse">
-                推定 {estimatedCalories}kcal
-              </span>
-            )}
-          </h3>
-          <button type="button" onClick={() => deleteExercise(workoutId, exercise.id)} className="px-2 py-1 rounded-lg transition-all flex items-center justify-center gap-1 text-[10px] font-extrabold text-zinc-500 hover:text-rose-500 hover:bg-zinc-800" >
-            <Trash2 size={13} />
-          </button>
+      <div className="p-4 flex items-center gap-2 min-w-0">
+        {/* 左：種目名 + バッジ + 削除 */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="font-bold text-white text-sm truncate">{exercise.name}</h3>
+            <button type="button" onClick={() => deleteExercise(workoutId, exercise.id)} className="shrink-0 p-1 rounded-lg transition-all text-zinc-500 hover:text-rose-500 hover:bg-zinc-800" >
+              <Trash2 size={13} />
+            </button>
+          </div>
+          {exercise.sets.length > 0 && (
+            <span className="inline-block mt-1 text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold animate-pulse">
+              推定 {estimatedCalories}kcal
+            </span>
+          )}
         </div>
-        <button type="button" onClick={() => { const lastSet = exercise.sets[exercise.sets.length - 1]; const fallback = previousSet ?? { weight: 0, reps: 10 }; const defaultWeight = lastSet ? lastSet.weight : fallback.weight; const defaultReps = lastSet ? lastSet.reps : fallback.reps; addSet(workoutId, exercise.id, defaultWeight, defaultReps); }} className="text-[10px] font-black uppercase text-lime-400 border border-lime-400/30 px-2.5 py-1.5 rounded-lg hover:bg-lime-400/10 transition-colors" > セットを追加 </button>
+        {/* 右：セット追加（shrink-0で常に表示） */}
+        <button type="button" onClick={() => { const lastSet = exercise.sets[exercise.sets.length - 1]; const fallback = previousSet ?? { weight: 0, reps: 10 }; const defaultWeight = lastSet ? lastSet.weight : fallback.weight; const defaultReps = lastSet ? lastSet.reps : fallback.reps; addSet(workoutId, exercise.id, defaultWeight, defaultReps); }} className="shrink-0 text-[10px] font-black uppercase text-lime-400 border border-lime-400/30 px-2.5 py-1.5 rounded-lg hover:bg-lime-400/10 transition-colors" >セットを追加</button>
       </div>
       <div className="p-4 space-y-2">
         {exercise.sets.length > 0 ? (
