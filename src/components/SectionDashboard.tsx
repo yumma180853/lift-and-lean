@@ -206,16 +206,18 @@ export function SectionDashboard({
   return (
     <div className="space-y-5 pb-24">
       {/* HEADER WELCOME */}
-      <div className="flex justify-between items-center bg-zinc-900/40 border border-zinc-900 p-4 rounded-3xl">
+      <div className="flex justify-between items-center bg-gradient-to-br from-zinc-900 to-zinc-900/60 border border-zinc-800 p-4 rounded-3xl shadow-lg">
         <div>
-          <span className="text-[10px] font-black tracking-widest text-zinc-500 uppercase font-mono">WELCOME BACK</span>
-          <h1 className="text-lg font-black text-white italic uppercase tracking-wide">
+          <span className="text-[9px] font-black tracking-widest text-zinc-500 uppercase font-mono">WELCOME BACK</span>
+          <h1 className="text-lg font-black text-white italic uppercase tracking-wide mt-0.5">
             LIFT & LEAN
           </h1>
+          <span className="text-[10px] text-zinc-600 font-mono">{new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' })}</span>
         </div>
-        <button type="button" onClick={openWeightModal} className="bg-zinc-950 border border-zinc-850 hover:border-zinc-700 p-3 rounded-2xl text-center active:scale-95 transition-all min-w-max" >
+        <button type="button" onClick={openWeightModal} className="bg-zinc-950 border border-zinc-700 hover:border-zinc-600 px-4 py-2.5 rounded-2xl text-center active:scale-95 transition-all min-w-max" >
           <span className="text-[9px] font-black tracking-widest text-zinc-500 block uppercase font-mono">WEIGHT</span>
-          <span className="text-sm font-mono font-black text-lime-400 whitespace-nowrap">{currentWeight ? `${currentWeight}kg` : '未測定'}</span>
+          <span className="text-xl font-mono font-black text-lime-400 whitespace-nowrap leading-tight">{currentWeight ?? '–'}</span>
+          <span className="text-[9px] font-mono text-zinc-600 block">kg</span>
         </button>
       </div>
 
@@ -241,93 +243,101 @@ export function SectionDashboard({
       )}
 
       {/* 1️⃣ TODAY'S ENERGY ACCUMULATOR */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-5">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl space-y-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-indigo-400/10 rounded-lg text-indigo-400"><Utensils size={18} /></div>
+            <div className="p-1.5 bg-indigo-400/15 rounded-lg text-indigo-400"><Utensils size={17} /></div>
             <div>
               <span className="text-[9px] font-black tracking-widest text-indigo-400 uppercase font-mono">NUTRITION SUMMARY</span>
-              <h3 className="font-bold text-white text-sm">今日の栄養摂取状況</h3>
+              <h3 className="font-bold text-white text-sm">今日の栄養</h3>
             </div>
           </div>
-          <button type="button" onClick={() => setActiveTab('diet')} className="shrink-0 whitespace-nowrap leading-none text-[10px] font-black text-indigo-400 hover:text-white transition-colors uppercase font-mono tracking-wider bg-indigo-400/5 border border-indigo-400/10 px-2.5 py-1 rounded-xl" > 食事ログへ </button>
+          <button type="button" onClick={() => setActiveTab('diet')} className="shrink-0 whitespace-nowrap leading-none text-[10px] font-black text-indigo-400 hover:text-white transition-colors font-mono tracking-wider bg-indigo-400/8 border border-indigo-400/20 px-3 py-1.5 rounded-full" >食事ログへ →</button>
         </div>
 
-        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-2xl flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[10px] font-black text-zinc-500 font-mono tracking-widest uppercase block">ENERGY CONSUMED</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-black font-mono text-white tracking-tight">{Math.round(todayStats.calories)}</span>
-              <span className="text-xs font-bold text-zinc-500 font-mono">/ {goals.calories} KCAL</span>
+        {/* カロリー行: 大きいconic-gradientリング */}
+        <div className="bg-zinc-950 px-4 py-3 border border-zinc-800 rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[9px] font-black text-zinc-500 font-mono tracking-widest uppercase block">TODAY'S ENERGY</span>
+            <div className="flex items-baseline gap-1.5 mt-1.5">
+              <span className="text-3xl font-black font-mono text-white tracking-tight leading-none">{Math.round(todayStats.calories)}</span>
+              <span className="text-xs font-bold text-zinc-500 font-mono">/ {goals.calories}</span>
+            </div>
+            <span className="text-[9px] font-bold text-zinc-600 font-mono tracking-wider mt-0.5 block">KCAL</span>
+          </div>
+          {/* conic-gradient ring */}
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
+            background: `conic-gradient(#a3e635 0% ${Math.min(100, calProgress)}%, #27272a ${Math.min(100, calProgress)}% 100%)`,
+            position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', width: 52, height: 52, background: '#09090b',
+              borderRadius: '50%', top: '50%', left: '50%',
+              transform: 'translate(-50%,-50%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span className="text-sm font-black text-lime-400 font-mono leading-none">{Math.round(calProgress)}%</span>
             </div>
           </div>
-          <div className="w-12 h-12 rounded-full border-4 border-zinc-900 flex items-center justify-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-indigo-500/10" />
-            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 transition-all duration-300" style={{ height: `${Math.min(100, calProgress)}%` }} />
-            <span className="text-[10px] font-black text-white z-10 font-mono">{Math.round(calProgress)}%</span>
+        </div>
+
+        {/* カロリー進捗バー */}
+        <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden -mt-1">
+          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, calProgress)}%`, background: 'linear-gradient(90deg, #84cc16, #a3e635)' }} />
+        </div>
+
+        {/* PFCグリッド: 数値を大きく */}
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="bg-zinc-950 p-3 border border-zinc-800 rounded-2xl">
+            <div className="text-[8px] font-black text-rose-400 font-mono tracking-widest uppercase">PROTEIN</div>
+            <div className="text-2xl font-black font-mono text-white mt-1 leading-none">{Math.round(todayStats.protein)}</div>
+            <div className="text-[9px] text-zinc-600 font-mono mt-0.5">/ {goals.protein}g</div>
+            <div className="w-full h-0.5 bg-zinc-800 rounded-full overflow-hidden mt-2"><div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pProgress)}%`, background: 'linear-gradient(90deg,#f43f5e,#ff6b88)' }} /></div>
+          </div>
+          <div className="bg-zinc-950 p-3 border border-zinc-800 rounded-2xl">
+            <div className="text-[8px] font-black text-amber-400 font-mono tracking-widest uppercase">FAT</div>
+            <div className="text-2xl font-black font-mono text-white mt-1 leading-none">{Math.round(todayStats.fat)}</div>
+            <div className="text-[9px] text-zinc-600 font-mono mt-0.5">/ {goals.fat}g</div>
+            <div className="w-full h-0.5 bg-zinc-800 rounded-full overflow-hidden mt-2"><div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, fProgress)}%`, background: 'linear-gradient(90deg,#f59e0b,#fbbf24)' }} /></div>
+          </div>
+          <div className="bg-zinc-950 p-3 border border-zinc-800 rounded-2xl">
+            <div className="text-[8px] font-black text-blue-400 font-mono tracking-widest uppercase">CARBS</div>
+            <div className="text-2xl font-black font-mono text-white mt-1 leading-none">{Math.round(todayStats.carbs)}</div>
+            <div className="text-[9px] text-zinc-600 font-mono mt-0.5">/ {goals.carbs}g</div>
+            <div className="w-full h-0.5 bg-zinc-800 rounded-full overflow-hidden mt-2"><div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, cProgress)}%`, background: 'linear-gradient(90deg,#3b82f6,#60a5fa)' }} /></div>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
-            <div className="flex justify-between text-[10px] font-black text-rose-400 font-mono tracking-wider"><span>P (プロテイン)</span><span>{Math.round(pProgress)}%</span></div>
-            <div className="text-base font-black font-mono text-white">{Math.round(todayStats.protein)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.protein}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all" style={{ width: `${pProgress}%` }} /></div>
-          </div>
-          <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
-            <div className="flex justify-between text-[10px] font-black text-amber-400 font-mono tracking-wider"><span>F (脂質)</span><span>{Math.round(fProgress)}%</span></div>
-            <div className="text-base font-black font-mono text-white">{Math.round(todayStats.fat)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.fat}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all" style={{ width: `${fProgress}%` }} /></div>
-          </div>
-          <div className="bg-zinc-950 p-3 border border-zinc-900 rounded-2xl space-y-2">
-            <div className="flex justify-between text-[10px] font-black text-blue-400 font-mono tracking-wider"><span>C (炭水化物)</span><span>{Math.round(cProgress)}%</span></div>
-            <div className="text-base font-black font-mono text-white">{Math.round(todayStats.carbs)}<span className="text-[10px] text-zinc-500 font-normal ml-0.5">g</span><span className="text-[9px] text-zinc-600 block">/ {goals.carbs}g</span></div>
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all" style={{ width: `${cProgress}%` }} /></div>
-          </div>
-        </div>
-
-        {/* タンパク質バー + PFCフィードバック */}
+        {/* PFCフィードバック */}
         {goals.protein > 0 && (
-          <div className="space-y-2 pt-1">
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] font-black text-zinc-500 tracking-widest uppercase font-mono">今日のタンパク質</span>
-              <span className={`text-[10px] font-mono font-bold ${pProgress >= 70 ? 'text-lime-400' : 'text-zinc-400'}`}>
-                {Math.round(todayStats.protein)}g <span className="text-zinc-600">/ {goals.protein}g</span>
-              </span>
-            </div>
-            <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#3A3A46' }}>
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, pProgress)}%`,
-                  background: 'linear-gradient(to right, #FF2D75, #FF4D8D, #FF6FA8)',
-                  boxShadow: '0 0 8px rgba(255, 77, 141, 0.13)',
-                }}
-              />
-            </div>
-            <p className="text-xs text-zinc-400 pt-0.5">{pfcFeedback}</p>
+          <div className="px-3 py-2.5 rounded-xl border" style={{ background: 'rgba(244,63,94,0.05)', borderColor: 'rgba(244,63,94,0.15)' }}>
+            <p className="text-xs text-zinc-400 leading-relaxed">{pfcFeedback}</p>
           </div>
         )}
       </div>
 
       {/* 2️⃣ WORKOUT QUICK SUMMARY */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl flex items-center gap-4">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="p-3 bg-lime-400/10 rounded-2xl text-lime-400 shrink-0"><Dumbbell size={22} /></div>
-          <div className="min-w-0">
-            <span className="text-[9px] font-black tracking-widest text-lime-400 uppercase font-mono block">TRAINING TODAY</span>
-            {todayWorkout
-              ? <h4 className="font-bold text-white text-sm">{todayWorkout.exercises.length} 種目のログが記録中</h4>
-              : <h4 className="font-bold text-white text-sm">今日のトレーニング<br /><span className="whitespace-nowrap">未記録</span></h4>
-            }
-          </div>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl flex items-center gap-3">
+        <div className="p-2.5 bg-lime-400/12 rounded-2xl text-lime-400 shrink-0" style={{ boxShadow: '0 0 14px rgba(163,230,53,0.1)' }}><Dumbbell size={22} /></div>
+        <div className="min-w-0 flex-1">
+          <span className="text-[9px] font-black tracking-widest text-lime-400 uppercase font-mono block">TRAINING TODAY</span>
+          {todayWorkout
+            ? <>
+                <h4 className="font-bold text-white text-sm mt-0.5">{todayWorkout.exercises.length} 種目記録中</h4>
+                {todayWorkout.exercises.length > 0 && (
+                  <p className="text-[10px] text-zinc-600 mt-0.5 truncate">{todayWorkout.exercises.map(e => e.name).slice(0, 3).join(' · ')}</p>
+                )}
+              </>
+            : <h4 className="font-bold text-white text-sm mt-0.5">今日のトレーニング未記録</h4>
+          }
         </div>
-        <button type="button" onClick={() => setActiveTab('workout')} className="shrink-0 whitespace-nowrap bg-zinc-950 border border-zinc-850 hover:border-zinc-700 text-white font-black px-4 py-3 rounded-xl text-xs uppercase italic tracking-wider leading-none active:scale-95 transition-all" >
+        <button type="button" onClick={() => setActiveTab('workout')} className="shrink-0 whitespace-nowrap bg-lime-400 text-black font-black px-4 py-2.5 rounded-xl text-xs uppercase italic tracking-wider leading-none active:scale-95 transition-all border-none" style={{ boxShadow: '0 0 16px rgba(163,230,53,0.18)' }}>
           {todayWorkout ? '開く' : '記録開始'}
         </button>
       </div>
 
-      {/* 3️⃣ 5連ミニメーター (💡 UX改善：グラデーション対応版) */}
+      {/* 3️⃣ MUSCLE STATUS */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-xl space-y-3">
         <div className="flex items-center gap-1.5">
           <div className="p-1 bg-lime-400/10 rounded-md text-lime-400"><Activity size={14} /></div>
@@ -336,39 +346,41 @@ export function SectionDashboard({
 
         <div className="grid grid-cols-5 gap-1.5">
           {muscleStatuses.map(status => (
-            <div 
-              key={status.name} 
-              className={`bg-zinc-950/80 border rounded-xl p-2 text-center flex flex-col items-center justify-between min-h-[75px] relative overflow-hidden transition-all ${
-                status.isTrained 
-                  ? status.statusColor === 'rose' 
-                    ? 'border-rose-500/40 bg-rose-500/5 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
-                    : status.statusColor === 'amber' // 💡 改善：修復中（オレンジ）のスタイルを追加
-                      ? 'border-amber-500/40 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
-                      : 'border-lime-400/40 bg-lime-400/5 shadow-[0_0_15px_rgba(163,230,53,0.1)]'
-                  : 'border-zinc-900/60'
+            <div
+              key={status.name}
+              className={`bg-zinc-950 border rounded-xl p-2 text-center flex flex-col items-center justify-between min-h-[72px] transition-all ${
+                status.isTrained
+                  ? status.statusColor === 'rose'
+                    ? 'border-rose-500/40 bg-rose-500/5'
+                    : status.statusColor === 'amber'
+                      ? 'border-amber-500/40 bg-amber-500/5'
+                      : status.statusColor === 'emerald'
+                        ? 'border-emerald-500/40 bg-emerald-500/5'
+                        : 'border-lime-400/40 bg-lime-400/5'
+                  : 'border-zinc-800'
               }`}
             >
               <span className={`text-xs font-black font-mono tracking-tight ${status.isTrained ? 'text-white' : 'text-zinc-600'}`}>
                 {status.name}
               </span>
-              
-              <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden my-1.5">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    status.statusColor === 'rose' ? 'bg-rose-500' :
-                    status.statusColor === 'amber' ? 'bg-amber-500' : // 💡 改善：バーの色をオレンジに
-                    status.statusColor === 'lime' ? 'bg-lime-400 animate-pulse' :
-                    status.statusColor === 'emerald' ? 'bg-emerald-500' : 'bg-zinc-800'
-                  }`}
-                  style={{ width: `${status.progress}%` }}
+              <div className="w-full h-px bg-zinc-800 rounded-full overflow-hidden my-1.5">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${status.progress}%`,
+                    background:
+                      status.statusColor === 'rose'    ? '#f43f5e' :
+                      status.statusColor === 'amber'   ? 'linear-gradient(90deg,#d97706,#f59e0b)' :
+                      status.statusColor === 'lime'    ? 'linear-gradient(90deg,#84cc16,#a3e635)' :
+                      status.statusColor === 'emerald' ? '#10b981' : '#3f3f46',
+                  }}
                 />
               </div>
-              
-              <span className={`text-[9px] font-extrabold tracking-tighter block w-full text-center truncate ${
-                status.statusColor === 'rose' ? 'text-rose-400' :
-                status.statusColor === 'amber' ? 'text-amber-400' : // 💡 改善：文字の色をオレンジに
-                status.statusColor === 'lime' ? 'text-lime-400 font-black' :
-                status.statusColor === 'emerald' ? 'text-emerald-400' : 'text-zinc-650'
+              <span className={`text-[8px] font-black tracking-tight block w-full text-center truncate ${
+                status.statusColor === 'rose'    ? 'text-rose-400' :
+                status.statusColor === 'amber'   ? 'text-amber-400' :
+                status.statusColor === 'lime'    ? 'text-lime-400' :
+                status.statusColor === 'emerald' ? 'text-emerald-400' : 'text-zinc-600'
               }`}>
                 {status.statusText}
               </span>

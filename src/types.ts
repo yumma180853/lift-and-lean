@@ -24,6 +24,7 @@ export interface Meal {
   protein: number;
   fat: number;
   carbs: number;
+  mealType?: string;
 }
 
 export interface WeightRecord {

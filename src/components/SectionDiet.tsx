@@ -10,6 +10,17 @@ export interface SectionDietProps {
   goals: UserGoals;
 }
 
+const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', 'プレWO', 'ポストWO'] as const;
+
+const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: string }> = {
+  '朝食':    { border: '#f59e0b', chip: 'rgba(245,158,11,0.12)', label: '#f59e0b' },
+  '昼食':    { border: '#a3e635', chip: 'rgba(163,230,53,0.12)', label: '#a3e635' },
+  '夕食':    { border: '#818cf8', chip: 'rgba(129,140,248,0.12)', label: '#818cf8' },
+  '間食':    { border: '#52525b', chip: 'rgba(113,113,122,0.1)', label: '#a1a1aa' },
+  'プレWO':  { border: '#f43f5e', chip: 'rgba(244,63,94,0.12)', label: '#f43f5e' },
+  'ポストWO':{ border: '#10b981', chip: 'rgba(16,185,129,0.12)', label: '#10b981' },
+};
+
 export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }: SectionDietProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [mealName, setMealName] = useState('');
@@ -17,6 +28,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
   const [protein, setProtein] = useState('');
   const [fat, setFat] = useState('');
   const [carbs, setCarbs] = useState('');
+  const [mealType, setMealType] = useState('');
   const suggestions = useMemo(() => {
     const seen = new Map<string, Meal>();
     [...allMeals].sort((a, b) => b.date.localeCompare(a.date)).forEach(m => {
@@ -41,6 +53,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
       protein: parseFloat(protein) || 0,
       fat: parseFloat(fat) || 0,
       carbs: parseFloat(carbs) || 0,
+      mealType: mealType || undefined,
     };
     addMeal(newMeal);
 
@@ -60,6 +73,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
     setProtein('');
     setFat('');
     setCarbs('');
+    setMealType('');
     setIsAiResult(false);
     setIsAdding(false);
   };
@@ -124,33 +138,86 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
     }
   };
 
+  // 今日の合計
+  const totalKcal    = todayMeals.reduce((s, m) => s + (m.calories || 0), 0);
+  const totalProtein = todayMeals.reduce((s, m) => s + (m.protein || 0), 0);
+  const totalFat     = todayMeals.reduce((s, m) => s + (m.fat || 0), 0);
+  const totalCarbs   = todayMeals.reduce((s, m) => s + (m.carbs || 0), 0);
+  const calPct       = goals.calories > 0 ? Math.min(100, (totalKcal / goals.calories) * 100) : 0;
+
   return (
-    <div className="space-y-6 pb-24">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-white">DIET LOG</h2>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 shadow-lg shadow-indigo-600/20"
-          >
-            <Camera size={16} /> AI写真解析
-          </button>
+    <div className="space-y-4 pb-24">
+      {/* HEADER */}
+      <div className="flex justify-between items-start">
+        <div>
+          <div className="text-[9px] font-black tracking-widest text-zinc-500 uppercase font-mono">DIET LOG</div>
+          <h2 className="text-lg font-black text-white italic uppercase tracking-wide mt-0.5">今日の食事</h2>
+          <div className="text-[10px] text-zinc-600 font-mono mt-0.5">{new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' })}</div>
+        </div>
+        <div className="flex flex-col gap-1.5 items-end">
           <button
             type="button"
             onClick={() => { setIsAdding(!isAdding); setIsAiResult(false); }}
-            className="bg-lime-400 text-black px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 shadow-lg shadow-lime-400/20"
+            className="bg-lime-400 text-black px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 active:scale-95 transition-all"
+            style={{ boxShadow: '0 0 14px rgba(163,230,53,0.18)' }}
           >
-            <Plus size={16} /> 手動追加
+            <Plus size={14} /> 手動追加
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-indigo-400 px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all border"
+            style={{ background: 'rgba(129,140,248,0.08)', borderColor: 'rgba(129,140,248,0.2)' }}
+          >
+            <Camera size={14} /> AI写真解析
           </button>
         </div>
         <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" multiple className="hidden" />
       </div>
 
-      <p className="text-[10px] text-zinc-600 -mt-3">写真はAI解析のため外部サービスに送信されます</p>
+      {/* DAY SUMMARY */}
+      {todayMeals.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-lg">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[9px] font-black text-zinc-500 font-mono uppercase tracking-widest">TODAY'S TOTAL</span>
+            <span className="text-[10px] font-mono font-bold text-zinc-500">{todayMeals.length}食</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <div className="text-center">
+              <div className="text-lg font-black font-mono text-white leading-none">{Math.round(totalKcal)}</div>
+              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">KCAL</div>
+            </div>
+            <div className="w-px h-8 bg-zinc-800" />
+            <div className="text-center">
+              <div className="text-lg font-black font-mono text-rose-400 leading-none">{Math.round(totalProtein)}</div>
+              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">P(g)</div>
+            </div>
+            <div className="w-px h-8 bg-zinc-800" />
+            <div className="text-center">
+              <div className="text-lg font-black font-mono text-amber-400 leading-none">{Math.round(totalFat)}</div>
+              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">F(g)</div>
+            </div>
+            <div className="w-px h-8 bg-zinc-800" />
+            <div className="text-center">
+              <div className="text-lg font-black font-mono text-blue-400 leading-none">{Math.round(totalCarbs)}</div>
+              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">C(g)</div>
+            </div>
+            <div className="w-px h-8 bg-zinc-800" />
+            <div className="text-center">
+              <div className="text-lg font-black font-mono text-lime-400 leading-none">{Math.round(calPct)}%</div>
+              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">目標</div>
+            </div>
+          </div>
+          <div className="mt-2.5 h-1 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${calPct}%`, background: 'linear-gradient(90deg,#84cc16,#a3e635)' }} />
+          </div>
+        </div>
+      )}
+
+      <p className="text-[10px] text-zinc-700">写真はAI解析のため外部サービスに送信されます</p>
 
       {isAdding && (
-        <form onSubmit={handleManualAdd} className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl space-y-4 relative">
+        <form onSubmit={handleManualAdd} className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4 relative">
           {aiAnalyzing && (
             <div className="absolute inset-0 bg-black/80 rounded-2xl flex flex-col items-center justify-center space-y-3 z-10">
               <div className="w-10 h-10 border-4 border-lime-400 border-t-transparent rounded-full animate-spin" />
@@ -159,6 +226,33 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
               </div>
             </div>
           )}
+
+          {/* 食事タイプ チップ */}
+          <div>
+            <div className="text-[10px] font-bold text-zinc-500 mb-2">食事の種類（任意）</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {MEAL_TYPES.map(t => {
+                const style = MEAL_TYPE_STYLE[t];
+                const isActive = mealType === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setMealType(isActive ? '' : t)}
+                    className="text-[11px] font-bold px-3 py-1 rounded-full transition-all"
+                    style={{
+                      background: isActive ? style.chip : 'rgba(39,39,42,0.6)',
+                      color: isActive ? style.label : '#71717a',
+                      border: `1px solid ${isActive ? style.border + '44' : '#3f3f46'}`,
+                    }}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-zinc-400" htmlFor="meal-name-input">食事名 / メニュー</label>
@@ -266,37 +360,52 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
       )}
 
       {todayMeals.length > 0 ? (
-        <div className="space-y-4">
-          {todayMeals.map((meal) => (
-            <div key={meal.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-white text-sm">{meal.name}</h4>
-                <div className="flex gap-3 mt-1.5 text-xs font-mono text-zinc-500">
-                  <span>P: <strong className="text-white">{meal.protein}g</strong></span>
-                  <span>F: <strong className="text-white">{meal.fat}g</strong></span>
-                  <span>C: <strong className="text-white">{meal.carbs}g</strong></span>
+        <div className="space-y-2.5">
+          {todayMeals.map((meal) => {
+            const typeStyle = meal.mealType ? MEAL_TYPE_STYLE[meal.mealType] : null;
+            return (
+              <div
+                key={meal.id}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center"
+                style={typeStyle ? { borderLeft: `3px solid ${typeStyle.border}` } : undefined}
+              >
+                <div className="min-w-0 flex-1">
+                  {meal.mealType && typeStyle && (
+                    <span
+                      className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-1.5"
+                      style={{ background: typeStyle.chip, color: typeStyle.label, border: `1px solid ${typeStyle.border}33` }}
+                    >
+                      {meal.mealType}
+                    </span>
+                  )}
+                  <h4 className="font-bold text-white text-sm truncate">{meal.name}</h4>
+                  <div className="flex gap-2.5 mt-1 text-[11px] font-mono text-zinc-600">
+                    <span>P <strong className="text-rose-400">{meal.protein}g</strong></span>
+                    <span>F <strong className="text-amber-400">{meal.fat}g</strong></span>
+                    <span>C <strong className="text-blue-400">{meal.carbs}g</strong></span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 ml-3 shrink-0">
+                  <div className="text-right">
+                    <div className="font-black text-white text-lg font-mono leading-none">{meal.calories}</div>
+                    <div className="text-[9px] text-zinc-600 uppercase font-bold font-mono">kcal</div>
+                  </div>
+                  <button type="button" onClick={() => deleteMeal(meal.id)} className="text-zinc-700 hover:text-rose-400 transition-colors p-1">
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <div className="font-black text-lime-400 text-md font-mono">{meal.calories}</div>
-                  <div className="text-[9px] text-zinc-500 uppercase font-black">kcal</div>
-                </div>
-                <button type="button" onClick={() => deleteMeal(meal.id)} className="text-zinc-600 hover:text-rose-400 transition-colors">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center text-center space-y-4 px-8" style={{ height: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px - 100px)' }}>
-          <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
-            <Calendar size={32} />
+        <div className="flex flex-col items-center justify-center text-center space-y-4 px-8 pt-16" style={{ minHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px - 160px)' }}>
+          <div className="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-700">
+            <Calendar size={28} />
           </div>
           <div>
             <p className="text-white font-bold">今日の食事記録はありません</p>
-            <p className="text-zinc-500 text-sm mt-1">「AI写真解析」を使うと、料理の写真から自動でPFCとカロリーを割り出し、一撃で記録できます。</p>
+            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">「AI写真解析」を使うと、料理の写真から自動でPFCとカロリーを割り出し、一撃で記録できます。</p>
           </div>
         </div>
       )}

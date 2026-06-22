@@ -355,13 +355,28 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 px-6 py-4 flex items-center justify-between z-50">
-          <button onClick={() => setTab('dashboard')} className={`flex flex-col items-center gap-1 ${tab === 'dashboard' ? 'text-lime-400' : 'text-zinc-600'}`}><Activity size={24} /><span className="text-[10px] font-bold">ホーム</span></button>
-          <button onClick={() => setTab('workout')} className={`flex flex-col items-center gap-1 ${tab === 'workout' ? 'text-lime-400' : 'text-zinc-600'}`}><Dumbbell size={24} /><span className="text-[10px] font-bold">ログ</span></button>
-          <button onClick={() => setTab('diet')} className={`flex flex-col items-center gap-1 ${tab === 'diet' ? 'text-lime-400' : 'text-zinc-600'}`}><Utensils size={24} /><span className="text-[10px] font-bold">食事</span></button>
-          <button onClick={() => setTab('aitrainer')} className={`flex flex-col items-center gap-1 ${tab === 'aitrainer' ? 'text-lime-400' : 'text-zinc-600'}`}><Sparkles size={24} /><span className="text-[10px] font-bold">AI</span></button>
-          <button onClick={() => setTab('analysis')} className={`flex flex-col items-center gap-1 ${tab === 'analysis' ? 'text-lime-400' : 'text-zinc-600'}`}><BarChart3 size={24} /><span className="text-[10px] font-bold">分析</span></button>
-          <button onClick={() => setTab('settings')} className={`flex flex-col items-center gap-1 ${tab === 'settings' ? 'text-lime-400' : 'text-zinc-600'}`}><Settings size={24} /><span className="text-[10px] font-bold">設定</span></button>
+        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 px-3 py-2 flex items-center justify-between z-50" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+          {([
+            { id: 'dashboard',  Icon: Activity,  label: 'ホーム' },
+            { id: 'workout',    Icon: Dumbbell,  label: 'ログ' },
+            { id: 'diet',       Icon: Utensils,  label: '食事' },
+            { id: 'aitrainer',  Icon: Sparkles,  label: 'AI' },
+            { id: 'analysis',   Icon: BarChart3, label: '分析' },
+            { id: 'settings',   Icon: Settings,  label: '設定' },
+          ] as const).map(({ id, Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition-all active:scale-95 ${
+                tab === id
+                  ? 'text-lime-400 bg-lime-400/10 border border-lime-400/20'
+                  : 'text-zinc-600 border border-transparent'
+              }`}
+            >
+              <Icon size={22} />
+              <span className="text-[9px] font-bold">{label}</span>
+            </button>
+          ))}
         </nav>
       </div>
       <AnimatePresence>
