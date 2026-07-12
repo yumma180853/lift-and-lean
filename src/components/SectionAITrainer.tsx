@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, MessageSquare, Plus, Paperclip, Send, Square } from 'lucide-react';
+import { Sparkles, Paperclip, Send, Square } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ChatMessage, UserGoals, Workout, Tab } from '../types';
 
@@ -85,11 +85,28 @@ export function SectionAITrainer({
 
       <div ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pt-2 pb-4">
         {chatMessages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center px-8 space-y-4 pt-16">
-            <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700"><MessageSquare size={32} /></div>
+          <div className="h-full flex flex-col items-center justify-center text-center px-6 space-y-5 pt-16">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400/25 via-purple-500/25 to-lime-400/30 blur-xl" />
+              <div className="relative w-16 h-16 ll-card rounded-full flex items-center justify-center">
+                <Sparkles size={26} className="text-lime-400" />
+              </div>
+            </div>
             <div>
-              <p className="text-white font-bold">LIFT & LEAN AI</p>
-              <p className="text-zinc-500 text-sm mt-1">目標達成への課題、限界、理想を共有してください。最適な戦略を構築します。</p>
+              <p className="text-white font-bold">あなた専属のAIトレーナー</p>
+              <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">今日の食事・トレーニング記録を踏まえて、次の一手を一緒に考えます。</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 max-w-full">
+              {['今日のメニューを組んで', '食事のバランスどう？', 'モチベが上がらない'].map(chip => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => setInputText(chip)}
+                  className="ll-card rounded-full text-xs text-zinc-300 font-bold px-3.5 py-2 hover:border-lime-400/40 hover:text-white active:scale-95 transition-all whitespace-nowrap"
+                >
+                  {chip}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -106,10 +123,10 @@ export function SectionAITrainer({
                 )}
               </div>
             ) : (
-              <div className="bg-zinc-900 border border-zinc-800 text-zinc-100 p-4 rounded-3xl rounded-tl-sm max-w-[90%] text-sm leading-relaxed space-y-4 select-text shadow-md">
-                <p className="whitespace-pre-line">{msg.text}</p>
+              <div className="ll-card text-zinc-100 p-4 rounded-3xl rounded-tl-sm max-w-[90%] text-sm leading-relaxed space-y-4 select-text">
+                <p className="whitespace-pre-line break-words">{msg.text}</p>
                 {msg.exercises && msg.exercises.length > 0 && (
-                  <div className="bg-zinc-950 rounded-2xl p-4 border border-zinc-800 space-y-3">
+                  <div className="ll-inset p-4 space-y-3">
                     <div className="flex items-center gap-2"><Sparkles className="text-lime-400" size={16} /><span className="text-xs font-bold text-lime-400">AI推奨メニュー</span></div>
                     <div className="space-y-2">
                       {msg.exercises.map((ex, i) => (
