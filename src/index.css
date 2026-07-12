@@ -28,6 +28,13 @@ input[type='number']::-webkit-outer-spin-button {
   margin: 0;
 }
 
+@property --ring-p {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+@layer components {
 /* ---- カード（1種に統一） ---- */
 .ll-card {
   background: var(--ll-card-bg);
@@ -104,11 +111,6 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 /* カロリーリング：マウント時に0%から描画（@property対応ブラウザのみアニメ） */
-@property --ring-p {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 0%;
-}
 .ll-ring {
   border-radius: 50%;
   background: conic-gradient(var(--ll-lime) var(--ring-p), #27272a var(--ring-p));
@@ -123,4 +125,5 @@ input[type='number']::-webkit-outer-spin-button {
   overflow: hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
 }
