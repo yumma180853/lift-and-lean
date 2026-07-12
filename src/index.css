@@ -1,1 +1,126 @@
 @import "tailwindcss";
+
+/* ============================================
+   LIFT & LEAN — Design Tokens
+   全画面共通のカード・タイポ・アニメーション定義
+   ============================================ */
+
+:root {
+  --ll-lime: #a3e635;
+  --ll-lime-deep: #84cc16;
+  --ll-card-bg: rgba(24, 24, 27, 0.8);
+  --ll-card-bg-deep: #09090b;
+  --ll-card-border: rgba(255, 255, 255, 0.06);
+  --ll-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ---- カード（1種に統一） ---- */
+.ll-card {
+  background: var(--ll-card-bg);
+  border: 1px solid var(--ll-card-border);
+  border-radius: 1.25rem;
+}
+
+/* 主役カード：内側に微グラデ */
+.ll-card-hero {
+  background: linear-gradient(160deg, rgba(39, 39, 42, 0.9), rgba(24, 24, 27, 0.8) 55%);
+  border: 1px solid var(--ll-card-border);
+  border-radius: 1.25rem;
+}
+
+/* カード内のさらに深い面 */
+.ll-inset {
+  background: var(--ll-card-bg-deep);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 1rem;
+}
+
+/* ---- タイポグラフィ ---- */
+/* セクション見出し（英字ラベル） */
+.ll-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* 大きい数値（等幅・桁ブレなし） */
+.ll-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+/* ---- 発光（今日達成した要素だけに使う） ---- */
+.ll-glow {
+  box-shadow: 0 0 18px rgba(163, 230, 53, 0.18);
+}
+
+/* ---- アニメーション ---- */
+/* プログレスバー：左から伸びる */
+@keyframes ll-grow-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.ll-bar-fill {
+  transform-origin: left;
+  animation: ll-grow-x 0.7s var(--ll-ease);
+  transition: width 0.6s var(--ll-ease);
+}
+
+/* 要素の出現：ふわっとpop（記録直後のカード・トースト用） */
+@keyframes ll-pop {
+  0%   { transform: scale(0.94); opacity: 0; }
+  60%  { transform: scale(1.015); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ll-pop {
+  animation: ll-pop 0.28s var(--ll-ease);
+}
+
+/* 記録直後のlimeフラッシュ（1回だけ） */
+@keyframes ll-flash {
+  0%   { background-color: rgba(163, 230, 53, 0.16); }
+  100% { background-color: transparent; }
+}
+.ll-flash {
+  animation: ll-flash 0.8s ease-out;
+}
+
+/* カロリーリング：マウント時に0%から描画（@property対応ブラウザのみアニメ） */
+@property --ring-p {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+.ll-ring {
+  border-radius: 50%;
+  background: conic-gradient(var(--ll-lime) var(--ring-p), #27272a var(--ring-p));
+  transition: --ring-p 0.9s var(--ll-ease);
+}
+
+/* 長い名前対策（種目名・食事名用） */
+.ll-clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
