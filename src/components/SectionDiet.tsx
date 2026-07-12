@@ -177,39 +177,39 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
 
       {/* DAY SUMMARY */}
       {todayMeals.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-lg">
+        <div className="ll-card p-3.5">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-[9px] font-black text-zinc-500 font-mono uppercase tracking-widest">TODAY'S TOTAL</span>
+            <span className="ll-label text-zinc-500 text-[9px]">TODAY'S TOTAL</span>
             <span className="text-[10px] font-mono font-bold text-zinc-500">{todayMeals.length}食</span>
           </div>
           <div className="flex justify-between items-center">
             <div className="text-center">
-              <div className="text-lg font-black font-mono text-white leading-none">{Math.round(totalKcal)}</div>
-              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">KCAL</div>
+              <div className="ll-num text-lg text-white leading-none">{Math.round(totalKcal)}</div>
+              <div className="ll-label text-zinc-600 text-[8px] mt-0.5">KCAL</div>
             </div>
             <div className="w-px h-8 bg-zinc-800" />
             <div className="text-center">
-              <div className="text-lg font-black font-mono text-rose-400 leading-none">{Math.round(totalProtein)}</div>
-              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">P(g)</div>
+              <div className="ll-num text-lg text-rose-400 leading-none">{Math.round(totalProtein)}</div>
+              <div className="ll-label text-zinc-600 text-[8px] mt-0.5">P(g)</div>
             </div>
             <div className="w-px h-8 bg-zinc-800" />
             <div className="text-center">
-              <div className="text-lg font-black font-mono text-amber-400 leading-none">{Math.round(totalFat)}</div>
-              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">F(g)</div>
+              <div className="ll-num text-lg text-amber-400 leading-none">{Math.round(totalFat)}</div>
+              <div className="ll-label text-zinc-600 text-[8px] mt-0.5">F(g)</div>
             </div>
             <div className="w-px h-8 bg-zinc-800" />
             <div className="text-center">
-              <div className="text-lg font-black font-mono text-blue-400 leading-none">{Math.round(totalCarbs)}</div>
-              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">C(g)</div>
+              <div className="ll-num text-lg text-blue-400 leading-none">{Math.round(totalCarbs)}</div>
+              <div className="ll-label text-zinc-600 text-[8px] mt-0.5">C(g)</div>
             </div>
             <div className="w-px h-8 bg-zinc-800" />
             <div className="text-center">
-              <div className="text-lg font-black font-mono text-lime-400 leading-none">{Math.round(calPct)}%</div>
-              <div className="text-[8px] font-bold text-zinc-600 font-mono mt-0.5">目標</div>
+              <div className="ll-num text-lg text-lime-400 leading-none">{Math.round(calPct)}%</div>
+              <div className="ll-label text-zinc-600 text-[8px] mt-0.5">目標</div>
             </div>
           </div>
           <div className="mt-2.5 h-1 bg-zinc-800 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${calPct}%`, background: 'linear-gradient(90deg,#84cc16,#a3e635)' }} />
+            <div className="h-full rounded-full ll-bar-fill" style={{ width: `${calPct}%`, background: 'linear-gradient(90deg,#84cc16,#a3e635)' }} />
           </div>
         </div>
       )}
@@ -217,7 +217,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
       <p className="text-[10px] text-zinc-700">写真はAI解析のため外部サービスに送信されます</p>
 
       {isAdding && (
-        <form onSubmit={handleManualAdd} className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4 relative">
+        <form onSubmit={handleManualAdd} className="ll-card ll-pop p-5 space-y-4 relative">
           {aiAnalyzing && (
             <div className="absolute inset-0 bg-black/80 rounded-2xl flex flex-col items-center justify-center space-y-3 z-10">
               <div className="w-10 h-10 border-4 border-lime-400 border-t-transparent rounded-full animate-spin" />
@@ -354,8 +354,9 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
       )}
 
       {feedbackMsg && (
-        <div className="text-xs font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 rounded-xl px-4 py-2.5 animate-in fade-in duration-200">
-          {feedbackMsg}
+        <div className="ll-pop ll-glow flex items-center gap-2.5 text-xs font-bold text-lime-400 bg-lime-400/10 border border-lime-400/25 rounded-2xl px-4 py-3">
+          <span className="shrink-0 w-5 h-5 rounded-full bg-lime-400 text-black flex items-center justify-center text-[11px] font-black">✓</span>
+          <span className="min-w-0 break-words">{feedbackMsg.replace(/^✓\s*/, '')}</span>
         </div>
       )}
 
@@ -366,7 +367,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
             return (
               <div
                 key={meal.id}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center"
+                className="ll-card ll-pop p-4 flex justify-between items-center"
                 style={typeStyle ? { borderLeft: `3px solid ${typeStyle.border}` } : undefined}
               >
                 <div className="min-w-0 flex-1">
@@ -378,7 +379,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
                       {meal.mealType}
                     </span>
                   )}
-                  <h4 className="font-bold text-white text-sm truncate">{meal.name}</h4>
+                  <h4 className="font-bold text-white text-sm ll-clamp2">{meal.name}</h4>
                   <div className="flex gap-2.5 mt-1 text-[11px] font-mono text-zinc-600">
                     <span>P <strong className="text-rose-400">{meal.protein}g</strong></span>
                     <span>F <strong className="text-amber-400">{meal.fat}g</strong></span>
@@ -387,8 +388,8 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
                 </div>
                 <div className="flex items-center gap-3 ml-3 shrink-0">
                   <div className="text-right">
-                    <div className="font-black text-white text-lg font-mono leading-none">{meal.calories}</div>
-                    <div className="text-[9px] text-zinc-600 uppercase font-bold font-mono">kcal</div>
+                    <div className="ll-num text-lg text-white leading-none">{meal.calories}</div>
+                    <div className="ll-label text-zinc-600 text-[9px]">kcal</div>
                   </div>
                   <button type="button" onClick={() => deleteMeal(meal.id)} className="text-zinc-700 hover:text-rose-400 transition-colors p-1">
                     <Trash2 size={15} />
@@ -399,14 +400,31 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center text-center space-y-4 px-8 pt-16" style={{ minHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px - 160px)' }}>
-          <div className="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-700">
-            <Calendar size={28} />
+        <div className="flex flex-col items-center justify-center text-center space-y-5 px-8 pt-16" style={{ minHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px - 160px)' }}>
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-lime-400/10 blur-xl" />
+            <div className="relative w-16 h-16 ll-card rounded-full flex items-center justify-center text-lime-400/70">
+              <Camera size={26} />
+            </div>
           </div>
           <div>
-            <p className="text-white font-bold">今日の食事記録はありません</p>
-            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">「AI写真解析」を使うと、料理の写真から自動でPFCとカロリーを割り出し、一撃で記録できます。</p>
+            <p className="text-white font-bold">今日はまだ記録がありません</p>
+            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">料理の写真を撮るだけで、AIがPFCとカロリーを自動で割り出します。</p>
           </div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="ll-glow bg-lime-400 text-black px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 active:scale-95 transition-all"
+          >
+            <Camera size={16} /> 写真から記録する
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsAdding(true); setIsAiResult(false); }}
+            className="text-zinc-500 text-xs font-bold hover:text-white transition-colors"
+          >
+            手動で入力する
+          </button>
         </div>
       )}
     </div>
