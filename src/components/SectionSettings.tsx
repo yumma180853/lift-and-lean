@@ -23,12 +23,12 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
       </div>
 
       {/* リマインダー通知 */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5 space-y-3">
+      <div className="ll-card p-5 space-y-3">
         <div className="flex items-center gap-2 text-zinc-400">
           {remind ? <Bell size={16} className="text-lime-400" /> : <BellOff size={16} />}
-          <h3 className="text-xs font-bold uppercase tracking-wider">リマインダー通知</h3>
+          <h3 className="ll-label text-zinc-400 text-xs">リマインダー通知</h3>
         </div>
-        <div className="flex items-center justify-between bg-zinc-900/50 border border-zinc-900 rounded-2xl p-4">
+        <div className="flex items-center justify-between ll-inset p-4">
           <div className="space-y-0.5 flex-1 min-w-0 pr-4">
             <p className="text-sm font-bold text-white">毎朝の体重記録リマインダー</p>
             <p className="text-xs text-zinc-500">毎朝7時、体重が未入力の場合のみ通知</p>
@@ -50,69 +50,39 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
       </div>
 
       {/* 目標設定セクション */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5 space-y-4">
-        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">ターゲット目標</h3>
-        
-        <div className="space-y-4">
-          {/* 🚨【快適大改造】値が0の時は空文字にして、新しく打ちやすく調整！ */}
-          <div>
-            <label className="text-xs font-bold text-zinc-400 block mb-1.5">目標カロリー (kcal)</label>
-            <input
-              type="number"
-              placeholder="0"
-              value={goals.calories === 0 ? '' : goals.calories}
-              onChange={(e) => handleChange('calories', e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-lime-400 transition-all"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-zinc-400 block mb-1.5">目標タンパク質 (g)</label>
-            <input
-              type="number"
-              placeholder="0"
-              value={goals.protein === 0 ? '' : goals.protein}
-              onChange={(e) => handleChange('protein', e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-lime-400 transition-all"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-zinc-400 block mb-1.5">目標脂質 (g)</label>
-            <input
-              type="number"
-              placeholder="0"
-              value={goals.fat === 0 ? '' : goals.fat}
-              onChange={(e) => handleChange('fat', e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-lime-400 transition-all"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-zinc-400 block mb-1.5">目標炭水化物 (g)</label>
-            <input
-              type="number"
-              placeholder="0"
-              value={goals.carbs === 0 ? '' : goals.carbs}
-              onChange={(e) => handleChange('carbs', e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-lime-400 transition-all"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-zinc-400 block mb-1.5">目標体重 (kg)</label>
-            <input
-              type="number"
-              step="0.1"
-              placeholder="0.0"
-              value={goals.targetWeight === 0 ? '' : goals.targetWeight}
-              onChange={(e) => handleChange('targetWeight', e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full bg-zinc-900 border border-zinc-900 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-lime-400 transition-all"
-            />
-          </div>
+      <div className="ll-card p-5 space-y-3">
+        <h3 className="ll-label text-zinc-500 text-xs">ターゲット目標</h3>
+        <div className="ll-inset divide-y divide-zinc-900 overflow-hidden">
+          {([
+            { key: 'calories',     label: '目標カロリー',   unit: 'kcal', step: '1' },
+            { key: 'protein',      label: '目標タンパク質', unit: 'g',    step: '1' },
+            { key: 'fat',          label: '目標脂質',       unit: 'g',    step: '1' },
+            { key: 'carbs',        label: '目標炭水化物',   unit: 'g',    step: '1' },
+            { key: 'targetWeight', label: '目標体重',       unit: 'kg',   step: '0.1' },
+          ] as const).map(({ key, label, unit, step }) => (
+            <div key={key} className="flex items-center justify-between px-4 py-3 gap-3">
+              <label className="text-xs font-bold text-zinc-300 shrink-0" htmlFor={`goal-${key}`}>{label}</label>
+              <div className="flex items-baseline gap-1.5 min-w-0">
+                <input
+                  id={`goal-${key}`}
+                  type="number"
+                  step={step}
+                  placeholder="0"
+                  value={goals[key] === 0 ? '' : goals[key]}
+                  onChange={(e) => handleChange(key, e.target.value === '' ? 0 : Number(e.target.value))}
+                  className="w-24 min-w-0 bg-transparent text-right ll-num text-base text-lime-400 outline-none border-b border-transparent focus:border-lime-400/50 transition-colors"
+                />
+                <span className="text-[10px] text-zinc-500 font-mono shrink-0">{unit}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* AIのしゃべり方 */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5 space-y-4">
+      <div className="ll-card p-5 space-y-4">
         <div>
-          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">AIのしゃべり方</h3>
+          <h3 className="ll-label text-zinc-500 text-xs">AIのしゃべり方</h3>
           <p className="text-xs text-zinc-600 mt-1">AIトレーナーのトーンを選べます</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -143,7 +113,7 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
       </div>
 
       {/* プライバシーポリシー */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5">
+      <div className="ll-card p-5">
         <a
           href="/privacy"
           target="_blank"
