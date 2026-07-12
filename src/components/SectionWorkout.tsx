@@ -62,17 +62,17 @@ function SetRow({ set, idx, workoutId, exerciseId, updateSet, deleteSet }: SetRo
   };
 
   return (
-    <div className="grid grid-cols-[1.8rem_5fr_3fr_3fr_1.8rem] text-xs py-2 border-b border-zinc-800/50 last:border-0 items-center justify-between gap-1">
+    <div className="ll-flash grid grid-cols-[1.8rem_5fr_3fr_3fr_1.8rem] text-xs py-2 border-b border-zinc-800/50 last:border-0 items-center justify-between gap-1 rounded-lg">
       <div className="text-zinc-400 font-mono pl-1">SET {idx + 1}</div>
-      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center">
-        <input type="number" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
-        <span className="text-[9px] text-zinc-500 font-black ml-1">KG</span>
+      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center min-w-0">
+        <input type="number" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full min-w-0 bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
+        <span className="text-[9px] text-zinc-500 font-black ml-1 shrink-0">KG</span>
       </div>
-      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center">
-        <input type="number" step="1" value={reps} onChange={(e) => setReps(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
-        <span className="text-[9px] text-zinc-500 font-black ml-1">R</span>
+      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2.5 justify-center min-w-0">
+        <input type="number" step="1" value={reps} onChange={(e) => setReps(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full min-w-0 bg-transparent text-white font-mono text-center font-bold text-sm outline-none border-none p-0 focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
+        <span className="text-[9px] text-zinc-500 font-black ml-1 shrink-0">R</span>
       </div>
-      <div className="text-right text-lime-400 font-bold font-mono text-[11px] pr-2">
+      <div className="text-right text-lime-400 ll-num text-[11px] pr-2">
         {(!isNaN(parseFloat(weight)) && !isNaN(parseInt(reps, 10))) ? (parseFloat(weight) * parseInt(reps, 10)).toFixed(0) : 0}
       </div>
       <div className="text-right pr-1">
@@ -110,26 +110,26 @@ function ExerciseCard({ exercise, workoutId, previousSet, addSet, deleteExercise
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-      <div className="p-4 flex items-center gap-2 min-w-0">
-        {/* 左：種目名 + バッジ + 削除 */}
+    <div className="ll-card overflow-hidden max-w-full">
+      <div className="p-4 flex items-start gap-2 min-w-0">
+        {/* 左：種目名（2行まで折り返し）+ バッジ + 削除 */}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <h3 className="font-bold text-white text-sm truncate">{exercise.name}</h3>
+          <div className="flex items-start gap-1.5 min-w-0">
+            <h3 className="font-bold text-white text-sm ll-clamp2 min-w-0 max-w-full">{exercise.name}</h3>
             <button type="button" onClick={() => deleteExercise(workoutId, exercise.id)} className="shrink-0 p-1 rounded-lg transition-all text-zinc-500 hover:text-rose-500 hover:bg-zinc-800" >
               <Trash2 size={13} />
             </button>
           </div>
           {exercise.sets.length > 0 && (
-            <span className="inline-block mt-1 text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold animate-pulse">
-              推定 {estimatedCalories}kcal
+            <span className="inline-flex items-center whitespace-nowrap mt-1.5 text-[11px] bg-lime-400/10 border border-lime-400/20 text-lime-400 px-2 py-0.5 rounded-md font-mono font-bold">
+              🔥 推定 {estimatedCalories}kcal
             </span>
           )}
         </div>
         {/* 右：セット追加（shrink-0で常に表示） */}
-        <button type="button" onClick={() => { const lastSet = exercise.sets[exercise.sets.length - 1]; const fallback = previousSet ?? { weight: 0, reps: 10 }; const defaultWeight = lastSet ? lastSet.weight : fallback.weight; const defaultReps = lastSet ? lastSet.reps : fallback.reps; addSet(workoutId, exercise.id, defaultWeight, defaultReps); }} className="shrink-0 text-[10px] font-black uppercase text-lime-400 border border-lime-400/30 px-2.5 py-1.5 rounded-lg hover:bg-lime-400/10 transition-colors" >セットを追加</button>
+        <button type="button" onClick={() => { const lastSet = exercise.sets[exercise.sets.length - 1]; const fallback = previousSet ?? { weight: 0, reps: 10 }; const defaultWeight = lastSet ? lastSet.weight : fallback.weight; const defaultReps = lastSet ? lastSet.reps : fallback.reps; addSet(workoutId, exercise.id, defaultWeight, defaultReps); }} className="shrink-0 whitespace-nowrap text-[10px] font-black uppercase text-lime-400 border border-lime-400/30 px-2.5 py-1.5 rounded-lg hover:bg-lime-400/10 active:scale-95 transition-all" >+ セット</button>
       </div>
-      <div className="p-4 space-y-2">
+      <div className="p-4 pt-0 space-y-2">
         {exercise.sets.length > 0 ? (
           <div className="grid grid-cols-[1.8rem_5fr_3fr_3fr_1.8rem] text-[10px] font-bold text-zinc-500 uppercase pb-2 border-b border-zinc-800 gap-1">
             <div>SET</div>
@@ -217,12 +217,17 @@ export function SectionWorkout({ todayWorkout, workouts, addWorkout, addExercise
               return sum + kcal;
             }, 0);
             return (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-3 flex justify-between items-center">
-                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">今日の合計</span>
-                <div className="flex gap-4 text-xs font-mono">
-                  <span className="text-zinc-400">{totalSets} セット</span>
-                  <span className="text-zinc-400">総負荷 {totalVol.toLocaleString()}kg</span>
-                  <span className="text-lime-400 font-bold">消費目安 {totalKcal}kcal</span>
+              <div className="ll-card-hero px-5 py-4">
+                <span className="ll-label text-zinc-500 text-[9px]">TODAY'S TOTAL — 積み上げ</span>
+                <div className="flex items-end justify-between gap-3 mt-2 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="ll-num text-3xl text-white leading-none">{totalVol.toLocaleString()}<span className="text-xs text-zinc-500 font-medium ml-1">kg</span></div>
+                    <div className="text-[10px] text-zinc-500 font-bold mt-1">総負荷ボリューム</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-mono text-zinc-400">{totalSets} セット</div>
+                    <div className="text-xs font-mono font-bold text-lime-400 mt-0.5">🔥 消費目安 {totalKcal}kcal</div>
+                  </div>
                 </div>
               </div>
             );
@@ -233,7 +238,7 @@ export function SectionWorkout({ todayWorkout, workouts, addWorkout, addExercise
               <Plus size={18} /> 種目を追加
             </button>
           ) : (
-            <div className="bg-zinc-900 p-5 rounded-2xl border border-lime-400/40 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="ll-card ll-pop p-5 space-y-5" style={{ borderColor: 'rgba(163,230,53,0.35)' }}>
               <div className="space-y-2">
                 <label className="text-[10px] font-black tracking-widest text-zinc-400 uppercase flex items-center gap-1"><Award size={12} /> クイック追加（部位別メニュー）</label>
                 
@@ -270,12 +275,15 @@ export function SectionWorkout({ todayWorkout, workouts, addWorkout, addExercise
         </div>
       ) : (
         <div className="h-[40vh] flex flex-col items-center justify-center text-center space-y-4 p-8">
-          <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
-            <Dumbbell size={32} />
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-lime-400/10 blur-xl" />
+            <div className="relative w-16 h-16 ll-card rounded-full flex items-center justify-center text-lime-400/70">
+              <Dumbbell size={28} />
+            </div>
           </div>
           <div>
             <p className="text-white font-bold">今日の記録はありません</p>
-            <p className="text-zinc-500 text-sm mt-1">限界を突破しましょう。記録を開始して成果を可視化。改善への一歩を。</p>
+            <p className="text-zinc-500 text-sm mt-1">1セット記録するだけで、今日の積み上げが始まります。</p>
           </div>
         </div>
       )}

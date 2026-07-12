@@ -294,7 +294,7 @@ export default function App() {
               {tab === 'workout' && (selDate === null ? (
                 <div className="space-y-4 pb-24">
                   <div className="flex items-center gap-2 text-lime-400 font-black italic text-xl uppercase tracking-wider mb-2"><Dumbbell size={24} /> <span>TRAINING LOGS</span></div>
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-top-4 duration-200">
+                  <div className="ll-card p-4 space-y-3">
                     <div className="flex justify-between items-center px-1">
                       <div className="text-xs font-black text-white font-mono uppercase tracking-wider">{cYear}年 {cMonth + 1}月 のスタンプ</div>
                       <div className="flex gap-1.5">
@@ -318,7 +318,7 @@ export default function App() {
                   <div className="pt-2">
                     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                       {['すべて', '胸', '背中', '肩', '腕', '脚', '腹筋'].map(cat => (
-                        <button key={cat} type="button" onClick={() => setSelFilter(cat)} className={`px-4 py-2 rounded-xl text-xs font-black tracking-wider transition-all whitespace-nowrap active:scale-95 ${selFilter === cat ? 'bg-lime-400 text-black shadow-md shadow-lime-400/10' : 'bg-zinc-900 border border-zinc-850 text-zinc-400 hover:text-white'}`} Orient-Category={cat} >{cat} {selFilter === cat && '✓'}</button>
+                        <button key={cat} type="button" onClick={() => setSelFilter(cat)} className={`px-4 py-2 rounded-xl text-xs font-black tracking-wider transition-all whitespace-nowrap active:scale-95 ${selFilter === cat ? 'bg-lime-400 text-black shadow-md shadow-lime-400/10' : 'bg-zinc-900 border border-zinc-850 text-zinc-400 hover:text-white'}`} >{cat} {selFilter === cat && '✓'}</button>
                       ))}
                     </div>
                   </div>
@@ -328,7 +328,7 @@ export default function App() {
                       {filteredWorkouts.map(w => {
                         const totalSets = w.exercises.reduce((sum, e) => sum + e.sets.length, 0);
                         return (
-                          <div key={w.id} onClick={() => setSelDate(w.date)} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer group" >
+                          <div key={w.id} onClick={() => setSelDate(w.date)} className="ll-card p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer group" >
                             <div className="space-y-1 max-w-[65%]"><div className="text-sm font-mono font-bold text-white flex items-center gap-2">{w.date.replace(/-/g, '/')} {w.date === today && <span className="inline-flex items-center leading-none whitespace-nowrap text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>}</div><div className="text-xs text-zinc-400 truncate">{w.exercises.map(e => e.name).join(', ')}</div></div>
                             <div className="flex items-center gap-3 shrink-0"><div className="text-right"><span className="inline-flex items-center leading-none whitespace-nowrap text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg">{w.exercises.length}種目 / {totalSets}SET</span></div><button type="button" onClick={(e) => { e.stopPropagation(); if (confirm(`${w.date.replace(/-/g, '/')} の履歴を一覧から非表示にしますか？\n（カレンダーや分析グラフの記録はそのまま残ります）`)) { setHiddenDates(p => [...p, w.date]); } }} className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-900 rounded-xl transition-colors" ><Trash2 size={15} /></button></div>
                           </div>
