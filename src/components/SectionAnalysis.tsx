@@ -17,7 +17,7 @@ import {
   Bar,
   Legend
 } from 'recharts';
-import { WeightRecord, Meal, Workout } from '../types';
+import { WeightRecord, Meal, Workout, UserGoals } from '../types';
 
 function PfcTooltip({ active, payload, label }: any) {
   if (!active || !payload || !payload.length) return null;
@@ -49,17 +49,19 @@ export interface SectionAnalysisProps {
   addWeight: (weight: number) => void;
   today: string;
   openWeightModal: () => void;
+  goals?: UserGoals;
 }
 
 type Period = '7' | '30' | 'all';
 
-export function SectionAnalysis({ 
-  weightHistory, 
-  meals, 
-  workouts, 
-  addWeight, 
+export function SectionAnalysis({
+  weightHistory,
+  meals,
+  workouts,
+  addWeight,
   today,
-  openWeightModal
+  openWeightModal,
+  goals
 }: SectionAnalysisProps) {
   const [weightPeriod, setWeightPeriod] = useState<Period>('7');
   const [dietPeriod, setDietPeriod] = useState<Period>('7');
@@ -205,16 +207,16 @@ export function SectionAnalysis({
       </div>
 
       {/* 📊 種目別【推定1RM】推移グラフ ＆ 動的RM表ボード */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl space-y-6">
+      <div className="ll-card-hero p-5 space-y-5">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-lime-400/10 rounded-xl text-lime-400"><Dumbbell size={20} /></div>
             <div>
-              <span className="text-[10px] font-black tracking-widest text-lime-400 uppercase font-mono">1RM ESTIMATOR</span>
+              <span className="ll-label text-lime-400">1RM ESTIMATOR</span>
               <h3 className="font-bold text-white text-base">推定1RMの推移（筋力成長）</h3>
             </div>
           </div>
-          
+
           {allExerciseNames.length > 0 && (
             <div className="w-full sm:w-auto">
               <select value={selExercise} onChange={(e) => setSelExercise(e.target.value)} className="w-full sm:w-auto bg-zinc-950 border border-zinc-850 text-white text-xs font-black rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors cursor-pointer appearance-none pr-8 relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23a1a1aa%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_auto] bg-[right:14px_center] bg-no-repeat" >
@@ -224,9 +226,30 @@ export function SectionAnalysis({
           )}
         </div>
 
+        {latest1RM > 0 && (() => {
+          const prev = exerciseChartData.length >= 2 ? exerciseChartData[exerciseChartData.length - 2]['推定1RM'] : null;
+          const diff = prev !== null ? Math.round((latest1RM - prev) * 10) / 10 : null;
+          return (
+            <div className="ll-inset px-4 py-3.5 flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <span className="ll-label text-zinc-500 text-[9px] block">LATEST 1RM</span>
+                <div className="ll-num text-3xl text-white leading-none mt-1.5">{latest1RM}<span className="text-xs text-zinc-500 font-medium ml-1">kg</span></div>
+              </div>
+              {diff !== null && (
+                <div className="text-right shrink-0">
+                  <span className={`text-sm font-mono font-black ${diff > 0 ? 'text-lime-400' : 'text-zinc-500'}`}>
+                    {diff > 0 ? `▲ +${diff}kg` : diff < 0 ? `${diff}kg` : '±0kg'}
+                  </span>
+                  <span className="block text-[9px] text-zinc-600 font-bold mt-0.5">前回比</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         <div className="h-[180px] w-full">
           {allExerciseNames.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-zinc-600 text-xs italic bg-zinc-950/30 border border-dashed border-zinc-850 rounded-2xl p-4 text-center">ログタブから筋トレを1セット以上記録すると、<br/>ここに科学的な1RM成長グラフが自動生成されます！🔥</div>
+            <div className="h-full flex items-center justify-center text-zinc-600 text-xs bg-zinc-950/30 border border-dashed border-zinc-850 rounded-2xl p-4 text-center leading-relaxed">ログタブから1セット記録すると、<br/>筋力の成長グラフがここに表示されます</div>
           ) : exerciseChartData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-zinc-650 text-xs italic">選択された種目の重量データがまだありません</div>
           ) : (
@@ -269,8 +292,8 @@ export function SectionAnalysis({
               <div className="bg-zinc-950/80 border border-zinc-850 rounded-2xl p-4 space-y-4 animate-in fade-in zoom-in-95 duration-150 shadow-inner">
                 {/* 💡【UX特化】一発で何かが分かる説明書のカード */}
                 <div className="bg-zinc-900 border border-zinc-800 p-3.5 rounded-xl text-[11px] text-zinc-400 leading-relaxed">
-                  <span className="font-black text-lime-400 block mb-1 text-[10px] tracking-widest uppercase font-mono">WHAT IS RM TABLE?</span>
-                  あなたの過去最高1RM（1回限界の重さ＝{latest1RM}kg）をベースに、<strong>「何kgなら何回狙えるか」</strong>を科学的に逆算した早見表です。今日のジムで「10回×3セットで追い込もう」と思ったら、表の「10 REPS」の重量に設定すれば、完璧な強度で限界突破（オーバーロード）を狙えます！🔥
+                  <span className="ll-label text-lime-400 block mb-1 text-[10px]">WHAT IS RM TABLE?</span>
+                  最新の推定1RM（{latest1RM}kg）から<strong className="text-white">「何kgなら何回狙えるか」</strong>を逆算した早見表。今日の重量設定はここを見ればOK。
                 </div>
                 
                 {/* 換算表の数字グリッド */}
@@ -289,9 +312,9 @@ export function SectionAnalysis({
       </div>
 
       {/* Weight Chart */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-          <div><span className="text-[10px] font-black tracking-widest text-lime-400 uppercase">WEIGHT MONITOR</span><h3 className="font-bold text-white">体重推移</h3></div>
+      <div className="ll-card p-5">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-5">
+          <div><span className="ll-label text-lime-400">WEIGHT MONITOR</span><h3 className="font-bold text-white">体重推移</h3></div>
           <div className="flex items-center justify-between sm:justify-end gap-3">
             <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
               {periods.map((p) => (<button key={p.value} type="button" onClick={() => setWeightPeriod(p.value)} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${weightPeriod === p.value ? 'bg-lime-400 text-black' : 'text-zinc-400 hover:text-white' }`} > {p.label} </button> ))}
@@ -299,6 +322,33 @@ export function SectionAnalysis({
             <TrendingUp className="text-lime-400 hidden sm:block" size={20} />
           </div>
         </div>
+        {weightHistory.length > 0 && (() => {
+          const sorted = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
+          const first = sorted[0].weight;
+          const last = sorted[sorted.length - 1].weight;
+          const delta = Math.round((last - first) * 10) / 10;
+          const target = goals && goals.targetWeight > 0 ? goals.targetWeight : null;
+          const toGoal = target !== null ? Math.round(Math.abs(last - target) * 10) / 10 : null;
+          const movingToward = target !== null && Math.abs(last - target) < Math.abs(first - target);
+          return (
+            <div className="ll-inset px-4 py-3.5 flex items-end justify-between gap-3 mb-4">
+              <div className="min-w-0">
+                <span className="ll-label text-zinc-500 text-[9px] block">CURRENT</span>
+                <div className="ll-num text-3xl text-white leading-none mt-1.5">{last}<span className="text-xs text-zinc-500 font-medium ml-1">kg</span></div>
+              </div>
+              <div className="text-right shrink-0">
+                {sorted.length >= 2 && (
+                  <div className={`text-xs font-mono font-black ${movingToward ? 'text-lime-400' : 'text-zinc-400'}`}>
+                    開始から {delta > 0 ? `+${delta}` : delta}kg
+                  </div>
+                )}
+                {toGoal !== null && (
+                  <div className="text-[10px] font-mono text-zinc-500 mt-0.5">目標まで あと{toGoal}kg</div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         <div className="h-[200px] w-full">
           {weightHistory.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
@@ -317,9 +367,9 @@ export function SectionAnalysis({
       </div>
 
       {/* Calories Stacked Chart */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-6">
+      <div className="ll-card p-5 space-y-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div><span className="text-[10px] font-black tracking-widest text-indigo-400 uppercase">CALORIC & MACROS</span><h3 className="font-bold text-white">カロリー摂取量と内訳 (PFC)</h3></div>
+          <div><span className="ll-label text-indigo-400">CALORIC & MACROS</span><h3 className="font-bold text-white">カロリー摂取量と内訳 (PFC)</h3></div>
           <div className="flex items-center justify-between sm:justify-end gap-3">
             <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
               {periods.map((p) => (<button key={p.value} type="button" onClick={() => setDietPeriod(p.value)} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${dietPeriod === p.value ? 'bg-indigo-500 text-white' : 'text-zinc-400 hover:text-white' }`} > {p.label} </button> ))}
@@ -369,7 +419,7 @@ export function SectionAnalysis({
               </div>
               <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl text-[11px] text-zinc-400 space-y-1">
                 <p className="font-bold text-zinc-300">💡 期間平均アドバイス</p>
-                <p>{avgPfc.pPct < 15 ? (<span>筋肉の合成を最大限サポートするため、タンパク質（P）比率をもう少し高める（目標：15%〜25%）ことをお勧めします。鶏胸肉、卵、プロテインの摂取が効果的です。</span> ) : avgPfc.pPct > 30 ? (<span>高タンパク質をしっかりと維持できています！余剰なタンパク質化はエネルギーとして代謝されますが、内臓疲労を避けるために適切な水分補給を怠らないでください。</span> ) : (<span>非常に素晴らしい PFC 比率です！タンパク質が理想的なエネルギー比（15%〜28%）をキープできております。この調子で自重・ウェイトトレーニングに励みましょう。</span> )}</p>
+                <p>{avgPfc.pPct < 15 ? (<span>タンパク質（P）比率を15〜25%まで高めるのがおすすめ。鶏むね・卵・プロテインが手軽です。</span> ) : avgPfc.pPct > 30 ? (<span>高タンパクをしっかり維持できています。水分補給も忘れずに。</span> ) : (<span>PFC比率は理想的な範囲。この調子で積み上げていきましょう。</span> )}</p>
               </div>
             </div>
           ) : (<div className="py-8 bg-zinc-950 border border-zinc-850 text-center text-xs text-zinc-600 rounded-2xl italic">食事データを記録すると、この期間の平均 PFC カロリー比率が算出されます。</div> )}
