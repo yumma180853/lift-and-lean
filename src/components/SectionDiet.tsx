@@ -1,11 +1,12 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { Plus, Camera, Calendar, Sparkles, Trash2 } from 'lucide-react';
+import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
 
 export interface SectionDietProps {
   todayMeals: Meal[];
   allMeals: Meal[];
   addMeal: (meal: Omit<Meal, 'id'>) => void;
+  updateMeal: (id: string, patch: Partial<Omit<Meal, 'id'>>) => void;
   deleteMeal: (id: string) => void;
   goals: UserGoals;
 }
@@ -39,7 +40,7 @@ const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: str
   'ポストWO':{ border: '#10b981', chip: 'rgba(16,185,129,0.12)', label: '#10b981' },
 };
 
-export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }: SectionDietProps) {
+export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteMeal, goals }: SectionDietProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [mealName, setMealName] = useState('');
   const [calories, setCalories] = useState('');
@@ -69,6 +70,58 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
   const [estResult, setEstResult] = useState<EstimateResult | null>(null);
   const [estMultiplier, setEstMultiplier] = useState(1);
   const [estMealType, setEstMealType] = useState('');
+
+  // 登録済み食事の編集
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCalories, setEditCalories] = useState('');
+  const [editProtein, setEditProtein] = useState('');
+  const [editFat, setEditFat] = useState('');
+  const [editCarbs, setEditCarbs] = useState('');
+  const [editMealType, setEditMealType] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const openEdit = (meal: Meal) => {
+    setEditingMeal(meal);
+    setEditName(meal.name);
+    setEditCalories(String(meal.calories));
+    setEditProtein(String(meal.protein));
+    setEditFat(String(meal.fat));
+    setEditCarbs(String(meal.carbs));
+    setEditMealType(meal.mealType || '');
+    setEditError(null);
+  };
+
+  const closeEdit = () => {
+    setEditingMeal(null);
+    setEditError(null);
+  };
+
+  const handleEditSave = () => {
+    if (!editingMeal) return;
+    const name = editName.trim();
+    const kcal = parseFloat(editCalories);
+    const p = parseFloat(editProtein);
+    const f = parseFloat(editFat);
+    const c = parseFloat(editCarbs);
+    if (!name) {
+      setEditError('食事名を入力してください');
+      return;
+    }
+    if ([kcal, p, f, c].some(v => Number.isNaN(v) || v < 0)) {
+      setEditError('kcal・P・F・Cは0以上の数値で入力してください');
+      return;
+    }
+    updateMeal(editingMeal.id, {
+      name,
+      calories: kcal,
+      protein: p,
+      fat: f,
+      carbs: c,
+      mealType: editMealType || undefined,
+    });
+    closeEdit();
+  };
 
   const recordMealWithFeedback = (newMeal: Omit<Meal, 'id'>) => {
     addMeal(newMeal);
@@ -637,12 +690,16 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
                     <span>C <strong className="text-blue-400">{meal.carbs}g</strong></span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 ml-3 shrink-0">
+                <div className="flex items-center gap-2.5 ml-3 shrink-0">
                   <div className="text-right">
                     <div className="ll-num text-lg text-white leading-none">{meal.calories}</div>
                     <div className="ll-label text-zinc-600 text-[9px]">kcal</div>
                   </div>
-                  <button type="button" onClick={() => deleteMeal(meal.id)} className="text-zinc-700 hover:text-rose-400 transition-colors p-1">
+                  <button type="button" onClick={() => openEdit(meal)} className="text-zinc-700 hover:text-lime-400 transition-colors p-1.5">
+                    <Pencil size={15} />
+                  </button>
+                  <div className="w-px h-4 bg-zinc-800" />
+                  <button type="button" onClick={() => deleteMeal(meal.id)} className="text-zinc-700 hover:text-rose-400 transition-colors p-1.5">
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -676,6 +733,125 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
           >
             手動で入力する
           </button>
+        </div>
+      )}
+
+      {editingMeal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeEdit}>
+          <div className="absolute inset-0 bg-black/70" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md ll-card ll-pop rounded-t-3xl rounded-b-none p-5 space-y-4 max-h-[85dvh] overflow-y-auto"
+            style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-white text-sm uppercase tracking-wide">食事を編集</h3>
+              <button type="button" onClick={closeEdit} className="text-zinc-500 hover:text-white transition-colors p-1">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 食事タイプ チップ */}
+            <div>
+              <div className="text-[10px] font-bold text-zinc-500 mb-2">食事の種類（任意）</div>
+              <div className="flex gap-1.5 flex-wrap">
+                {MEAL_TYPES.map(t => {
+                  const style = MEAL_TYPE_STYLE[t];
+                  const isActive = editMealType === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEditMealType(isActive ? '' : t)}
+                      className="text-[11px] font-bold px-3 py-1 rounded-full transition-all"
+                      style={{
+                        background: isActive ? style.chip : 'rgba(39,39,42,0.6)',
+                        color: isActive ? style.label : '#71717a',
+                        border: `1px solid ${isActive ? style.border + '44' : '#3f3f46'}`,
+                      }}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-400" htmlFor="edit-meal-name-input">食事名 / メニュー</label>
+              <input
+                id="edit-meal-name-input"
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full bg-zinc-800 border-0 rounded-lg p-3 text-white placeholder:text-zinc-600 text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-calories-input">KCAL</label>
+                <input
+                  id="edit-calories-input"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={editCalories}
+                  onChange={(e) => setEditCalories(e.target.value)}
+                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-protein-input">P (g)</label>
+                <input
+                  id="edit-protein-input"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={editProtein}
+                  onChange={(e) => setEditProtein(e.target.value)}
+                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-fat-input">F (g)</label>
+                <input
+                  id="edit-fat-input"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={editFat}
+                  onChange={(e) => setEditFat(e.target.value)}
+                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-carbs-input">C (g)</label>
+                <input
+                  id="edit-carbs-input"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={editCarbs}
+                  onChange={(e) => setEditCarbs(e.target.value)}
+                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                />
+              </div>
+            </div>
+
+            {editError && (
+              <p className="text-[11px] text-rose-400 font-bold">{editError}</p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={handleEditSave} className="flex-1 bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all">
+                保存する
+              </button>
+              <button type="button" onClick={closeEdit} className="flex-1 bg-zinc-800 text-white py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-all">
+                キャンセル
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
