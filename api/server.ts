@@ -210,6 +210,107 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  // 料理名からPFC目安を推定するエンドポイント（テキストのみ・AI推定・目安）
+  // 精度重視のためこのエンドポイントのみ高精度モデルを使用（他機能のモデルは変更しない）
+  const ESTIMATE_MEAL_MODEL = "gpt-4o";
+  if (req.url.includes("estimate-meal")) {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: "name is required" });
+      }
+
+      const estimatePrompt = `料理名から、一般的な1食分のカロリーとPFCの「目安」を推定してください。これは正確な栄養計算ではなくAIによる推定です。
+
+料理名：「${name.trim().slice(0, 60)}」
+
+【推定ルール】
+- 日本で一般的に提供される量を基準にする（外食・家庭料理の平均的な1人前）
+- baseAmountは料理に合った単位で短く表記する：「1杯」（丼・カレー・麺類）/「1個」（おにぎり・パン）/「1枚」（ピザ・食パン）/「1皿」（定食・パスタ）/「100g」/「1人前」
+- 数値は一般的な平均値で保守的に見積もる
+- カロリーはPFCと整合させる（protein×4 + fat×9 + carbs×4 ≒ calories になるように）
+
+【confidence の基準】
+- high：定番料理で量・構成のブレが小さい（例：おにぎり、サラダチキン、かけうどん）
+- medium：定番だが具材・量で変動しやすい（例：カレーライス、パスタ、丼もの）
+- low：料理名が曖昧・地域差や店差が大きい・構成が読めない（例：「創作料理」「ママの特製弁当」）
+
+【servingOptions のルール】
+- baseAmountと同じ単位で3〜5個出す（例：少なめ 0.7杯 / 普通 1杯 / 大盛り 1.3杯 / 特盛 1.5杯）
+- multiplierは0.5〜2の範囲。1（普通）を必ず含める
+- 個数系（おにぎり等）は 1個 / 2個 / 3個 のように整数倍で出してよい
+
+【note のルール】
+- 「〜を基準にしたAI推定です。〜によって変動します。」の形で1〜2文
+- 医療・栄養指導的な表現、正確性を保証する表現は禁止
+
+料理名が食品として解釈できない場合は {"error":"unknown"} を返す。
+
+必ず以下のJSON形式で返してください：
+{"name":"整えた料理名","baseAmount":"1杯","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","note":"短い説明","servingOptions":[{"label":"少なめ 0.7杯","multiplier":0.7},{"label":"普通 1杯","multiplier":1}]}`;
+
+      const completion = await openai.chat.completions.create({
+        model: ESTIMATE_MEAL_MODEL,
+        response_format: { type: "json_object" },
+        max_tokens: 400,
+        messages: [{ role: "user", content: estimatePrompt }],
+      });
+
+      const rawText = completion.choices[0]?.message?.content || "{}";
+      let parsed: any;
+      try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
+
+      const calories = Math.round(parseFloat(parsed.calories) || 0);
+      const protein  = Math.round(parseFloat(parsed.protein)  || 0);
+      const fat      = Math.round(parseFloat(parsed.fat)      || 0);
+      const carbs    = Math.round(parseFloat(parsed.carbs)    || 0);
+
+      if (parsed.error || !parsed.name || calories <= 0 || calories > 5000) {
+        return res.status(422).json({ error: "料理名から推定できませんでした。別の書き方で試してください。" });
+      }
+
+      // PFC×カロリー整合チェック：25%以上ズレていたらPFC由来のカロリーに補正
+      const pfcCalories = protein * 4 + fat * 9 + carbs * 4;
+      const finalCalories = pfcCalories > 0 && Math.abs(pfcCalories - calories) / calories > 0.25
+        ? pfcCalories
+        : calories;
+
+      const confidence = ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low';
+
+      // servingOptions を検証し、不正なら基準量ベースのデフォルトにフォールバック
+      let servingOptions: { label: string; multiplier: number }[] = Array.isArray(parsed.servingOptions)
+        ? parsed.servingOptions
+            .filter((o: any) => o && typeof o.label === 'string' && parseFloat(o.multiplier) >= 0.25 && parseFloat(o.multiplier) <= 3)
+            .map((o: any) => ({ label: String(o.label).slice(0, 20), multiplier: parseFloat(o.multiplier) }))
+            .slice(0, 6)
+        : [];
+      if (!servingOptions.some(o => o.multiplier === 1)) {
+        const base = String(parsed.baseAmount || "1人前");
+        servingOptions = [
+          { label: `少なめ 0.7${base.replace(/^1/, '')}`, multiplier: 0.7 },
+          { label: `普通 ${base}`, multiplier: 1 },
+          { label: `大盛り 1.3${base.replace(/^1/, '')}`, multiplier: 1.3 },
+          { label: `特盛 1.5${base.replace(/^1/, '')}`, multiplier: 1.5 },
+        ];
+      }
+
+      return res.json({
+        name: String(parsed.name).slice(0, 50),
+        baseAmount: String(parsed.baseAmount || "1人前").slice(0, 20),
+        calories: finalCalories,
+        protein,
+        fat,
+        carbs,
+        confidence,
+        note: String(parsed.note || "一般的な1人前を基準にしたAI推定です。実際の量・具材によって変動します。").slice(0, 120),
+        servingOptions,
+      });
+    } catch (error: any) {
+      console.error("Estimate-meal OpenAI Error:", error);
+      return res.status(500).json({ error: error.message || "Failed to estimate meal" });
+    }
+  }
+
   // 1️⃣ 食事画像解析エンドポイント（複数画像・成分表対応）OpenAI gpt-4o
   if (req.url.includes("analyze-meal")) {
     try {

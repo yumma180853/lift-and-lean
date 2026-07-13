@@ -58,6 +58,12 @@ async function startServer() {
     return handler(req, res);
   });
 
+  // API Route: Estimate Meal from Name (delegates to api/server.ts handler)
+  app.post("/api/estimate-meal", async (req, res) => {
+    const { default: handler } = await import("./api/server.js");
+    return handler(req, res);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");

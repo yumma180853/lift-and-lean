@@ -12,6 +12,24 @@ export interface SectionDietProps {
 
 const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', 'プレWO', 'ポストWO'] as const;
 
+interface EstimateResult {
+  name: string;
+  baseAmount: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  confidence: 'high' | 'medium' | 'low';
+  note: string;
+  servingOptions: { label: string; multiplier: number }[];
+}
+
+const CONFIDENCE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  high:   { label: '推定精度 高', color: '#a3e635', bg: 'rgba(163,230,53,0.1)' },
+  medium: { label: '推定精度 中', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+  low:    { label: '推定精度 低', color: '#f43f5e', bg: 'rgba(244,63,94,0.1)' },
+};
+
 const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: string }> = {
   '朝食':    { border: '#f59e0b', chip: 'rgba(245,158,11,0.12)', label: '#f59e0b' },
   '昼食':    { border: '#a3e635', chip: 'rgba(163,230,53,0.12)', label: '#a3e635' },
@@ -43,10 +61,97 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 「料理名から推定」フロー
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [estName, setEstName] = useState('');
+  const [estLoading, setEstLoading] = useState(false);
+  const [estError, setEstError] = useState<string | null>(null);
+  const [estResult, setEstResult] = useState<EstimateResult | null>(null);
+  const [estMultiplier, setEstMultiplier] = useState(1);
+  const [estMealType, setEstMealType] = useState('');
+
+  const recordMealWithFeedback = (newMeal: Omit<Meal, 'id'>) => {
+    addMeal(newMeal);
+    const totalKcal = todayMeals.reduce((s, m) => s + m.calories, 0) + newMeal.calories;
+    const totalProtein = todayMeals.reduce((s, m) => s + m.protein, 0) + newMeal.protein;
+    const remainKcal = Math.round(goals.calories - totalKcal);
+    const remainProtein = Math.round(goals.protein - totalProtein);
+    const msg = remainKcal < 0
+      ? `✓ ${newMeal.name}を記録  今日はしっかり食べた日`
+      : `✓ ${newMeal.name}を記録  残り ${remainKcal}kcal · P あと ${remainProtein}g`;
+    setFeedbackMsg(msg);
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedbackMsg(null), 1500);
+  };
+
+  const resetEstimate = () => {
+    setIsEstimating(false);
+    setEstName('');
+    setEstError(null);
+    setEstResult(null);
+    setEstMultiplier(1);
+    setEstMealType('');
+  };
+
+  const handleEstimate = async () => {
+    if (!estName.trim() || estLoading) return;
+    setEstLoading(true);
+    setEstError(null);
+    setEstResult(null);
+    try {
+      const response = await fetch('/api/estimate-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: estName.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.name) {
+        setEstError(data.error || '推定に失敗しました。別の書き方で試してください。');
+      } else {
+        setEstResult(data as EstimateResult);
+        setEstMultiplier(1);
+      }
+    } catch {
+      setEstError('通信エラーが発生しました。時間をおいて試してください。');
+    } finally {
+      setEstLoading(false);
+    }
+  };
+
+  const handleEstimateRecord = () => {
+    if (!estResult) return;
+    const opt = estResult.servingOptions.find(o => o.multiplier === estMultiplier);
+    const amountLabel = opt ? opt.label : `×${estMultiplier}`;
+    recordMealWithFeedback({
+      date: new Date().toISOString().split('T')[0],
+      name: `${estResult.name}（${amountLabel}・AI推定）`,
+      calories: Math.round(estResult.calories * estMultiplier),
+      protein: Math.round(estResult.protein * estMultiplier),
+      fat: Math.round(estResult.fat * estMultiplier),
+      carbs: Math.round(estResult.carbs * estMultiplier),
+      mealType: estMealType || undefined,
+    });
+    resetEstimate();
+  };
+
+  // 推定結果を手動フォームに引き継いで微調整
+  const handleEstimateToManual = () => {
+    if (!estResult) return;
+    setMealName(estResult.name);
+    setCalories(String(Math.round(estResult.calories * estMultiplier)));
+    setProtein(String(Math.round(estResult.protein * estMultiplier)));
+    setFat(String(Math.round(estResult.fat * estMultiplier)));
+    setCarbs(String(Math.round(estResult.carbs * estMultiplier)));
+    setMealType(estMealType);
+    setIsAiResult(true);
+    resetEstimate();
+    setIsAdding(true);
+  };
+
   const handleManualAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!mealName) return;
-    const newMeal = {
+    recordMealWithFeedback({
       date: new Date().toISOString().split('T')[0],
       name: mealName,
       calories: parseFloat(calories) || 0,
@@ -54,19 +159,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
       fat: parseFloat(fat) || 0,
       carbs: parseFloat(carbs) || 0,
       mealType: mealType || undefined,
-    };
-    addMeal(newMeal);
-
-    const totalKcal = todayMeals.reduce((s, m) => s + m.calories, 0) + newMeal.calories;
-    const totalProtein = todayMeals.reduce((s, m) => s + m.protein, 0) + newMeal.protein;
-    const remainKcal = Math.round(goals.calories - totalKcal);
-    const remainProtein = Math.round(goals.protein - totalProtein);
-    const msg = remainKcal < 0
-      ? `✓ ${mealName}を記録  今日はしっかり食べた日`
-      : `✓ ${mealName}を記録  残り ${remainKcal}kcal · P あと ${remainProtein}g`;
-    setFeedbackMsg(msg);
-    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
-    feedbackTimer.current = setTimeout(() => setFeedbackMsg(null), 1500);
+    });
 
     setMealName('');
     setCalories('');
@@ -109,6 +202,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
 
     setAiAnalyzing(true);
     setIsAdding(true);
+    resetEstimate();
 
     try {
       const compressedImages = await Promise.all(files.map(compressImage));
@@ -157,7 +251,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
         <div className="flex flex-col gap-1.5 items-end">
           <button
             type="button"
-            onClick={() => { setIsAdding(!isAdding); setIsAiResult(false); }}
+            onClick={() => { setIsAdding(!isAdding); setIsAiResult(false); resetEstimate(); }}
             className="bg-lime-400 text-black px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 active:scale-95 transition-all"
             style={{ boxShadow: '0 0 14px rgba(163,230,53,0.18)' }}
           >
@@ -170,6 +264,19 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
             style={{ background: 'rgba(129,140,248,0.08)', borderColor: 'rgba(129,140,248,0.2)' }}
           >
             <Camera size={14} /> AI写真解析
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (isEstimating) { resetEstimate(); return; }
+              setIsAdding(false);
+              setIsAiResult(false);
+              setIsEstimating(true);
+            }}
+            className="text-lime-400 px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all border"
+            style={{ background: 'rgba(163,230,53,0.06)', borderColor: 'rgba(163,230,53,0.2)' }}
+          >
+            <Sparkles size={14} /> 料理名から推定
           </button>
         </div>
         <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" multiple className="hidden" />
@@ -215,6 +322,150 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, deleteMeal, goals }
       )}
 
       <p className="text-[10px] text-zinc-700">写真はAI解析のため外部サービスに送信されます</p>
+
+      {isEstimating && (
+        <div className="ll-card ll-pop p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-lime-400 font-bold text-xs">
+              <Sparkles size={14} /> 料理名からかんたん追加
+            </div>
+            <span className="text-[9px] font-bold text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 tracking-widest font-mono uppercase">AI推定</span>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="例: 夏野菜カレーライス"
+              value={estName}
+              onChange={(e) => setEstName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleEstimate(); } }}
+              className="flex-1 min-w-0 bg-zinc-800 border-0 rounded-lg p-3 text-white placeholder:text-zinc-600 text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleEstimate}
+              disabled={estLoading || !estName.trim()}
+              className="shrink-0 bg-lime-400 text-black px-4 rounded-lg font-black text-xs disabled:opacity-40 active:scale-95 transition-all"
+            >
+              {estLoading ? '推定中…' : '目安を出す'}
+            </button>
+          </div>
+
+          {estLoading && (
+            <div className="flex items-center justify-center gap-2 py-4 text-lime-400 text-xs font-bold animate-pulse">
+              <div className="w-4 h-4 border-2 border-lime-400 border-t-transparent rounded-full animate-spin" />
+              一般的な目安を推定しています…
+            </div>
+          )}
+
+          {estError && (
+            <p className="text-[11px] text-rose-400 font-bold">{estError}</p>
+          )}
+
+          {estResult && !estLoading && (
+            <div className="space-y-3.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h4 className="font-bold text-white text-sm ll-clamp2">{estResult.name}</h4>
+                  <div className="text-[10px] text-zinc-500 font-mono mt-0.5">基準量：{estResult.baseAmount}</div>
+                </div>
+                <span
+                  className="shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: CONFIDENCE_STYLE[estResult.confidence].color, background: CONFIDENCE_STYLE[estResult.confidence].bg }}
+                >
+                  {CONFIDENCE_STYLE[estResult.confidence].label}
+                </span>
+              </div>
+
+              {/* 量の選択チップ */}
+              <div>
+                <div className="text-[10px] font-bold text-zinc-500 mb-1.5">量をえらぶ</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {estResult.servingOptions.map(o => {
+                    const isActive = estMultiplier === o.multiplier;
+                    return (
+                      <button
+                        key={o.label}
+                        type="button"
+                        onClick={() => setEstMultiplier(o.multiplier)}
+                        className="text-[11px] font-bold px-3 py-1.5 rounded-full transition-all"
+                        style={{
+                          background: isActive ? 'rgba(163,230,53,0.12)' : 'rgba(39,39,42,0.6)',
+                          color: isActive ? '#a3e635' : '#71717a',
+                          border: `1px solid ${isActive ? 'rgba(163,230,53,0.35)' : '#3f3f46'}`,
+                        }}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 選択量に応じた目安値 */}
+              <div className="flex justify-between items-center rounded-xl bg-zinc-800/60 border border-zinc-800 px-4 py-3">
+                <div className="text-center">
+                  <div className="ll-num text-lg text-white leading-none">{Math.round(estResult.calories * estMultiplier)}</div>
+                  <div className="ll-label text-zinc-600 text-[8px] mt-0.5">KCAL</div>
+                </div>
+                <div className="w-px h-8 bg-zinc-700/60" />
+                <div className="text-center">
+                  <div className="ll-num text-lg text-rose-400 leading-none">{Math.round(estResult.protein * estMultiplier)}</div>
+                  <div className="ll-label text-zinc-600 text-[8px] mt-0.5">P(g)</div>
+                </div>
+                <div className="w-px h-8 bg-zinc-700/60" />
+                <div className="text-center">
+                  <div className="ll-num text-lg text-amber-400 leading-none">{Math.round(estResult.fat * estMultiplier)}</div>
+                  <div className="ll-label text-zinc-600 text-[8px] mt-0.5">F(g)</div>
+                </div>
+                <div className="w-px h-8 bg-zinc-700/60" />
+                <div className="text-center">
+                  <div className="ll-num text-lg text-blue-400 leading-none">{Math.round(estResult.carbs * estMultiplier)}</div>
+                  <div className="ll-label text-zinc-600 text-[8px] mt-0.5">C(g)</div>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-zinc-600 leading-relaxed">{estResult.note}</p>
+
+              {/* 食事タイプ チップ */}
+              <div className="flex gap-1.5 flex-wrap">
+                {MEAL_TYPES.map(t => {
+                  const style = MEAL_TYPE_STYLE[t];
+                  const isActive = estMealType === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEstMealType(isActive ? '' : t)}
+                      className="text-[11px] font-bold px-3 py-1 rounded-full transition-all"
+                      style={{
+                        background: isActive ? style.chip : 'rgba(39,39,42,0.6)',
+                        color: isActive ? style.label : '#71717a',
+                        border: `1px solid ${isActive ? style.border + '44' : '#3f3f46'}`,
+                      }}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex gap-2">
+                <button type="button" onClick={handleEstimateRecord} className="flex-1 bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all">
+                  この目安で記録
+                </button>
+                <button type="button" onClick={handleEstimateToManual} className="flex-1 bg-zinc-800 text-white py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-all">
+                  数値を手動調整
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button type="button" onClick={resetEstimate} className="w-full text-zinc-500 text-xs font-bold hover:text-white transition-colors">
+            閉じる
+          </button>
+        </div>
+      )}
 
       {isAdding && (
         <form onSubmit={handleManualAdd} className="ll-card ll-pop p-5 space-y-4 relative">
