@@ -671,7 +671,11 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
             return (
               <div
                 key={meal.id}
-                className="ll-card ll-pop p-4 flex justify-between items-center"
+                role="button"
+                tabIndex={0}
+                onClick={() => openEdit(meal)}
+                onKeyDown={(e) => { if (e.key === 'Enter') openEdit(meal); }}
+                className="ll-card ll-pop p-4 flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform"
                 style={typeStyle ? { borderLeft: `3px solid ${typeStyle.border}` } : undefined}
               >
                 <div className="min-w-0 flex-1">
@@ -695,11 +699,11 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
                     <div className="ll-num text-lg text-white leading-none">{meal.calories}</div>
                     <div className="ll-label text-zinc-600 text-[9px]">kcal</div>
                   </div>
-                  <button type="button" onClick={() => openEdit(meal)} className="text-zinc-700 hover:text-lime-400 transition-colors p-1.5">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(meal); }} className="text-zinc-700 hover:text-lime-400 transition-colors p-1.5">
                     <Pencil size={15} />
                   </button>
                   <div className="w-px h-4 bg-zinc-800" />
-                  <button type="button" onClick={() => deleteMeal(meal.id)} className="text-zinc-700 hover:text-rose-400 transition-colors p-1.5">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); deleteMeal(meal.id); }} className="text-zinc-700 hover:text-rose-400 transition-colors p-1.5">
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -712,20 +716,30 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
           <div className="relative">
             <div className="absolute inset-0 rounded-full bg-lime-400/10 blur-xl" />
             <div className="relative w-16 h-16 ll-card rounded-full flex items-center justify-center text-lime-400/70">
-              <Camera size={26} />
+              <Sparkles size={26} />
             </div>
           </div>
           <div>
             <p className="text-white font-bold">今日はまだ記録がありません</p>
-            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">料理の写真を撮るだけで、AIがPFCとカロリーを自動で割り出します。</p>
+            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">料理名を入れるだけで、AIがPFCとカロリーの目安を出します。</p>
           </div>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="ll-glow bg-lime-400 text-black px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 active:scale-95 transition-all"
-          >
-            <Camera size={16} /> 写真から記録する
-          </button>
+          <div className="flex flex-col items-center gap-2.5 w-full max-w-[240px]">
+            <button
+              type="button"
+              onClick={() => { setIsAdding(false); setIsAiResult(false); setIsEstimating(true); }}
+              className="ll-glow bg-lime-400 text-black w-full px-6 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <Sparkles size={16} /> 料理名から推定
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-indigo-400 w-full px-6 py-2.5 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all border"
+              style={{ background: 'rgba(129,140,248,0.08)', borderColor: 'rgba(129,140,248,0.2)' }}
+            >
+              <Camera size={14} /> 写真から記録する
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => { setIsAdding(true); setIsAiResult(false); }}
