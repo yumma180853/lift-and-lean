@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
 
@@ -9,6 +9,7 @@ export interface SectionDietProps {
   updateMeal: (id: string, patch: Partial<Omit<Meal, 'id'>>) => void;
   deleteMeal: (id: string) => void;
   goals: UserGoals;
+  onEditingChange?: (open: boolean) => void;
 }
 
 const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', 'プレWO', 'ポストWO'] as const;
@@ -40,7 +41,7 @@ const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: str
   'ポストWO':{ border: '#10b981', chip: 'rgba(16,185,129,0.12)', label: '#10b981' },
 };
 
-export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteMeal, goals }: SectionDietProps) {
+export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteMeal, goals, onEditingChange }: SectionDietProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [mealName, setMealName] = useState('');
   const [calories, setCalories] = useState('');
@@ -80,6 +81,30 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
   const [editCarbs, setEditCarbs] = useState('');
   const [editMealType, setEditMealType] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  // 編集中は下部ナビを隠す（呼び出し元に通知）
+  useEffect(() => {
+    onEditingChange?.(!!editingMeal);
+  }, [editingMeal, onEditingChange]);
+
+  // iOSのソフトキーボード表示に合わせてシートを持ち上げる（visualViewportで実測）
+  useEffect(() => {
+    if (!editingMeal) { setKeyboardInset(0); return; }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleResize = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardInset(inset);
+    };
+    handleResize();
+    vv.addEventListener('resize', handleResize);
+    vv.addEventListener('scroll', handleResize);
+    return () => {
+      vv.removeEventListener('resize', handleResize);
+      vv.removeEventListener('scroll', handleResize);
+    };
+  }, [editingMeal]);
 
   const openEdit = (meal: Meal) => {
     setEditingMeal(meal);
@@ -751,113 +776,125 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
       )}
 
       {editingMeal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeEdit}>
+        <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={closeEdit}>
           <div className="absolute inset-0 bg-black/70" />
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-md ll-card ll-pop rounded-t-3xl rounded-b-none p-5 space-y-4 max-h-[85dvh] overflow-y-auto"
-            style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+            className="relative w-full max-w-md ll-card ll-pop rounded-t-3xl rounded-b-none flex flex-col"
+            style={{
+              maxHeight: 'calc(100dvh - max(1rem, env(safe-area-inset-top)))',
+              transform: keyboardInset > 0 ? `translateY(-${keyboardInset}px)` : undefined,
+              transition: 'transform 0.15s ease-out',
+            }}
           >
-            <div className="flex items-center justify-between">
+            {/* ヘッダー（固定） */}
+            <div className="shrink-0 flex items-center justify-between p-5 pb-3 border-b border-zinc-800">
               <h3 className="font-black text-white text-sm uppercase tracking-wide">食事を編集</h3>
               <button type="button" onClick={closeEdit} className="text-zinc-500 hover:text-white transition-colors p-1">
                 <X size={18} />
               </button>
             </div>
 
-            {/* 食事タイプ チップ */}
-            <div>
-              <div className="text-[10px] font-bold text-zinc-500 mb-2">食事の種類（任意）</div>
-              <div className="flex gap-1.5 flex-wrap">
-                {MEAL_TYPES.map(t => {
-                  const style = MEAL_TYPE_STYLE[t];
-                  const isActive = editMealType === t;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setEditMealType(isActive ? '' : t)}
-                      className="text-[11px] font-bold px-3 py-1 rounded-full transition-all"
-                      style={{
-                        background: isActive ? style.chip : 'rgba(39,39,42,0.6)',
-                        color: isActive ? style.label : '#71717a',
-                        border: `1px solid ${isActive ? style.border + '44' : '#3f3f46'}`,
-                      }}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
+            {/* 本文（スクロール可能） */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {/* 食事タイプ チップ */}
+              <div>
+                <div className="text-[10px] font-bold text-zinc-500 mb-2">食事の種類（任意）</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {MEAL_TYPES.map(t => {
+                    const style = MEAL_TYPE_STYLE[t];
+                    const isActive = editMealType === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEditMealType(isActive ? '' : t)}
+                        className="text-[11px] font-bold px-3 py-1 rounded-full transition-all"
+                        style={{
+                          background: isActive ? style.chip : 'rgba(39,39,42,0.6)',
+                          color: isActive ? style.label : '#71717a',
+                          border: `1px solid ${isActive ? style.border + '44' : '#3f3f46'}`,
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-400" htmlFor="edit-meal-name-input">食事名 / メニュー</label>
+                <input
+                  id="edit-meal-name-input"
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-zinc-800 border-0 rounded-lg p-3 text-white placeholder:text-zinc-600 text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-4 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-calories-input">KCAL</label>
+                  <input
+                    id="edit-calories-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={editCalories}
+                    onChange={(e) => setEditCalories(e.target.value)}
+                    className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-protein-input">P (g)</label>
+                  <input
+                    id="edit-protein-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={editProtein}
+                    onChange={(e) => setEditProtein(e.target.value)}
+                    className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-fat-input">F (g)</label>
+                  <input
+                    id="edit-fat-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={editFat}
+                    onChange={(e) => setEditFat(e.target.value)}
+                    className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-carbs-input">C (g)</label>
+                  <input
+                    id="edit-carbs-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={editCarbs}
+                    onChange={(e) => setEditCarbs(e.target.value)}
+                    className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
+                  />
+                </div>
+              </div>
+
+              {editError && (
+                <p className="text-[11px] text-rose-400 font-bold">{editError}</p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400" htmlFor="edit-meal-name-input">食事名 / メニュー</label>
-              <input
-                id="edit-meal-name-input"
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="w-full bg-zinc-800 border-0 rounded-lg p-3 text-white placeholder:text-zinc-600 text-sm focus:ring-1 focus:ring-lime-400 outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-4 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-calories-input">KCAL</label>
-                <input
-                  id="edit-calories-input"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={editCalories}
-                  onChange={(e) => setEditCalories(e.target.value)}
-                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-protein-input">P (g)</label>
-                <input
-                  id="edit-protein-input"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={editProtein}
-                  onChange={(e) => setEditProtein(e.target.value)}
-                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-fat-input">F (g)</label>
-                <input
-                  id="edit-fat-input"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={editFat}
-                  onChange={(e) => setEditFat(e.target.value)}
-                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400" htmlFor="edit-carbs-input">C (g)</label>
-                <input
-                  id="edit-carbs-input"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={editCarbs}
-                  onChange={(e) => setEditCarbs(e.target.value)}
-                  className="w-full bg-zinc-800 border-0 rounded-lg p-2 text-white text-center text-sm focus:ring-1 focus:ring-lime-400 outline-none"
-                />
-              </div>
-            </div>
-
-            {editError && (
-              <p className="text-[11px] text-rose-400 font-bold">{editError}</p>
-            )}
-
-            <div className="flex gap-2 pt-1">
+            {/* フッター（固定・常に操作可能） */}
+            <div
+              className="shrink-0 flex gap-2 p-4 border-t border-zinc-800"
+              style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            >
               <button type="button" onClick={handleEditSave} className="flex-1 bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all">
                 保存する
               </button>
