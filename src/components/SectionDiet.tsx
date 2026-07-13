@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X } from 'lucide-react';
+import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X, RefreshCw } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
 
 export interface SectionDietProps {
@@ -25,6 +25,33 @@ interface EstimateResult {
   note: string;
   servingOptions: { label: string; multiplier: number }[];
 }
+
+interface CachedEstimate extends EstimateResult {
+  createdAt: string;
+}
+
+const ESTIMATE_CACHE_KEY = 'estimatedMealCache';
+
+const normalizeMealNameForCache = (name: string): string => name.trim().toLowerCase();
+
+const loadEstimateCache = (): Record<string, CachedEstimate> => {
+  try {
+    const raw = localStorage.getItem(ESTIMATE_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveEstimateCache = (cache: Record<string, CachedEstimate>) => {
+  try {
+    localStorage.setItem(ESTIMATE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // キャッシュの保存に失敗しても食事記録自体には影響させない
+  }
+};
 
 const CONFIDENCE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
   high:   { label: '推定精度 高', color: '#a3e635', bg: 'rgba(163,230,53,0.1)' },
@@ -71,6 +98,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
   const [estResult, setEstResult] = useState<EstimateResult | null>(null);
   const [estMultiplier, setEstMultiplier] = useState(1);
   const [estMealType, setEstMealType] = useState('');
+  const [estFromCache, setEstFromCache] = useState(false);
 
   // 登録済み食事の編集
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
@@ -169,25 +197,48 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
     setEstResult(null);
     setEstMultiplier(1);
     setEstMealType('');
+    setEstFromCache(false);
   };
 
-  const handleEstimate = async () => {
-    if (!estName.trim() || estLoading) return;
+  const handleEstimate = async (forceRefresh = false) => {
+    const trimmed = estName.trim();
+    if (!trimmed || estLoading) return;
+
+    const cacheKey = normalizeMealNameForCache(trimmed);
+
+    // キャッシュ優先：追加のAI呼び出しなしで前回の推定結果を再利用する
+    if (!forceRefresh) {
+      const cached = loadEstimateCache()[cacheKey];
+      if (cached) {
+        const { createdAt, ...result } = cached;
+        setEstResult(result);
+        setEstMultiplier(1);
+        setEstFromCache(true);
+        setEstError(null);
+        return;
+      }
+    }
+
     setEstLoading(true);
     setEstError(null);
     setEstResult(null);
+    setEstFromCache(false);
     try {
       const response = await fetch('/api/estimate-meal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: estName.trim() }),
+        body: JSON.stringify({ name: trimmed }),
       });
       const data = await response.json();
       if (!response.ok || !data.name) {
         setEstError(data.error || '推定に失敗しました。別の書き方で試してください。');
       } else {
-        setEstResult(data as EstimateResult);
+        const result = data as EstimateResult;
+        setEstResult(result);
         setEstMultiplier(1);
+        const cache = loadEstimateCache();
+        cache[cacheKey] = { ...result, createdAt: new Date().toISOString() };
+        saveEstimateCache(cache);
       }
     } catch {
       setEstError('通信エラーが発生しました。時間をおいて試してください。');
@@ -416,12 +467,12 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
               placeholder="例: 夏野菜カレーライス"
               value={estName}
               onChange={(e) => setEstName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleEstimate(); } }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleEstimate(false); } }}
               className="flex-1 min-w-0 bg-zinc-800 border-0 rounded-lg p-3 text-white placeholder:text-zinc-600 text-sm focus:ring-1 focus:ring-lime-400 outline-none"
             />
             <button
               type="button"
-              onClick={handleEstimate}
+              onClick={() => handleEstimate(false)}
               disabled={estLoading || !estName.trim()}
               className="shrink-0 bg-lime-400 text-black px-4 rounded-lg font-black text-xs disabled:opacity-40 active:scale-95 transition-all"
             >
@@ -453,6 +504,20 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
                 >
                   {CONFIDENCE_STYLE[estResult.confidence].label}
                 </span>
+              </div>
+
+              <div className="flex items-center justify-between -mt-2">
+                <span className="text-[9px] text-zinc-600 font-mono">
+                  {estFromCache ? '保存済み推定を使用中' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleEstimate(true)}
+                  disabled={estLoading}
+                  className="text-[10px] text-zinc-500 hover:text-lime-400 font-bold flex items-center gap-1 disabled:opacity-40 transition-colors"
+                >
+                  <RefreshCw size={11} /> 再推定する
+                </button>
               </div>
 
               {/* 量の選択チップ */}
