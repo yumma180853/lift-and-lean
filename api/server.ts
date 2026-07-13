@@ -20,6 +20,157 @@ function shouldUseWebSearch(message: string, history: any[]): boolean {
   return triggers.some((t) => allText.toLowerCase().includes(t.toLowerCase()));
 }
 
+// 料理名推定でWeb検索に切り替えるべきチェーン・ブランド名（公式栄養成分が存在しやすいもの）
+const KNOWN_CHAIN_NAMES = [
+  '松屋', 'すき家', '吉野家', 'なか卯',
+  'マクドナルド', 'モスバーガー', 'バーガーキング', 'ロッテリア', 'ケンタッキー', 'kfc',
+  'セブンイレブン', 'セブン-イレブン', 'セブン', 'ローソン', 'ファミリーマート', 'ファミマ',
+  '丸亀製麺', 'はなまるうどん', 'リンガーハット', '富士そば', 'ゆで太郎',
+  '一風堂', '天下一品', '日高屋', 'coco壱番屋', 'ココイチ',
+  'ドミノピザ', 'ピザハット', 'ピザーラ',
+  'かつや', 'さぼてん',
+  'スシロー', 'くら寿司', 'はま寿司', 'かっぱ寿司',
+  'ガスト', 'サイゼリヤ', 'バーミヤン', 'ジョナサン', 'デニーズ', 'ロイヤルホスト',
+  'やよい軒', '大戸屋',
+  'スターバックス', 'スタバ', 'ドトール', 'タリーズ',
+  'ミスタードーナツ', 'ミスド',
+  'サブウェイ', '牛角', 'いきなりステーキ', '餃子の王将', '鳥貴族',
+];
+
+function isChainMealName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return KNOWN_CHAIN_NAMES.some((chain) => lower.includes(chain.toLowerCase()));
+}
+
+// テキストからJSON部分だけを抜き出してパースする（Web検索応答は説明文が混ざることがあるため）
+function extractJson(text: string): any {
+  try { return JSON.parse(text); } catch { /* fallthrough */ }
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch { /* fallthrough */ }
+  }
+  return {};
+}
+
+type MealEstimateSource = {
+  sourceType: 'official' | 'web' | 'ai_estimate';
+  sourceLabel?: string;
+  sourceUrl?: string;
+};
+
+// Web検索結果のsourceTypeを検証：URL・ラベルが明確でない限りofficialを名乗らせない
+function resolveWebSource(parsed: any): MealEstimateSource {
+  const url = typeof parsed.sourceUrl === 'string' && /^https?:\/\//.test(parsed.sourceUrl.trim())
+    ? parsed.sourceUrl.trim().slice(0, 300)
+    : undefined;
+  const label = typeof parsed.sourceLabel === 'string' && parsed.sourceLabel.trim()
+    ? parsed.sourceLabel.trim().slice(0, 60)
+    : undefined;
+  if (parsed.sourceType === 'official' && url && label) {
+    return { sourceType: 'official', sourceLabel: label, sourceUrl: url };
+  }
+  return { sourceType: 'web', sourceLabel: label, sourceUrl: url };
+}
+
+// 料理名推定の数値検証・整形（AI推定・Web検索どちらの結果にも共通で使う）
+function buildMealEstimatePayload(parsed: any, source: MealEstimateSource): any | null {
+  const calories = Math.round(parseFloat(parsed.calories) || 0);
+  const protein  = Math.round(parseFloat(parsed.protein)  || 0);
+  const fat      = Math.round(parseFloat(parsed.fat)      || 0);
+  const carbs    = Math.round(parseFloat(parsed.carbs)    || 0);
+
+  if (parsed.error || parsed.notFound || !parsed.name || calories <= 0 || calories > 5000) {
+    return null;
+  }
+
+  // PFC×カロリー整合チェック：25%以上ズレていたらPFC由来のカロリーに補正
+  const pfcCalories = protein * 4 + fat * 9 + carbs * 4;
+  const finalCalories = pfcCalories > 0 && Math.abs(pfcCalories - calories) / calories > 0.25
+    ? pfcCalories
+    : calories;
+
+  const confidence = ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low';
+
+  // servingOptions を検証し、不正なら基準量ベースのデフォルトにフォールバック
+  let servingOptions: { label: string; multiplier: number }[] = Array.isArray(parsed.servingOptions)
+    ? parsed.servingOptions
+        .filter((o: any) => o && typeof o.label === 'string' && parseFloat(o.multiplier) >= 0.25 && parseFloat(o.multiplier) <= 3)
+        .map((o: any) => ({ label: String(o.label).slice(0, 20), multiplier: parseFloat(o.multiplier) }))
+        .slice(0, 6)
+    : [];
+  if (!servingOptions.some(o => o.multiplier === 1)) {
+    const base = String(parsed.baseAmount || "1人前");
+    servingOptions = [
+      { label: `少なめ 0.7${base.replace(/^1/, '')}`, multiplier: 0.7 },
+      { label: `普通 ${base}`, multiplier: 1 },
+      { label: `大盛り 1.3${base.replace(/^1/, '')}`, multiplier: 1.3 },
+      { label: `特盛 1.5${base.replace(/^1/, '')}`, multiplier: 1.5 },
+    ];
+  }
+
+  const defaultNote = source.sourceType === 'ai_estimate'
+    ? "一般的な1人前を基準にしたAI推定です。実際の量・具材によって変動します。"
+    : "Web上の情報を参照した目安です。店舗や時期により変動する場合があります。";
+
+  return {
+    name: String(parsed.name).slice(0, 50),
+    baseAmount: String(parsed.baseAmount || "1人前").slice(0, 20),
+    calories: finalCalories,
+    protein,
+    fat,
+    carbs,
+    confidence,
+    sourceType: source.sourceType,
+    sourceLabel: source.sourceLabel,
+    sourceUrl: source.sourceUrl,
+    note: String(parsed.note || defaultNote).slice(0, 120),
+    servingOptions,
+  };
+}
+
+const ESTIMATE_MEAL_SEARCH_MODEL = "gpt-4o-mini";
+
+// チェーン・ブランド商品名の場合のみ使うWeb検索ベースの推定（公式栄養成分ページを優先）
+async function estimateMealViaWebSearch(openai: OpenAI, name: string): Promise<any | null> {
+  const instructions = `あなたは日本のチェーン店・ブランド商品の栄養成分を調べるアシスタントです。ウェブ検索が使えます。
+
+【手順】
+1. 公式サイト・公式PDF・公式アプリの栄養成分ページを検索する
+2. 見つかった場合は、その数値をそのまま使う（改変・推測補完しない）
+3. 公式情報が見つからない場合、信頼できる一般的なWeb情報（レビュー・まとめサイト等）があればそれを使う
+4. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す
+
+【sourceType のルール】
+- 公式サイト・公式PDF・公式アプリ由来 → "official"（sourceUrlに実際に参照したURL、sourceLabelに「〇〇公式 栄養成分情報」のような短い説明を入れる）
+- それ以外のWeb情報 → "web"
+- sourceUrl・sourceLabelが明確でない場合は絶対に"official"にしない
+
+【出力ルール】
+- baseAmountは「1食」「1人前」など短い表記
+- confidenceは high/medium/low
+- noteは「公式栄養成分を参照した目安です。店舗や時期により変動する場合があります。」のように、正確性を保証しない表現にする
+- servingOptionsは3〜5個、multiplier1（基準量）を必ず含める
+
+商品名：「${name.slice(0, 60)}」
+
+必ず以下のJSON形式のみで返してください（説明文・マークダウンのコードフェンス禁止）：
+{"name":"整えた商品名","baseAmount":"1食","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","sourceType":"official|web","sourceLabel":"短い説明","sourceUrl":"https://...","note":"短い注記","servingOptions":[{"label":"1食","multiplier":1}]}`;
+
+  const response = await openai.responses.create({
+    model: ESTIMATE_MEAL_SEARCH_MODEL,
+    tools: [{ type: 'web_search_preview' }],
+    instructions,
+    input: [{ role: 'user', content: [{ type: 'input_text', text: `商品名：${name}` }] }],
+  });
+
+  const rawText = response.output_text || '';
+  const parsed = extractJson(rawText);
+  if (!parsed || parsed.notFound) return null;
+
+  const source = resolveWebSource(parsed);
+  return buildMealEstimatePayload(parsed, source);
+}
+
 // Responses API（web_search_preview）を使った検索ルート
 async function handleSearchQuery(
   message: string,
@@ -210,7 +361,7 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // 料理名からPFC目安を推定するエンドポイント（テキストのみ・AI推定・目安）
+  // 料理名からPFC目安を推定するエンドポイント（テキストのみ・目安）
   // 精度重視のためこのエンドポイントのみ高精度モデルを使用（他機能のモデルは変更しない）
   const ESTIMATE_MEAL_MODEL = "gpt-4o";
   if (req.url.includes("estimate-meal")) {
@@ -219,10 +370,21 @@ export default async function handler(req: any, res: any) {
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ error: "name is required" });
       }
+      const trimmedName = name.trim().slice(0, 60);
+
+      // チェーン・ブランド名を含む場合のみ、先に公式栄養成分をWeb検索で探す
+      if (isChainMealName(trimmedName)) {
+        try {
+          const webResult = await estimateMealViaWebSearch(openai, trimmedName);
+          if (webResult) return res.json(webResult);
+        } catch (e) {
+          console.error("Estimate-meal web search error (falling back to AI estimate):", e);
+        }
+      }
 
       const estimatePrompt = `料理名から、一般的な1食分のカロリーとPFCの「目安」を推定してください。これは正確な栄養計算ではなくAIによる推定です。
 
-料理名：「${name.trim().slice(0, 60)}」
+料理名：「${trimmedName}」
 
 【推定ルール】
 - 日本で一般的に提供される量を基準にする（外食・家庭料理の平均的な1人前）
@@ -260,51 +422,11 @@ export default async function handler(req: any, res: any) {
       let parsed: any;
       try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
 
-      const calories = Math.round(parseFloat(parsed.calories) || 0);
-      const protein  = Math.round(parseFloat(parsed.protein)  || 0);
-      const fat      = Math.round(parseFloat(parsed.fat)      || 0);
-      const carbs    = Math.round(parseFloat(parsed.carbs)    || 0);
-
-      if (parsed.error || !parsed.name || calories <= 0 || calories > 5000) {
+      const result = buildMealEstimatePayload(parsed, { sourceType: 'ai_estimate' });
+      if (!result) {
         return res.status(422).json({ error: "料理名から推定できませんでした。別の書き方で試してください。" });
       }
-
-      // PFC×カロリー整合チェック：25%以上ズレていたらPFC由来のカロリーに補正
-      const pfcCalories = protein * 4 + fat * 9 + carbs * 4;
-      const finalCalories = pfcCalories > 0 && Math.abs(pfcCalories - calories) / calories > 0.25
-        ? pfcCalories
-        : calories;
-
-      const confidence = ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low';
-
-      // servingOptions を検証し、不正なら基準量ベースのデフォルトにフォールバック
-      let servingOptions: { label: string; multiplier: number }[] = Array.isArray(parsed.servingOptions)
-        ? parsed.servingOptions
-            .filter((o: any) => o && typeof o.label === 'string' && parseFloat(o.multiplier) >= 0.25 && parseFloat(o.multiplier) <= 3)
-            .map((o: any) => ({ label: String(o.label).slice(0, 20), multiplier: parseFloat(o.multiplier) }))
-            .slice(0, 6)
-        : [];
-      if (!servingOptions.some(o => o.multiplier === 1)) {
-        const base = String(parsed.baseAmount || "1人前");
-        servingOptions = [
-          { label: `少なめ 0.7${base.replace(/^1/, '')}`, multiplier: 0.7 },
-          { label: `普通 ${base}`, multiplier: 1 },
-          { label: `大盛り 1.3${base.replace(/^1/, '')}`, multiplier: 1.3 },
-          { label: `特盛 1.5${base.replace(/^1/, '')}`, multiplier: 1.5 },
-        ];
-      }
-
-      return res.json({
-        name: String(parsed.name).slice(0, 50),
-        baseAmount: String(parsed.baseAmount || "1人前").slice(0, 20),
-        calories: finalCalories,
-        protein,
-        fat,
-        carbs,
-        confidence,
-        note: String(parsed.note || "一般的な1人前を基準にしたAI推定です。実際の量・具材によって変動します。").slice(0, 120),
-        servingOptions,
-      });
+      return res.json(result);
     } catch (error: any) {
       console.error("Estimate-meal OpenAI Error:", error);
       return res.status(500).json({ error: error.message || "Failed to estimate meal" });

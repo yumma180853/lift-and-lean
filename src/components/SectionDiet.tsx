@@ -22,6 +22,9 @@ interface EstimateResult {
   fat: number;
   carbs: number;
   confidence: 'high' | 'medium' | 'low';
+  sourceType?: 'official' | 'web' | 'ai_estimate';
+  sourceLabel?: string;
+  sourceUrl?: string;
   note: string;
   servingOptions: { label: string; multiplier: number }[];
 }
@@ -57,6 +60,12 @@ const CONFIDENCE_STYLE: Record<string, { label: string; color: string; bg: strin
   high:   { label: '推定精度 高', color: '#a3e635', bg: 'rgba(163,230,53,0.1)' },
   medium: { label: '推定精度 中', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
   low:    { label: '推定精度 低', color: '#f43f5e', bg: 'rgba(244,63,94,0.1)' },
+};
+
+const SOURCE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  official:    { label: '公式情報', color: '#a3e635', bg: 'rgba(163,230,53,0.1)' },
+  web:         { label: 'Web参照', color: '#818cf8', bg: 'rgba(129,140,248,0.1)' },
+  ai_estimate: { label: 'AI推定',  color: '#a1a1aa', bg: 'rgba(161,161,170,0.1)' },
 };
 
 const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: string }> = {
@@ -251,9 +260,10 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
     if (!estResult) return;
     const opt = estResult.servingOptions.find(o => o.multiplier === estMultiplier);
     const amountLabel = opt ? opt.label : `×${estMultiplier}`;
+    const sourceSuffix = SOURCE_STYLE[estResult.sourceType || 'ai_estimate'].label;
     recordMealWithFeedback({
       date: new Date().toISOString().split('T')[0],
-      name: `${estResult.name}（${amountLabel}・AI推定）`,
+      name: `${estResult.name}（${amountLabel}・${sourceSuffix}）`,
       calories: Math.round(estResult.calories * estMultiplier),
       protein: Math.round(estResult.protein * estMultiplier),
       fat: Math.round(estResult.fat * estMultiplier),
@@ -498,13 +508,40 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
                   <h4 className="font-bold text-white text-sm ll-clamp2">{estResult.name}</h4>
                   <div className="text-[10px] text-zinc-500 font-mono mt-0.5">基準量：{estResult.baseAmount}</div>
                 </div>
-                <span
-                  className="shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ color: CONFIDENCE_STYLE[estResult.confidence].color, background: CONFIDENCE_STYLE[estResult.confidence].bg }}
-                >
-                  {CONFIDENCE_STYLE[estResult.confidence].label}
-                </span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span
+                    className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ color: CONFIDENCE_STYLE[estResult.confidence].color, background: CONFIDENCE_STYLE[estResult.confidence].bg }}
+                  >
+                    {CONFIDENCE_STYLE[estResult.confidence].label}
+                  </span>
+                  <span
+                    className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      color: (SOURCE_STYLE[estResult.sourceType || 'ai_estimate']).color,
+                      background: (SOURCE_STYLE[estResult.sourceType || 'ai_estimate']).bg,
+                    }}
+                  >
+                    {(SOURCE_STYLE[estResult.sourceType || 'ai_estimate']).label}
+                  </span>
+                </div>
               </div>
+
+              {estResult.sourceLabel && (
+                <div className="text-[10px] text-zinc-500 -mt-2 ll-clamp2">
+                  {estResult.sourceLabel}
+                  {estResult.sourceUrl && (
+                    <a
+                      href={estResult.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-400 ml-1.5 underline"
+                    >
+                      情報元を見る
+                    </a>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between -mt-2">
                 <span className="text-[9px] text-zinc-600 font-mono">
