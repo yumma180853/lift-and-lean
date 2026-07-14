@@ -138,21 +138,28 @@ function resolveWebSource(parsed: any): MealEstimateSource {
 }
 
 // 料理名推定の数値検証・整形（AI推定・Web検索どちらの結果にも共通で使う）
+// 小数第1位までを保持する（UI表示側でMath.roundするため、ここでは整数に丸めすぎない）
+const round1 = (v: number): number => Math.round(v * 10) / 10;
+
 function buildMealEstimatePayload(parsed: any, source: MealEstimateSource, noteOverride?: string): any | null {
-  const calories = Math.round(parseFloat(parsed.calories) || 0);
-  const protein  = Math.round(parseFloat(parsed.protein)  || 0);
-  const fat      = Math.round(parseFloat(parsed.fat)      || 0);
-  const carbs    = Math.round(parseFloat(parsed.carbs)    || 0);
+  const calories = round1(parseFloat(parsed.calories) || 0);
+  const protein  = round1(parseFloat(parsed.protein)  || 0);
+  const fat      = round1(parseFloat(parsed.fat)      || 0);
+  const carbs    = round1(parseFloat(parsed.carbs)    || 0);
 
   if (parsed.error || parsed.notFound || !parsed.name || calories <= 0 || calories > 5000) {
     return null;
   }
 
-  // PFC×カロリー整合チェック：25%以上ズレていたらPFC由来のカロリーに補正
-  const pfcCalories = protein * 4 + fat * 9 + carbs * 4;
-  const finalCalories = pfcCalories > 0 && Math.abs(pfcCalories - calories) / calories > 0.25
-    ? pfcCalories
-    : calories;
+  // PFC×カロリー整合チェックはAI推定のときだけ行う。
+  // 公式表・Web参照で見つかった数値は、多少の丸め誤差があってもそのまま優先し、AIが再計算・補正しない
+  let finalCalories = calories;
+  if (source.sourceType === 'ai_estimate') {
+    const pfcCalories = protein * 4 + fat * 9 + carbs * 4;
+    finalCalories = pfcCalories > 0 && Math.abs(pfcCalories - calories) / calories > 0.25
+      ? round1(pfcCalories)
+      : calories;
+  }
 
   const confidence = ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low';
 
@@ -203,9 +210,11 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
 1. まず「ブランド名 栄養成分 一覧」のようなキーワードで、公式サイト内の栄養成分・カロリー一覧ページ（表形式でカロリー・PFCが並んでいるページ）を探す。個別商品の紹介・購入ページ（価格や商品説明が中心で、栄養成分表が無いページ）は根拠にしない
 2. 一覧ページが見つかったら、その中から該当商品の数値を探す。ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合があるので、検索キーワードを参考に該当商品を特定する
 3. それでも一致しない場合、あなた自身の知識でそのブランドの現行の公式メニュー名に近いものを推測し、それで再検索してよい（略称・愛称的な言い方をされることが多いため）。ただし確信が持てない場合は無理に断定せず、notFoundまたはconfidence:"low"で正直に扱う
-4. 数値が見つかった場合は、そのまま使う（改変・推測補完しない）
-5. 栄養成分の一覧・表そのものが見つからず、商品紹介ページやレビュー・まとめサイトの情報しかない場合は、sourceTypeを"web"にする（"official"にしない）
-6. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
+4. 数値が見つかった場合は、そのページに書かれているkcal・P・F・Cの4つをすべて同じ行・同じ商品から転記する。改変・四捨五入以外の加工・推測補完は禁止
+5. 【最重要】kcalは見つかったがP・F・Cのいずれかが同じ場所に載っていない場合、他の栄養素だけをあなたの知識で計算・推測してはいけない。P4+F9+C×4とkcalが多少ズレていても、表に書かれている数値をそのまま使う（例：食物繊維や丸め処理の影響で厳密には一致しないことがあるが、それは正常であり補正しない）
+6. kcalとPFCが同じ情報源から4つとも揃わない場合は、その商品については確信を持てないものとして扱い、sourceTypeを"web"にする、またはnotFoundとして正直にAI推定へ委ねる（4つのうち一部だけを表から、残りをAIの推測で埋めるという混在は絶対にしない）
+7. 栄養成分の一覧・表そのものが見つからず、商品紹介ページやレビュー・まとめサイトの情報しかない場合は、sourceTypeを"web"にする（"official"にしない）
+8. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
 
 【複数商品が含まれる場合（最重要）】
 - 入力にメイン商品（バーガー等）とサイド（ポテト・ドリンク等）が複数含まれていそうな場合、必ずそれぞれの商品を個別に検索し、各商品の公式カロリー・PFCを1つずつ確認してから合算する
