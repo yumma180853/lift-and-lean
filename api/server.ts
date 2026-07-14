@@ -37,9 +37,29 @@ const KNOWN_CHAIN_NAMES = [
   'サブウェイ', '牛角', 'いきなりステーキ', '餃子の王将', '鳥貴族',
 ];
 
-function isChainMealName(name: string): boolean {
+function findMatchedChain(name: string): string | null {
   const lower = name.toLowerCase();
-  return KNOWN_CHAIN_NAMES.some((chain) => lower.includes(chain.toLowerCase()));
+  return KNOWN_CHAIN_NAMES.find((chain) => lower.includes(chain.toLowerCase())) || null;
+}
+
+function isChainMealName(name: string): boolean {
+  return findMatchedChain(name) !== null;
+}
+
+// ユーザーが使いがちな通称を、ブランドの公式メニュー表記に寄せて検索精度を上げる（表示名は変えない）
+const BRAND_QUERY_SYNONYMS: Record<string, { pattern: RegExp; replacement: string }[]> = {
+  '松屋': [{ pattern: /牛丼/g, replacement: '牛めし' }],
+};
+
+function buildSearchQueryHint(name: string, matchedChain: string): string {
+  let query = name;
+  const synonyms = BRAND_QUERY_SYNONYMS[matchedChain];
+  if (synonyms) {
+    for (const { pattern, replacement } of synonyms) {
+      query = query.replace(pattern, replacement);
+    }
+  }
+  return `${query} 栄養成分 カロリー PFC`;
 }
 
 // テキストからJSON部分だけを抜き出してパースする（Web検索応答は説明文が混ざることがあるため）
@@ -73,7 +93,7 @@ function resolveWebSource(parsed: any): MealEstimateSource {
 }
 
 // 料理名推定の数値検証・整形（AI推定・Web検索どちらの結果にも共通で使う）
-function buildMealEstimatePayload(parsed: any, source: MealEstimateSource): any | null {
+function buildMealEstimatePayload(parsed: any, source: MealEstimateSource, noteOverride?: string): any | null {
   const calories = Math.round(parseFloat(parsed.calories) || 0);
   const protein  = Math.round(parseFloat(parsed.protein)  || 0);
   const fat      = Math.round(parseFloat(parsed.fat)      || 0);
@@ -123,7 +143,7 @@ function buildMealEstimatePayload(parsed: any, source: MealEstimateSource): any 
     sourceType: source.sourceType,
     sourceLabel: source.sourceLabel,
     sourceUrl: source.sourceUrl,
-    note: String(parsed.note || defaultNote).slice(0, 120),
+    note: String(noteOverride || parsed.note || defaultNote).slice(0, 120),
     servingOptions,
   };
 }
@@ -131,14 +151,15 @@ function buildMealEstimatePayload(parsed: any, source: MealEstimateSource): any 
 const ESTIMATE_MEAL_SEARCH_MODEL = "gpt-4o-mini";
 
 // チェーン・ブランド商品名の場合のみ使うWeb検索ベースの推定（公式栄養成分ページを優先）
-async function estimateMealViaWebSearch(openai: OpenAI, name: string): Promise<any | null> {
+async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQueryHint: string): Promise<any | null> {
   const instructions = `あなたは日本のチェーン店・ブランド商品の栄養成分を調べるアシスタントです。ウェブ検索が使えます。
 
 【手順】
-1. 公式サイト・公式PDF・公式アプリの栄養成分ページを検索する
-2. 見つかった場合は、その数値をそのまま使う（改変・推測補完しない）
-3. 公式情報が見つからない場合、信頼できる一般的なWeb情報（レビュー・まとめサイト等）があればそれを使う
-4. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す
+1. 「検索キーワード」を使って公式サイト・公式PDF・公式アプリの栄養成分ページを検索する
+2. ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合がある。検索キーワードは公式表記に寄せてあるので、それを優先して検索する
+3. 見つかった場合は、その数値をそのまま使う（改変・推測補完しない）
+4. 公式情報が見つからない場合、信頼できる一般的なWeb情報（レビュー・まとめサイト等）があればそれを使う
+5. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
 
 【sourceType のルール】
 - 公式サイト・公式PDF・公式アプリ由来 → "official"（sourceUrlに実際に参照したURL、sourceLabelに「〇〇公式 栄養成分情報」のような短い説明を入れる）
@@ -146,12 +167,14 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string): Promise<a
 - sourceUrl・sourceLabelが明確でない場合は絶対に"official"にしない
 
 【出力ルール】
+- nameはユーザーの入力表現に近い形で整える（公式表記に無理に書き換えない）
 - baseAmountは「1食」「1人前」など短い表記
 - confidenceは high/medium/low
 - noteは「公式栄養成分を参照した目安です。店舗や時期により変動する場合があります。」のように、正確性を保証しない表現にする
 - servingOptionsは3〜5個、multiplier1（基準量）を必ず含める
 
-商品名：「${name.slice(0, 60)}」
+ユーザー入力：「${name.slice(0, 60)}」
+検索キーワード（この表記で検索すること）：「${searchQueryHint}」
 
 必ず以下のJSON形式のみで返してください（説明文・マークダウンのコードフェンス禁止）：
 {"name":"整えた商品名","baseAmount":"1食","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","sourceType":"official|web","sourceLabel":"短い説明","sourceUrl":"https://...","note":"短い注記","servingOptions":[{"label":"1食","multiplier":1}]}`;
@@ -160,7 +183,7 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string): Promise<a
     model: ESTIMATE_MEAL_SEARCH_MODEL,
     tools: [{ type: 'web_search_preview' }],
     instructions,
-    input: [{ role: 'user', content: [{ type: 'input_text', text: `商品名：${name}` }] }],
+    input: [{ role: 'user', content: [{ type: 'input_text', text: `検索キーワード：${searchQueryHint}` }] }],
   });
 
   const rawText = response.output_text || '';
@@ -373,9 +396,11 @@ export default async function handler(req: any, res: any) {
       const trimmedName = name.trim().slice(0, 60);
 
       // チェーン・ブランド名を含む場合のみ、先に公式栄養成分をWeb検索で探す
-      if (isChainMealName(trimmedName)) {
+      const matchedChain = findMatchedChain(trimmedName);
+      if (matchedChain) {
         try {
-          const webResult = await estimateMealViaWebSearch(openai, trimmedName);
+          const searchQueryHint = buildSearchQueryHint(trimmedName, matchedChain);
+          const webResult = await estimateMealViaWebSearch(openai, trimmedName, searchQueryHint);
           if (webResult) return res.json(webResult);
         } catch (e) {
           console.error("Estimate-meal web search error (falling back to AI estimate):", e);
@@ -422,7 +447,12 @@ export default async function handler(req: any, res: any) {
       let parsed: any;
       try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
 
-      const result = buildMealEstimatePayload(parsed, { sourceType: 'ai_estimate' });
+      // チェーン一致だがWeb検索で公式・Web情報が見つからなかった場合は、その旨をnoteで明示する
+      const chainFallbackNote = matchedChain
+        ? `${matchedChain}の公式栄養成分は確認できなかったため、一般的な目安（AI推定）です。店舗・時期・キャンペーンメニューにより実際の数値と異なる場合があります。`
+        : undefined;
+
+      const result = buildMealEstimatePayload(parsed, { sourceType: 'ai_estimate' }, chainFallbackNote);
       if (!result) {
         return res.status(422).json({ error: "料理名から推定できませんでした。別の書き方で試してください。" });
       }
