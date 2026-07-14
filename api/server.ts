@@ -955,7 +955,13 @@ ${mealSummary}
   }
 
   // 3️⃣ AI目標提案エンドポイント（身長・体重・目的等からカロリー/PFC/目標体重の目安を提案）
-  const SUGGEST_GOALS_MODEL = "gpt-4o";
+  // 数値の納得感を優先するため、他機能より上位のモデルを使用（このエンドポイントのみ）
+  const SUGGEST_GOALS_MODEL = "gpt-4.1";
+  // 増量・減量の「安全な月間ペース」。中間目標・カロリー補正の算出に使う（AIには判断させずサーバー側で決定的に計算する）
+  const GAIN_PACE_KG_PER_MONTH = 1.3;
+  const KCAL_PER_KG = 7700;
+  const safeLossPaceKgPerMonth = (weightKg: number): number =>
+    Math.min(4, Math.max(1.5, Math.round(weightKg * 0.008 * 4 * 10) / 10));
   if (req.url.includes("suggest-goals")) {
     try {
       const { height, weight, age, sex, activity, goal, intensity, targetWeight, periodMonths, struggles } = req.body;
@@ -984,22 +990,28 @@ ${struggles ? `続かなくなりがちな理由: ${String(struggles).slice(0, 1
 - タンパク質は体重1kgあたり1.6〜2.2gを目安にする
 - 脂質はカロリーの20〜30%程度、残りを炭水化物に配分する
 - 「続かなくなりがちな理由」が書かれていたら、reasonの中でその対策に軽く触れる（例：自炊が苦手→コンビニで揃えやすい配分に寄せた、等）
+- targetWeightが指定されている場合は、その数値をそのままtargetWeightとして返す（ペースが現実的かどうかの判断・調整はシステム側で別途行うため、あなたはユーザーの希望をそのまま反映してよい）
 - targetWeightが未指定の場合は、現在体重から目的に沿った無理のない目安値を提案してよい
 - periodMonthsが未指定の場合は3〜12の範囲で妥当な期間を提案する
 
 【reasonのルール】
-- 2〜3文の日本語。数値の根拠を簡潔に説明する
+- 2〜3文の日本語。「なぜこのカロリーか」「なぜこのPFCか」の根拠を簡潔に説明する
 - 「必ず」「絶対」「保証」等の断定語は禁止
 - 「まずはこの数値から始めましょう」のような、試しながら調整していくトーンにする
 - 医療用語・診断的な言い回しは禁止
 
+【nextStepsのルール】
+- 1〜2文の日本語。次に何をすればいいか、体を大きくしたい/絞りたい人がそれぞれ何を見ればいいかが分かる具体的な行動を書く
+- 例：「2週間ごとに体重の増え方を確認し、増えなさすぎ・増えすぎに応じてカロリーを100〜200kcal単位で調整しましょう。」
+- 断定語・医療用語は禁止
+
 必ず以下のJSON形式のみで返してください：
-{"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"targetWeight":数値,"periodMonths":数値,"reason":"2〜3文の説明"}`;
+{"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"targetWeight":数値,"periodMonths":数値,"reason":"2〜3文の説明","nextSteps":"1〜2文の次の行動"}`;
 
       const completion = await openai.chat.completions.create({
         model: SUGGEST_GOALS_MODEL,
         response_format: { type: "json_object" },
-        max_tokens: 400,
+        max_tokens: 500,
         messages: [{ role: "user", content: suggestPrompt }],
       });
 
@@ -1021,9 +1033,38 @@ ${struggles ? `続かなくなりがちな理由: ${String(struggles).slice(0, 1
       const clampNotes: string[] = [];
 
       // カロリー：一般的な安全範囲（1200〜4500kcal）にクランプ
-      const calBefore = calories;
       calories = Math.min(4500, Math.max(1200, calories));
-      if (calories !== calBefore) clampNotes.push('カロリーを安全な範囲に調整しました');
+
+      // 目標体重：現在体重の±20%以内にクランプ（極端な増減提案を防ぐ）。これが「最終目標」
+      const twBefore = Math.round((parseFloat(parsed.targetWeight) || w) * 10) / 10;
+      let finalTargetWeight = Math.min(w * 1.2, Math.max(w * 0.8, suggestedTargetWeight));
+      finalTargetWeight = Math.round(finalTargetWeight * 10) / 10;
+      if (finalTargetWeight !== twBefore) clampNotes.push('目標体重を無理のない範囲に調整しました');
+
+      // 期間：1〜24ヶ月にクランプ
+      suggestedPeriodMonths = Math.min(24, Math.max(1, suggestedPeriodMonths));
+
+      // 「まずの中間目標」の算出：最終目標までのペースが安全な月間ペースを超える場合のみ、
+      // 現在体重から安全ペース×期間ぶんだけ進んだ地点を中間目標にする（AIには判断させず決定的に計算する）
+      const totalChange = finalTargetWeight - w;
+      const direction: 'gain' | 'loss' | 'maintain' = totalChange > 0.1 ? 'gain' : totalChange < -0.1 ? 'loss' : 'maintain';
+      const recommendedPaceKgPerMonth = direction === 'gain' ? GAIN_PACE_KG_PER_MONTH : direction === 'loss' ? safeLossPaceKgPerMonth(w) : 0;
+      const maxRealisticChange = recommendedPaceKgPerMonth * suggestedPeriodMonths;
+
+      let interimTargetWeight = finalTargetWeight;
+      let isAggressiveGoal = false;
+      if (direction !== 'maintain' && Math.abs(totalChange) > maxRealisticChange) {
+        isAggressiveGoal = true;
+        const sign = direction === 'gain' ? 1 : -1;
+        interimTargetWeight = Math.round((w + sign * maxRealisticChange) * 10) / 10;
+
+        // カロリーも中間目標のペースに合わせて補正する（最終目標向けの過剰な黒字/赤字をそのまま出さない）
+        const excessKg = Math.abs(totalChange) - maxRealisticChange;
+        const dailyCalorieAdjustment = Math.round((excessKg * KCAL_PER_KG) / (suggestedPeriodMonths * 30));
+        calories = direction === 'gain' ? calories - dailyCalorieAdjustment : calories + dailyCalorieAdjustment;
+        calories = Math.min(4500, Math.max(1200, calories));
+        clampNotes.push('急なペースにならないよう、カロリーも中間目標に合わせて調整しました');
+      }
 
       // タンパク質：体重×0.8〜3.0gの範囲にクランプ
       const proteinBefore = protein;
@@ -1031,7 +1072,7 @@ ${struggles ? `続かなくなりがちな理由: ${String(struggles).slice(0, 1
       protein = Math.round(protein);
       if (protein !== proteinBefore) clampNotes.push('タンパク質量を無理のない範囲に調整しました');
 
-      // 脂質：カロリーの15〜35%の範囲にクランプ
+      // 脂質：カロリーの15〜35%の範囲にクランプ（補正後のカロリーを基準にする）
       const fatMin = Math.round((calories * 0.15) / 9);
       const fatMax = Math.round((calories * 0.35) / 9);
       const fatBefore = fat;
@@ -1047,28 +1088,24 @@ ${struggles ? `続かなくなりがちな理由: ${String(struggles).slice(0, 1
         clampNotes.push('炭水化物量をカロリーと整合するよう調整しました');
       }
 
-      // 目標体重：現在体重の±20%以内にクランプ（極端な増減提案を防ぐ）
-      const twBefore = suggestedTargetWeight;
-      suggestedTargetWeight = Math.min(w * 1.2, Math.max(w * 0.8, suggestedTargetWeight));
-      suggestedTargetWeight = Math.round(suggestedTargetWeight * 10) / 10;
-      if (suggestedTargetWeight !== twBefore) clampNotes.push('目標体重を無理のない範囲に調整しました');
-
-      // 期間：1〜24ヶ月にクランプ
-      suggestedPeriodMonths = Math.min(24, Math.max(1, suggestedPeriodMonths));
-
       let reason = String(parsed.reason || 'あなたの入力をもとに、まずはこの数値から始める目安を計算しました。体調や続けやすさに合わせて少しずつ調整してください。').slice(0, 200);
       if (clampNotes.length > 0) {
         reason += ` （${Array.from(new Set(clampNotes)).join('、')}）`;
       }
+      const nextSteps = String(parsed.nextSteps || '2週間ごとに体重の変化を確認し、増え方・減り方が想定とズレていたらカロリーを100〜200kcal単位で調整しましょう。').slice(0, 200);
 
       return res.json({
         calories,
         protein,
         fat,
         carbs,
-        targetWeight: suggestedTargetWeight,
+        targetWeight: finalTargetWeight,
+        interimTargetWeight,
+        isAggressiveGoal,
+        recommendedPaceKgPerMonth: Math.round(recommendedPaceKgPerMonth * 10) / 10,
         periodMonths: suggestedPeriodMonths,
         reason: reason.slice(0, 260),
+        nextSteps,
         note: "一般的な目安の提案です。医療・栄養指導ではありません。体調に合わせて無理なく調整してください。",
       });
     } catch (error: any) {
