@@ -1,16 +1,39 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X, RefreshCw } from 'lucide-react';
+import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
 
 export interface SectionDietProps {
-  todayMeals: Meal[];
+  /** 選択中の日付（selectedDate）の食事一覧 */
+  dayMeals: Meal[];
   allMeals: Meal[];
+  /** 表示・記録対象の日付 'YYYY-MM-DD' */
+  selectedDate: string;
+  today: string;
+  onSelectDate: (date: string) => void;
   addMeal: (meal: Omit<Meal, 'id'>) => void;
   updateMeal: (id: string, patch: Partial<Omit<Meal, 'id'>>) => void;
   deleteMeal: (id: string) => void;
   goals: UserGoals;
   onEditingChange?: (open: boolean) => void;
 }
+
+// 'YYYY-MM-DD' をローカルタイムのDateとして安全に解釈する（UTCズレ防止）
+const parseDateStr = (dateStr: string): Date => new Date(dateStr + 'T00:00:00');
+
+const shiftDateStr = (dateStr: string, n: number): string => {
+  const d = parseDateStr(dateStr);
+  d.setDate(d.getDate() + n);
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const formatDateLabel = (dateStr: string): string =>
+  parseDateStr(dateStr).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+
+const formatDateShort = (dateStr: string): string => {
+  const d = parseDateStr(dateStr);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
 
 const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', 'プレWO', 'ポストWO'] as const;
 
@@ -77,8 +100,37 @@ const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: str
   'ポストWO':{ border: '#10b981', chip: 'rgba(16,185,129,0.12)', label: '#10b981' },
 };
 
-export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteMeal, goals, onEditingChange }: SectionDietProps) {
+export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectDate, addMeal, updateMeal, deleteMeal, goals, onEditingChange }: SectionDietProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const isToday = selectedDate === today;
+  const relativeLabel = isToday ? 'TODAY' : selectedDate === shiftDateStr(today, -1) ? '昨日' : selectedDate === shiftDateStr(today, -2) ? '一昨日' : '';
+
+  // 日付ピッカー（ミニカレンダーシート）
+  const [isPickingDate, setIsPickingDate] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => selectedDate.slice(0, 7)); // 'YYYY-MM'
+  const mealDates = useMemo(() => new Set(allMeals.map(m => m.date || today)), [allMeals, today]);
+
+  const openDatePicker = () => {
+    setCalMonth(selectedDate.slice(0, 7));
+    setIsPickingDate(true);
+  };
+
+  const shiftCalMonth = (n: number) => {
+    const d = parseDateStr(calMonth + '-01');
+    d.setMonth(d.getMonth() + n);
+    setCalMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  // カレンダーのマス目（月初の曜日ぶん先頭にnullを詰める）
+  const calCells = useMemo(() => {
+    const first = parseDateStr(calMonth + '-01');
+    const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const cells: (string | null)[] = Array(first.getDay()).fill(null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      cells.push(`${calMonth}-${String(day).padStart(2, '0')}`);
+    }
+    return cells;
+  }, [calMonth]);
   const [mealName, setMealName] = useState('');
   const [calories, setCalories] = useState('');
   const [protein, setProtein] = useState('');
@@ -187,13 +239,14 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
 
   const recordMealWithFeedback = (newMeal: Omit<Meal, 'id'>) => {
     addMeal(newMeal);
-    const totalKcal = todayMeals.reduce((s, m) => s + m.calories, 0) + newMeal.calories;
-    const totalProtein = todayMeals.reduce((s, m) => s + m.protein, 0) + newMeal.protein;
+    const totalKcal = dayMeals.reduce((s, m) => s + m.calories, 0) + newMeal.calories;
+    const totalProtein = dayMeals.reduce((s, m) => s + m.protein, 0) + newMeal.protein;
     const remainKcal = Math.round(goals.calories - totalKcal);
     const remainProtein = Math.round(goals.protein - totalProtein);
+    const datePrefix = isToday ? '' : `${formatDateShort(selectedDate)}に`;
     const msg = remainKcal < 0
-      ? `✓ ${newMeal.name}を記録  今日はしっかり食べた日`
-      : `✓ ${newMeal.name}を記録  残り ${remainKcal}kcal · P あと ${remainProtein}g`;
+      ? `✓ ${newMeal.name}を${datePrefix}記録  ${isToday ? '今日' : 'この日'}はしっかり食べた日`
+      : `✓ ${newMeal.name}を${datePrefix}記録  残り ${remainKcal}kcal · P あと ${remainProtein}g`;
     setFeedbackMsg(msg);
     if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
     feedbackTimer.current = setTimeout(() => setFeedbackMsg(null), 1500);
@@ -262,7 +315,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
     const amountLabel = opt ? opt.label : `×${estMultiplier}`;
     const sourceSuffix = SOURCE_STYLE[estResult.sourceType || 'ai_estimate'].label;
     recordMealWithFeedback({
-      date: new Date().toISOString().split('T')[0],
+      date: selectedDate,
       name: `${estResult.name}（${amountLabel}・${sourceSuffix}）`,
       calories: Math.round(estResult.calories * estMultiplier),
       protein: Math.round(estResult.protein * estMultiplier),
@@ -291,7 +344,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
     e.preventDefault();
     if (!mealName) return;
     recordMealWithFeedback({
-      date: new Date().toISOString().split('T')[0],
+      date: selectedDate,
       name: mealName,
       calories: parseFloat(calories) || 0,
       protein: parseFloat(protein) || 0,
@@ -372,10 +425,10 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
   };
 
   // 今日の合計
-  const totalKcal    = todayMeals.reduce((s, m) => s + (m.calories || 0), 0);
-  const totalProtein = todayMeals.reduce((s, m) => s + (m.protein || 0), 0);
-  const totalFat     = todayMeals.reduce((s, m) => s + (m.fat || 0), 0);
-  const totalCarbs   = todayMeals.reduce((s, m) => s + (m.carbs || 0), 0);
+  const totalKcal    = dayMeals.reduce((s, m) => s + (m.calories || 0), 0);
+  const totalProtein = dayMeals.reduce((s, m) => s + (m.protein || 0), 0);
+  const totalFat     = dayMeals.reduce((s, m) => s + (m.fat || 0), 0);
+  const totalCarbs   = dayMeals.reduce((s, m) => s + (m.carbs || 0), 0);
   const calPct       = goals.calories > 0 ? Math.min(100, (totalKcal / goals.calories) * 100) : 0;
 
   return (
@@ -384,8 +437,19 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
       <div className="flex justify-between items-start">
         <div>
           <div className="text-[9px] font-black tracking-widest text-zinc-500 uppercase font-mono">DIET LOG</div>
-          <h2 className="text-lg font-black text-white italic uppercase tracking-wide mt-0.5">今日の食事</h2>
-          <div className="text-[10px] text-zinc-600 font-mono mt-0.5">{new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' })}</div>
+          <h2 className="text-lg font-black text-white italic uppercase tracking-wide mt-0.5">
+            {isToday ? '今日の食事' : `${formatDateShort(selectedDate)}の食事`}
+          </h2>
+          {isToday ? (
+            <div className="text-[10px] text-zinc-600 font-mono mt-0.5">{formatDateLabel(selectedDate)}</div>
+          ) : (
+            <span
+              className="inline-block text-[9px] font-bold px-2 py-0.5 rounded-full mt-1"
+              style={{ color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.28)' }}
+            >
+              過去の記録
+            </span>
+          )}
         </div>
         <div className="flex flex-col gap-1.5 items-end">
           <button
@@ -421,12 +485,57 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
         <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" multiple className="hidden" />
       </div>
 
+      {/* DATE STRIP */}
+      <div
+        className="ll-card flex items-center justify-between gap-2 px-2.5 py-2"
+        style={!isToday ? { borderColor: 'rgba(251,191,36,0.25)' } : undefined}
+      >
+        <button
+          type="button"
+          onClick={() => onSelectDate(shiftDateStr(selectedDate, -1))}
+          className="w-9 h-9 rounded-xl bg-zinc-800/80 border border-zinc-800 text-zinc-400 flex items-center justify-center active:scale-95 transition-all"
+          aria-label="前の日"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={openDatePicker}
+          className="flex-1 text-center py-1 rounded-xl active:bg-zinc-900/60 transition-colors"
+        >
+          <div className={`text-sm font-black ${isToday ? 'text-white' : 'text-amber-400'}`}>{formatDateLabel(selectedDate)}</div>
+          <div className="text-[9px] text-zinc-600 font-mono mt-0.5">{relativeLabel ? `${relativeLabel} ` : ''}▾ タップして日付を選ぶ</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (!isToday) onSelectDate(shiftDateStr(selectedDate, 1)); }}
+          disabled={isToday}
+          className="w-9 h-9 rounded-xl bg-zinc-800/80 border border-zinc-800 text-zinc-400 flex items-center justify-center active:scale-95 transition-all disabled:opacity-30"
+          aria-label="次の日"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      {!isToday && (
+        <div className="flex justify-center -mt-1">
+          <button
+            type="button"
+            onClick={() => onSelectDate(today)}
+            className="text-[10px] font-bold text-lime-400 px-3 py-1 rounded-full active:scale-95 transition-all"
+            style={{ background: 'rgba(163,230,53,0.1)', border: '1px solid rgba(163,230,53,0.3)' }}
+          >
+            ↩ 今日へ戻る
+          </button>
+        </div>
+      )}
+
       {/* DAY SUMMARY */}
-      {todayMeals.length > 0 && (
+      {dayMeals.length > 0 && (
         <div className="ll-card p-3.5">
           <div className="flex justify-between items-center mb-2">
-            <span className="ll-label text-zinc-500 text-[9px]">TODAY'S TOTAL</span>
-            <span className="text-[10px] font-mono font-bold text-zinc-500">{todayMeals.length}食</span>
+            <span className="ll-label text-zinc-500 text-[9px]">{isToday ? "TODAY'S TOTAL" : `${formatDateShort(selectedDate)} TOTAL`}</span>
+            <span className="text-[10px] font-mono font-bold text-zinc-500">{dayMeals.length}食</span>
           </div>
           <div className="flex justify-between items-center">
             <div className="text-center">
@@ -467,6 +576,7 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-lime-400 font-bold text-xs">
               <Sparkles size={14} /> 料理名からかんたん追加
+              {!isToday && <span className="text-[9px] font-bold text-amber-400">→ {formatDateShort(selectedDate)}に記録</span>}
             </div>
             <span className="text-[9px] font-bold text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 tracking-widest font-mono uppercase">AI推定</span>
           </div>
@@ -658,6 +768,10 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
             </div>
           )}
 
+          {!isToday && (
+            <p className="text-[10px] font-bold text-amber-400 -mb-1">{formatDateShort(selectedDate)}の記録として保存されます</p>
+          )}
+
           {/* 食事タイプ チップ */}
           <div>
             <div className="text-[10px] font-bold text-zinc-500 mb-2">食事の種類（任意）</div>
@@ -791,9 +905,9 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
         </div>
       )}
 
-      {todayMeals.length > 0 ? (
+      {dayMeals.length > 0 ? (
         <div className="space-y-2.5">
-          {todayMeals.map((meal) => {
+          {dayMeals.map((meal) => {
             const typeStyle = meal.mealType ? MEAL_TYPE_STYLE[meal.mealType] : null;
             return (
               <div
@@ -847,8 +961,12 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
             </div>
           </div>
           <div>
-            <p className="text-white font-bold">今日はまだ記録がありません</p>
-            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">料理名を入れるだけで、AIがPFCとカロリーの目安を出します。</p>
+            <p className="text-white font-bold">{isToday ? '今日はまだ記録がありません' : `${formatDateShort(selectedDate)}の記録はありません`}</p>
+            <p className="text-zinc-500 text-sm mt-1.5 leading-relaxed">
+              {isToday
+                ? '料理名を入れるだけで、AIがPFCとカロリーの目安を出します。'
+                : 'この日に食べたものを、あとからでも記録できます。'}
+            </p>
           </div>
           <div className="flex flex-col items-center gap-2.5 w-full max-w-[240px]">
             <button
@@ -874,6 +992,91 @@ export function SectionDiet({ todayMeals, allMeals, addMeal, updateMeal, deleteM
           >
             手動で入力する
           </button>
+        </div>
+      )}
+
+      {/* 日付選択ボトムシート */}
+      {isPickingDate && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={() => setIsPickingDate(false)}>
+          <div className="absolute inset-0 bg-black/70" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md ll-card ll-pop rounded-t-3xl rounded-b-none p-5"
+            style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <button
+                type="button"
+                onClick={() => shiftCalMonth(-1)}
+                className="w-8 h-8 rounded-xl bg-zinc-800/80 border border-zinc-800 text-zinc-400 flex items-center justify-center active:scale-95 transition-all"
+                aria-label="前の月"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              <div className="text-sm font-black text-white font-mono">
+                {`${calMonth.slice(0, 4)}年${parseInt(calMonth.slice(5), 10)}月`}
+              </div>
+              <button
+                type="button"
+                onClick={() => { if (calMonth < today.slice(0, 7)) shiftCalMonth(1); }}
+                disabled={calMonth >= today.slice(0, 7)}
+                className="w-8 h-8 rounded-xl bg-zinc-800/80 border border-zinc-800 text-zinc-400 flex items-center justify-center active:scale-95 transition-all disabled:opacity-30"
+                aria-label="次の月"
+              >
+                <ChevronRight size={15} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {['日', '月', '火', '水', '木', '金', '土'].map(d => (
+                <div key={d} className="text-[9px] font-black text-zinc-600 font-mono py-1">{d}</div>
+              ))}
+              {calCells.map((dateStr, i) => {
+                if (!dateStr) return <div key={`blank-${i}`} />;
+                const isFuture = dateStr > today;
+                const isSelected = dateStr === selectedDate;
+                const isTodayCell = dateStr === today;
+                const hasRecord = mealDates.has(dateStr);
+                return (
+                  <button
+                    key={dateStr}
+                    type="button"
+                    disabled={isFuture}
+                    onClick={() => { onSelectDate(dateStr); setIsPickingDate(false); }}
+                    className="relative py-2 rounded-lg text-[12px] font-mono font-bold transition-all active:scale-95"
+                    style={{
+                      color: isFuture ? '#232326' : isSelected ? '#000' : '#a1a1aa',
+                      background: isSelected ? '#a3e635' : 'transparent',
+                      border: isTodayCell && !isSelected ? '1px solid rgba(163,230,53,0.4)' : '1px solid transparent',
+                    }}
+                  >
+                    {parseInt(dateStr.slice(8), 10)}
+                    {hasRecord && !isFuture && (
+                      <span
+                        className="absolute left-1/2 -translate-x-1/2 bottom-0.5 w-1 h-1 rounded-full"
+                        style={{ background: isSelected ? '#000' : '#818cf8' }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 mt-3 px-1">
+              <span className="w-1 h-1 rounded-full bg-indigo-400 inline-block" />
+              <span className="text-[9px] text-zinc-500">記録がある日</span>
+              <span className="w-2.5 h-2.5 border rounded ml-2 inline-block" style={{ borderColor: 'rgba(163,230,53,0.4)' }} />
+              <span className="text-[9px] text-zinc-500">今日</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => { onSelectDate(today); setIsPickingDate(false); }}
+              className="w-full bg-zinc-800 text-white py-2.5 rounded-xl font-bold text-sm mt-3 active:scale-95 transition-all"
+            >
+              今日へ戻る
+            </button>
+          </div>
         </div>
       )}
 

@@ -93,6 +93,11 @@ function urlBase64ToUint8Array(base64String: string) {
 export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [dietEditOpen, setDietEditOpen] = useState(false);
+  // 食事ログで表示中の日付。タブを離れたら今日に戻し「昨日のつもりで今日に記録」の事故を防ぐ
+  const [dietDate, setDietDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  useEffect(() => {
+    if (tab !== 'diet') setDietDate(format(new Date(), 'yyyy-MM-dd'));
+  }, [tab]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [weights, setWeights] = useState<WeightRecord[]>([]);
@@ -257,6 +262,8 @@ export default function App() {
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const tMeals = useMemo(() => meals.filter(m => m.date === today), [meals, today]);
+  // 食事ログの選択日でフィルタ。dateを持たない古いデータは今日扱い（後方互換）
+  const dietMeals = useMemo(() => meals.filter(m => (m.date || today) === dietDate), [meals, today, dietDate]);
 
   const streakData = useMemo(
     () => computeStreak(meals, today, freezeUsedDates, longestStreak),
@@ -349,7 +356,7 @@ export default function App() {
                     addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />
                 </div>
               ))}
-              {tab === 'diet' && <SectionDiet todayMeals={tMeals} allMeals={meals} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: today }])} updateMeal={(id, patch) => setMeals(p => p.map(x => x.id === id ? { ...x, ...patch } : x))} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} onEditingChange={setDietEditOpen} />}
+              {tab === 'diet' && <SectionDiet dayMeals={dietMeals} allMeals={meals} selectedDate={dietDate} today={today} onSelectDate={setDietDate} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: dietDate }])} updateMeal={(id, patch) => setMeals(p => p.map(x => x.id === id ? { ...x, ...patch } : x))} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} onEditingChange={setDietEditOpen} />}
               {tab === 'analysis' && <SectionAnalysis weightHistory={weights} meals={meals} workouts={workouts} addWeight={addWeight} today={today} openWeightModal={() => setOpenW(true)} goals={goals} />}
               {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setWorkouts={setWorkouts} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
               {tab === 'settings' && <SectionSettings goals={goals} setGoals={setGoals} remind={remind} toggleNotification={toggleNotify} />}
