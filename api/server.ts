@@ -200,7 +200,9 @@ function buildMealEstimatePayload(parsed: any, source: MealEstimateSource, noteO
   };
 }
 
-const ESTIMATE_MEAL_SEARCH_MODEL = "gpt-4o-mini";
+// 検索→公式表から該当行を特定→転記、という多段タスクはminiでは取りこぼしが多く
+// notFoundフォールバックが頻発したため、料理名推定と同じ高精度モデルに揃える
+const ESTIMATE_MEAL_SEARCH_MODEL = "gpt-4o";
 
 // チェーン・ブランド商品名の場合のみ使うWeb検索ベースの推定（公式栄養成分ページを優先）
 async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQueryHint: string): Promise<any | null> {
@@ -209,12 +211,13 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
 【手順】
 1. まず「ブランド名 栄養成分 一覧」のようなキーワードで、公式サイト内の栄養成分・カロリー一覧ページ（表形式でカロリー・PFCが並んでいるページ）を探す。個別商品の紹介・購入ページ（価格や商品説明が中心で、栄養成分表が無いページ）は根拠にしない
 2. 一覧ページが見つかったら、その中から該当商品の数値を探す。ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合があるので、検索キーワードを参考に該当商品を特定する
-3. それでも一致しない場合、あなた自身の知識でそのブランドの現行の公式メニュー名に近いものを推測し、それで再検索してよい（略称・愛称的な言い方をされることが多いため）。ただし確信が持てない場合は無理に断定せず、notFoundまたはconfidence:"low"で正直に扱う
-4. 数値が見つかった場合は、そのページに書かれているkcal・P・F・Cの4つをすべて同じ行・同じ商品から転記する。改変・四捨五入以外の加工・推測補完は禁止
-5. 【最重要】kcalは見つかったがP・F・Cのいずれかが同じ場所に載っていない場合、他の栄養素だけをあなたの知識で計算・推測してはいけない。P4+F9+C×4とkcalが多少ズレていても、表に書かれている数値をそのまま使う（例：食物繊維や丸め処理の影響で厳密には一致しないことがあるが、それは正常であり補正しない）
-6. kcalとPFCが同じ情報源から4つとも揃わない場合は、その商品については確信を持てないものとして扱い、sourceTypeを"web"にする、またはnotFoundとして正直にAI推定へ委ねる（4つのうち一部だけを表から、残りをAIの推測で埋めるという混在は絶対にしない）
-7. 栄養成分の一覧・表そのものが見つからず、商品紹介ページやレビュー・まとめサイトの情報しかない場合は、sourceTypeを"web"にする（"official"にしない）
-8. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
+3. 【重要】1回の検索で見つからなくても諦めない。少なくとも2〜3通りのキーワードで再検索する。例：「ブランド名 栄養成分 一覧」→「ブランド名 商品名 カロリー」→「商品名 kcal たんぱく質」。定食・セット系は公式の栄養成分表に商品単位（ライス・味噌汁込み）で載っていることが多いので、その行を探す
+4. それでも一致しない場合、あなた自身の知識でそのブランドの現行の公式メニュー名に近いものを推測し、それで再検索してよい（略称・愛称的な言い方をされることが多いため）。ただし確信が持てない場合は無理に断定せず、confidence:"low"で正直に扱う
+5. 数値が見つかった場合は、そのページに書かれているkcal・P・F・Cの4つをすべて同じ行・同じ商品から転記する。改変・四捨五入以外の加工・推測補完は禁止
+6. 【最重要】kcalは見つかったがP・F・Cのいずれかが同じ場所に載っていない場合、他の栄養素だけをあなたの知識で計算・推測してはいけない。P4+F9+C×4とkcalが多少ズレていても、表に書かれている数値をそのまま使う（例：食物繊維や丸め処理の影響で厳密には一致しないことがあるが、それは正常であり補正しない）
+7. kcalとPFCが同じ情報源から4つとも揃わない場合は、その商品については確信を持てないものとして扱い、sourceTypeを"web"にする（4つのうち一部だけを表から、残りをAIの推測で埋めるという混在は絶対にしない）
+8. 栄養成分の一覧・表そのものが見つからず、商品紹介ページやレビュー・まとめサイトの情報しかない場合でも、そこに4つの数値が揃っているならsourceType:"web"として返す（"official"にしない）。notFoundは「複数回検索しても数値が4つ揃う情報源が1つも無い」場合の最後の手段
+9. 本当に何も有効な情報が見つからない場合のみ、他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
 
 【複数商品が含まれる場合（最重要）】
 - 入力にメイン商品（バーガー等）とサイド（ポテト・ドリンク等）が複数含まれていそうな場合、必ずそれぞれの商品を個別に検索し、各商品の公式カロリー・PFCを1つずつ確認してから合算する
@@ -494,8 +497,14 @@ export default async function handler(req: any, res: any) {
       if (matchedChain) {
         try {
           const searchQueryHint = buildSearchQueryHint(trimmedName, matchedChain);
-          const webResult = await estimateMealViaWebSearch(openai, trimmedName, searchQueryHint);
+          let webResult = await estimateMealViaWebSearch(openai, trimmedName, searchQueryHint);
+          if (!webResult) {
+            // notFoundで諦める前に、補正なしのシンプルなクエリで一度だけ再試行する
+            console.log(`Estimate-meal web search retry for: ${trimmedName}`);
+            webResult = await estimateMealViaWebSearch(openai, trimmedName, `${trimmedName} カロリー たんぱく質 脂質 炭水化物`);
+          }
           if (webResult) return res.json(webResult);
+          console.log(`Estimate-meal web search notFound after retry (falling back to AI estimate): ${trimmedName}`);
         } catch (e) {
           console.error("Estimate-meal web search error (falling back to AI estimate):", e);
         }
