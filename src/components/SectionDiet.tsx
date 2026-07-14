@@ -953,7 +953,7 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center text-center space-y-5 px-8 pt-16" style={{ minHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px - 160px)' }}>
+        <div className="flex flex-col items-center justify-center text-center space-y-5 px-8 pt-8 pb-6" style={{ minHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - 80px - 220px)' }}>
           <div className="relative">
             <div className="absolute inset-0 rounded-full bg-lime-400/10 blur-xl" />
             <div className="relative w-16 h-16 ll-card rounded-full flex items-center justify-center text-lime-400/70">
