@@ -37,9 +37,20 @@ const KNOWN_CHAIN_NAMES = [
   'サブウェイ', '牛角', 'いきなりステーキ', '餃子の王将', '鳥貴族',
 ];
 
+// 通称・略称・英語表記 → チェーンの正式名称。分類・検索クエリ補正の両方で使う
+const BRAND_ALIASES: Record<string, string> = {
+  'マック': 'マクドナルド',
+  'マクド': 'マクドナルド',
+  "mcdonald's": 'マクドナルド',
+  'mcdonalds': 'マクドナルド',
+};
+
 function findMatchedChain(name: string): string | null {
   const lower = name.toLowerCase();
-  return KNOWN_CHAIN_NAMES.find((chain) => lower.includes(chain.toLowerCase())) || null;
+  const candidates = [...KNOWN_CHAIN_NAMES, ...Object.keys(BRAND_ALIASES)];
+  const matched = candidates.find((chain) => lower.includes(chain.toLowerCase()));
+  if (!matched) return null;
+  return BRAND_ALIASES[matched.toLowerCase()] || matched;
 }
 
 function isChainMealName(name: string): boolean {
@@ -47,12 +58,33 @@ function isChainMealName(name: string): boolean {
 }
 
 // ユーザーが使いがちな通称を、ブランドの公式メニュー表記に寄せて検索精度を上げる（表示名は変えない）
+// 商品名は季節限定・改名が多く際限なく増えるため、ここでは特に検索が外れやすい定番のみ登録し、
+// それ以外はestimateMealViaWebSearchのプロンプトでAI自身に公式表記への近似を任せる
 const BRAND_QUERY_SYNONYMS: Record<string, { pattern: RegExp; replacement: string }[]> = {
   '松屋': [{ pattern: /牛丼/g, replacement: '牛めし' }],
+  'マクドナルド': [{ pattern: /(?<!マックフライ)ポテト/g, replacement: 'マックフライポテト' }],
 };
 
 function buildSearchQueryHint(name: string, matchedChain: string): string {
   let query = name;
+
+  // 通称（マック等）を正式名称に置き換える。
+  // 正式名称が既に含まれる場合は何もしない（「マクドナルド」に「マクド」が前方一致して二重展開されるのを防ぐ）。
+  // 置換は「別名の直後が空白または文末」の場合のみ行う（「マックフライポテト」のように、
+  // 公式商品名自体が別名を接頭辞に持つケースを誤って壊さないため）。
+  if (!query.includes(matchedChain)) {
+    const aliasesForChain = Object.keys(BRAND_ALIASES)
+      .filter((alias) => BRAND_ALIASES[alias] === matchedChain)
+      .sort((a, b) => b.length - a.length);
+    for (const alias of aliasesForChain) {
+      const boundaryPattern = new RegExp(`${alias}(?=\\s|$)`, 'gi');
+      if (boundaryPattern.test(query)) {
+        query = query.replace(boundaryPattern, matchedChain);
+        break;
+      }
+    }
+  }
+
   const synonyms = BRAND_QUERY_SYNONYMS[matchedChain];
   if (synonyms) {
     for (const { pattern, replacement } of synonyms) {
@@ -156,10 +188,18 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
 
 【手順】
 1. 「検索キーワード」を使って公式サイト・公式PDF・公式アプリの栄養成分ページを検索する
-2. ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合がある。検索キーワードは公式表記に寄せてあるので、それを優先して検索する
-3. 見つかった場合は、その数値をそのまま使う（改変・推測補完しない）
-4. 公式情報が見つからない場合、信頼できる一般的なWeb情報（レビュー・まとめサイト等）があればそれを使う
-5. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
+2. ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合がある。検索キーワードは可能な範囲で公式表記に寄せてあるので、それを優先して検索する
+3. それでも一致しない場合、あなた自身の知識でそのブランドの現行の公式メニュー名に近いものを推測し、それで再検索してよい（略称・愛称・型番的な言い方をされることが多いため）。ただし確信が持てない場合は無理に断定せず、notFoundまたはconfidence:"low"で正直に扱う
+4. 見つかった場合は、その数値をそのまま使う（改変・推測補完しない）
+5. 公式情報が見つからない場合、信頼できる一般的なWeb情報（レビュー・まとめサイト等）があればそれを使う
+6. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
+
+【複数商品が含まれる場合】
+- 入力にメイン商品（バーガー等）とサイド（ポテト・ドリンク等）が複数含まれていそうな場合、それぞれの公式栄養成分を個別に検索し、カロリー・PFCを合算する
+- 合算した場合、nameには含めた商品を列挙し、noteに内訳（各商品名）を明記する
+- サイドメニューのサイズが指定されていない場合はMサイズを仮定してよいが、その旨を必ずnoteに明記する（例：「ポテトはMサイズを想定」）
+- 入力に「セット」という語が含まれない場合、ドリンクやセット単位の栄養成分は含めない（単品の合算として扱う）
+- 「セット」と書かれているがドリンクの種類が指定されていない場合、ドリンクは含めずnoteに「ドリンクは含んでいません（未指定のため）」のように明記する
 
 【sourceType のルール】
 - 公式サイト・公式PDF・公式アプリ由来 → "official"（sourceUrlに実際に参照したURL、sourceLabelに「〇〇公式 栄養成分情報」のような短い説明を入れる）
@@ -174,7 +214,7 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
 - servingOptionsは3〜5個、multiplier1（基準量）を必ず含める
 
 ユーザー入力：「${name.slice(0, 60)}」
-検索キーワード（この表記で検索すること）：「${searchQueryHint}」
+検索キーワード（この表記を出発点にすること。一致しなければ自分の知識で公式名称に近づけて再検索してよい）：「${searchQueryHint}」
 
 必ず以下のJSON形式のみで返してください（説明文・マークダウンのコードフェンス禁止）：
 {"name":"整えた商品名","baseAmount":"1食","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","sourceType":"official|web","sourceLabel":"短い説明","sourceUrl":"https://...","note":"短い注記","servingOptions":[{"label":"1食","multiplier":1}]}`;
