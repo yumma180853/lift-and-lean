@@ -111,6 +111,9 @@ type MealEstimateSource = {
 };
 
 // Web検索結果のsourceTypeを検証：URL・ラベルが明確でない限りofficialを名乗らせない
+// このキーワードを含まないラベルは「栄養成分そのもの」ではなく商品紹介ページ等の可能性が高いため official と認めない
+const NUTRITION_LABEL_KEYWORDS = ['栄養成分', '栄養価', 'カロリー', 'nutrition'];
+
 function resolveWebSource(parsed: any): MealEstimateSource {
   const url = typeof parsed.sourceUrl === 'string' && /^https?:\/\//.test(parsed.sourceUrl.trim())
     ? parsed.sourceUrl.trim().slice(0, 300)
@@ -118,9 +121,19 @@ function resolveWebSource(parsed: any): MealEstimateSource {
   const label = typeof parsed.sourceLabel === 'string' && parsed.sourceLabel.trim()
     ? parsed.sourceLabel.trim().slice(0, 60)
     : undefined;
-  if (parsed.sourceType === 'official' && url && label) {
+
+  const looksLikeNutritionSource = !!label && NUTRITION_LABEL_KEYWORDS.some((k) => label.toLowerCase().includes(k.toLowerCase()));
+
+  if (parsed.sourceType === 'official' && url && label && looksLikeNutritionSource) {
     return { sourceType: 'official', sourceLabel: label, sourceUrl: url };
   }
+
+  // 公式を名乗っているが根拠が栄養成分ページと確認できない場合（商品紹介ページ等）は、
+  // 栄養成分そのものを参照したように見せないよう、ラベルを商品ページとして明示した上でwebへ格下げする
+  if (url && label && !looksLikeNutritionSource) {
+    return { sourceType: 'web', sourceLabel: `${label}（栄養成分ページではなく商品ページの可能性）`, sourceUrl: url };
+  }
+
   return { sourceType: 'web', sourceLabel: label, sourceUrl: url };
 }
 
@@ -187,30 +200,32 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
   const instructions = `あなたは日本のチェーン店・ブランド商品の栄養成分を調べるアシスタントです。ウェブ検索が使えます。
 
 【手順】
-1. 「検索キーワード」を使って公式サイト・公式PDF・公式アプリの栄養成分ページを検索する
-2. ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合がある。検索キーワードは可能な範囲で公式表記に寄せてあるので、それを優先して検索する
-3. それでも一致しない場合、あなた自身の知識でそのブランドの現行の公式メニュー名に近いものを推測し、それで再検索してよい（略称・愛称・型番的な言い方をされることが多いため）。ただし確信が持てない場合は無理に断定せず、notFoundまたはconfidence:"low"で正直に扱う
-4. 見つかった場合は、その数値をそのまま使う（改変・推測補完しない）
-5. 公式情報が見つからない場合、信頼できる一般的なWeb情報（レビュー・まとめサイト等）があればそれを使う
+1. まず「ブランド名 栄養成分 一覧」のようなキーワードで、公式サイト内の栄養成分・カロリー一覧ページ（表形式でカロリー・PFCが並んでいるページ）を探す。個別商品の紹介・購入ページ（価格や商品説明が中心で、栄養成分表が無いページ）は根拠にしない
+2. 一覧ページが見つかったら、その中から該当商品の数値を探す。ユーザーの入力表現（例：「牛丼」）とブランドの公式メニュー表記（例：「牛めし」）が違う場合があるので、検索キーワードを参考に該当商品を特定する
+3. それでも一致しない場合、あなた自身の知識でそのブランドの現行の公式メニュー名に近いものを推測し、それで再検索してよい（略称・愛称的な言い方をされることが多いため）。ただし確信が持てない場合は無理に断定せず、notFoundまたはconfidence:"low"で正直に扱う
+4. 数値が見つかった場合は、そのまま使う（改変・推測補完しない）
+5. 栄養成分の一覧・表そのものが見つからず、商品紹介ページやレビュー・まとめサイトの情報しかない場合は、sourceTypeを"web"にする（"official"にしない）
 6. 何も有効な情報が見つからない場合は他の項目を含めず {"notFound":true} とだけ返す。曖昧な情報しかない場合に無理に数値を作らない
 
-【複数商品が含まれる場合】
-- 入力にメイン商品（バーガー等）とサイド（ポテト・ドリンク等）が複数含まれていそうな場合、それぞれの公式栄養成分を個別に検索し、カロリー・PFCを合算する
-- 合算した場合、nameには含めた商品を列挙し、noteに内訳（各商品名）を明記する
+【複数商品が含まれる場合（最重要）】
+- 入力にメイン商品（バーガー等）とサイド（ポテト・ドリンク等）が複数含まれていそうな場合、必ずそれぞれの商品を個別に検索し、各商品の公式カロリー・PFCを1つずつ確認してから合算する
+- 「〇〇セット」のようにあらかじめ組み合わされたセット単位の合計値だけが載っているページを見つけても、ユーザーの入力に「セット」という語がない限りそれをそのまま使ってはいけない。必ず商品単位の数値を個別に足し上げる
+- 合算した場合、nameには含めた商品を列挙し、noteに内訳（各商品名と各数値、または合算した旨）を必ず明記する。例：「炙り醤油風 ダブル肉厚ビーフ＋マックフライポテトMを合算した目安です。ドリンクは含みません。」
 - サイドメニューのサイズが指定されていない場合はMサイズを仮定してよいが、その旨を必ずnoteに明記する（例：「ポテトはMサイズを想定」）
-- 入力に「セット」という語が含まれない場合、ドリンクやセット単位の栄養成分は含めない（単品の合算として扱う）
+- 入力に「セット」という語が含まれない場合、ドリンクやセット単位の栄養成分は絶対に含めない（単品の合算として扱う）
 - 「セット」と書かれているがドリンクの種類が指定されていない場合、ドリンクは含めずnoteに「ドリンクは含んでいません（未指定のため）」のように明記する
+- noteには最後に「店舗や時期により変動する場合があります。」を添える
 
 【sourceType のルール】
-- 公式サイト・公式PDF・公式アプリ由来 → "official"（sourceUrlに実際に参照したURL、sourceLabelに「〇〇公式 栄養成分情報」のような短い説明を入れる）
-- それ以外のWeb情報 → "web"
+- 公式サイトの「栄養成分一覧・カロリー表」そのものが根拠 → "official"（sourceUrlはその一覧ページ、sourceLabelは「〇〇公式 栄養成分情報」のように具体的に）
+- 公式の商品紹介ページ（栄養成分表が無い）や、非公式のWeb情報が根拠 → "web"（sourceLabelは「〇〇公式 商品ページ」や「〇〇に関するWeb情報」のように、栄養成分そのものではないと分かる表現にする）
 - sourceUrl・sourceLabelが明確でない場合は絶対に"official"にしない
+- 少しでも根拠が薄い・ページの種類に自信が持てない場合は"official"を避け"web"にする（安全側に倒す）
 
 【出力ルール】
 - nameはユーザーの入力表現に近い形で整える（公式表記に無理に書き換えない）
 - baseAmountは「1食」「1人前」など短い表記
 - confidenceは high/medium/low
-- noteは「公式栄養成分を参照した目安です。店舗や時期により変動する場合があります。」のように、正確性を保証しない表現にする
 - servingOptionsは3〜5個、multiplier1（基準量）を必ず含める
 
 ユーザー入力：「${name.slice(0, 60)}」
@@ -230,8 +245,38 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
   const parsed = extractJson(rawText);
   if (!parsed || parsed.notFound) return null;
 
-  const source = resolveWebSource(parsed);
+  let source = resolveWebSource(parsed);
+
+  // "official"を名乗っている場合でも、実際にそのURLへアクセスして栄養成分らしき記載があるか確認する。
+  // モデルの自己申告（sourceLabel）だけでは、実際は商品紹介ページでも「栄養成分情報」と誤ラベルされることがあるため
+  if (source.sourceType === 'official' && source.sourceUrl) {
+    const verified = await verifyOfficialNutritionSource(source.sourceUrl);
+    if (!verified) {
+      source = {
+        sourceType: 'web',
+        sourceLabel: source.sourceLabel ? `${source.sourceLabel}（内容を確認できなかったため参考情報として表示）` : undefined,
+        sourceUrl: source.sourceUrl,
+      };
+    }
+  }
+
   return buildMealEstimatePayload(parsed, source);
+}
+
+// sourceUrlに実際にアクセスし、栄養成分らしき記載（kcal・PFC等のキーワード）があるかを確認する。
+// タイムアウト・取得失敗時は「確認できなかった」として安全側（web扱い）に倒す
+async function verifyOfficialNutritionSource(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return false;
+    const text = (await response.text()).slice(0, 30000);
+    return /kcal|カロリー|栄養成分|たんぱく質|タンパク質|脂質|炭水化物/i.test(text);
+  } catch {
+    return false;
+  }
 }
 
 // Responses API（web_search_preview）を使った検索ルート
