@@ -1,0 +1,102 @@
+<!-- @dsCard group="Foundation" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lift & Lean — Design System</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; color: #f4f4f5; font-family: 'Inter', system-ui, sans-serif; padding: 32px 28px 64px; }
+  .page-head { margin-bottom: 32px; }
+  .kicker { font-size: 10px; font-weight: 900; letter-spacing: 0.25em; color: #a3e635; text-transform: uppercase; font-family: monospace; }
+  h1 { font-size: 26px; font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 6px; }
+  .sub { font-size: 12px; color: #71717a; margin-top: 8px; max-width: 560px; line-height: 1.6; }
+
+  .nav-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+  .tab { font-size: 11px; font-weight: 700; font-family: monospace; color: #a1a1aa; background: #111113; border: 1px solid #27272a; padding: 8px 14px; border-radius: 9999px; cursor: pointer; text-decoration: none; transition: all 0.15s; }
+  .tab:hover { border-color: #3f3f46; color: #fff; }
+
+  .block { margin-top: 40px; scroll-margin-top: 24px; }
+  .block-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #27272a; }
+  .block-num { font-size: 11px; font-weight: 900; font-family: monospace; color: #52525b; }
+  .block-title { font-size: 15px; font-weight: 700; color: #fff; }
+  .block-tag { font-size: 9px; font-weight: 900; font-family: monospace; background: #a3e635; color: #000; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .block-tag.confirmed { background: #10b981; }
+  .block-desc { font-size: 11px; color: #71717a; margin-left: auto; max-width: 340px; line-height: 1.5; text-align: right; }
+
+  .frame-wrap { background: #050505; border: 1px solid #1c1c1e; border-radius: 16px; overflow: hidden; }
+  iframe { width: 100%; border: none; display: block; background: #0a0a0a; }
+  .frame-tall  { height: 760px; }
+  .frame-mid   { height: 720px; }
+  .frame-short { height: 400px; }
+
+  .footer-note { margin-top: 48px; font-size: 11px; color: #52525b; font-family: monospace; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="kicker">Design System · 確定版</div>
+  <h1>Lift &amp; Lean</h1>
+  <p class="sub">全4画面を確定版に統一。border / surface のコントラスト是正、カロリーサークル拡大、PFC数値の視認性改善、食事ログのフレキシブル構成、ナビのアクティブpill。</p>
+  <div class="nav-tabs">
+    <a class="tab" href="#tokens">01 / トークン</a>
+    <a class="tab" href="#dashboard">02 / ダッシュボード</a>
+    <a class="tab" href="#diet">03 / 食事ログ</a>
+    <a class="tab" href="#nav">04 / ボトムナビ</a>
+  </div>
+</div>
+
+<section class="block" id="tokens">
+  <div class="block-head">
+    <span class="block-num">01</span>
+    <span class="block-title">デザイントークン</span>
+    <span class="block-tag">Foundation</span>
+    <span class="block-desc">カラー・タイポ・スペーシング・改善提案サマリー。border / surface のコントラスト是正が起点。</span>
+  </div>
+  <div class="frame-wrap">
+    <iframe src="tokens.html" class="frame-tall" title="Design Tokens"></iframe>
+  </div>
+</section>
+
+<section class="block" id="dashboard">
+  <div class="block-head">
+    <span class="block-num">02</span>
+    <span class="block-title">ダッシュボード</span>
+    <span class="block-tag confirmed">確定版</span>
+    <span class="block-desc">カロリーリング拡大・PFC数値24px太字・ボーダー視認性改善・数値を食事ログと統一（1,840kcal / P112・F48・C195）。</span>
+  </div>
+  <div class="frame-wrap">
+    <iframe src="dashboard.html" class="frame-tall" title="Dashboard"></iframe>
+  </div>
+</section>
+
+<section class="block" id="diet">
+  <div class="block-head">
+    <span class="block-num">03</span>
+    <span class="block-title">食事ログ</span>
+    <span class="block-tag confirmed">確定版</span>
+    <span class="block-desc">1欄＝1食。種類はチップで自由選択、時刻は実記録、間食も同列。3食2間食で 1,840kcal / P112・F48・C195。</span>
+  </div>
+  <div class="frame-wrap">
+    <iframe src="diet-log.html" class="frame-tall" title="Diet Log"></iframe>
+  </div>
+</section>
+
+<section class="block" id="nav">
+  <div class="block-head">
+    <span class="block-num">04</span>
+    <span class="block-title">ボトムナビ</span>
+    <span class="block-tag confirmed">確定版</span>
+    <span class="block-desc">アクティブにlime背景pill + border。選択中が一目で分かる。</span>
+  </div>
+  <div class="frame-wrap">
+    <iframe src="bottom-nav.html" class="frame-short" title="Bottom Nav"></iframe>
+  </div>
+</section>
+
+<p class="footer-note">Lift &amp; Lean Design System · 4 screens confirmed · 2026-06-22</p>
+
+</body>
+</html>

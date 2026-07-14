@@ -1,0 +1,307 @@
+<!-- @dsCard group="Screens" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Lift & Lean</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0a; font-family: 'Inter', system-ui, sans-serif; padding: 28px; display: flex; justify-content: center; }
+.phone { width: 390px; background: #0a0a0a; padding: 22px 20px 96px; display: flex; flex-direction: column; gap: 14px; border: 1px solid #27272a; border-radius: 24px; }
+
+.mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+.text-lime   { color: #a3e635; }
+.text-rose   { color: #f43f5e; }
+.text-amber  { color: #f59e0b; }
+.text-blue   { color: #60a5fa; }
+.text-indigo { color: #818cf8; }
+.text-zinc5  { color: #71717a; }
+.text-zinc6  { color: #52525b; }
+.text-white  { color: #fff; }
+
+/* HEADER */
+.header {
+  background: linear-gradient(135deg, #111113, #161618);
+  border: 1px solid #27272a;
+  padding: 16px;
+  border-radius: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.weight-btn {
+  background: #0a0a0a;
+  border: 1px solid #3f3f46;
+  padding: 10px 14px;
+  border-radius: 16px;
+  text-align: center;
+}
+
+/* STREAK */
+.streak {
+  background: #111113;
+  border: 1px solid #27272a;
+  padding: 10px 16px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* NUTRITION CARD */
+.card {
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 24px;
+  padding: 18px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.card-head-left { display: flex; align-items: center; gap: 8px; }
+.icon-wrap {
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+/* conic ring */
+.ring { width: 72px; height: 72px; border-radius: 50%; position: relative; flex-shrink: 0; }
+.ring-bg { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(#a3e635 0% 83.6%, #1c1c1e 83.6% 100%); }
+.ring-inner {
+  width: 52px; height: 52px;
+  background: #0a0a0a;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+
+/* cal bar */
+.cal-bar { height: 5px; background: #1c1c1e; border-radius: 9999px; overflow: hidden; margin-bottom: 14px; }
+.cal-bar-fill { height: 100%; width: 83.6%; background: linear-gradient(90deg, #84cc16, #a3e635); border-radius: 9999px; }
+
+/* PFC */
+.pfc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pfc-cell {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  padding: 12px 10px;
+}
+.pfc-bar { height: 3px; background: #1c1c1e; border-radius: 9999px; overflow: hidden; margin-top: 8px; }
+.pfc-bar-fill { height: 100%; border-radius: 9999px; }
+
+/* FEEDBACK */
+.feedback {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(244,63,94,0.06);
+  border: 1px solid rgba(244,63,94,0.15);
+  border-radius: 12px;
+}
+
+/* WORKOUT */
+.workout-card {
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 24px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* MUSCLE STATUS */
+.muscle-card {
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 24px;
+  padding: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+.muscle-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.muscle-cell {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 8px 4px;
+  text-align: center;
+  min-height: 72px;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+}
+.m-lime  { border-color: rgba(163,230,53,0.4); background: rgba(163,230,53,0.05); box-shadow: 0 0 10px rgba(163,230,53,0.08); }
+.m-amber { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.05); box-shadow: 0 0 10px rgba(245,158,11,0.08); }
+.m-rose  { border-color: rgba(244,63,94,0.4);  background: rgba(244,63,94,0.05);  }
+.muscle-bar { width: 100%; height: 3px; background: #1c1c1e; border-radius: 9999px; overflow: hidden; margin: 4px 0; }
+.muscle-bar-fill { height: 100%; border-radius: 9999px; }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div style="font-size:9px;font-weight:900;letter-spacing:0.18em;color:#52525b;text-transform:uppercase;" class="mono">WELCOME BACK</div>
+      <div style="font-size:19px;font-weight:900;color:#fff;font-style:italic;text-transform:uppercase;letter-spacing:0.03em;margin-top:2px;">LIFT & LEAN</div>
+      <div style="font-size:10px;color:#52525b;margin-top:3px;" class="mono">6月22日（日）</div>
+    </div>
+    <div class="weight-btn">
+      <div style="font-size:9px;font-weight:900;color:#52525b;text-transform:uppercase;letter-spacing:0.12em;" class="mono">WEIGHT</div>
+      <div style="font-size:20px;font-weight:900;color:#a3e635;letter-spacing:-0.02em;" class="mono">70.2</div>
+      <div style="font-size:9px;color:#52525b;" class="mono">kg</div>
+    </div>
+  </div>
+
+  <!-- STREAK -->
+  <div class="streak">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:14px;">📅</span>
+      <span style="font-size:12px;color:#a1a1aa;">食事記録</span>
+      <span style="font-size:15px;font-weight:900;color:#fff;" class="mono">12日</span>
+      <span style="font-size:12px;color:#71717a;">継続中</span>
+    </div>
+    <span style="font-size:10px;color:#52525b;" class="mono">最長 18日</span>
+  </div>
+
+  <!-- NUTRITION CARD -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-left">
+        <div class="icon-wrap" style="background:rgba(129,140,248,0.15);color:#818cf8;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:900;color:#818cf8;text-transform:uppercase;letter-spacing:0.12em;" class="mono">NUTRITION SUMMARY</div>
+          <div style="font-size:13px;font-weight:700;color:#fff;">今日の栄養</div>
+        </div>
+      </div>
+      <button style="font-size:10px;font-weight:900;color:#818cf8;background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);padding:5px 12px;border-radius:99px;cursor:pointer;" class="mono">食事ログへ →</button>
+    </div>
+
+    <!-- CALORIE ROW -->
+    <div class="cal-row">
+      <div>
+        <div style="font-size:9px;font-weight:900;color:#52525b;text-transform:uppercase;letter-spacing:0.1em;" class="mono">TODAY'S ENERGY</div>
+        <div style="margin-top:6px;display:flex;align-items:baseline;gap:5px;">
+          <span style="font-size:30px;font-weight:900;color:#fff;letter-spacing:-0.03em;" class="mono">1,840</span>
+          <span style="font-size:11px;font-weight:800;color:#52525b;" class="mono">/ 2,200</span>
+        </div>
+        <div style="font-size:9px;font-weight:800;color:#52525b;letter-spacing:0.08em;margin-top:1px;" class="mono">KCAL</div>
+      </div>
+      <div class="ring">
+        <div class="ring-bg"></div>
+        <div class="ring-inner">
+          <div style="text-align:center;">
+            <div style="font-size:15px;font-weight:900;color:#a3e635;" class="mono">84%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAL PROGRESS BAR -->
+    <div class="cal-bar"><div class="cal-bar-fill"></div></div>
+
+    <!-- PFC GRID -->
+    <div class="pfc-grid">
+      <div class="pfc-cell">
+        <div style="font-size:8px;font-weight:900;color:#f43f5e;letter-spacing:0.1em;" class="mono">PROTEIN</div>
+        <div style="font-size:24px;font-weight:900;color:#fff;margin:5px 0 1px;letter-spacing:-0.02em;" class="mono">112</div>
+        <div style="font-size:9px;color:#52525b;" class="mono">/ 150g</div>
+        <div class="pfc-bar"><div class="pfc-bar-fill" style="width:75%;background:linear-gradient(90deg,#f43f5e,#ff6b88);"></div></div>
+      </div>
+      <div class="pfc-cell">
+        <div style="font-size:8px;font-weight:900;color:#f59e0b;letter-spacing:0.1em;" class="mono">FAT</div>
+        <div style="font-size:24px;font-weight:900;color:#fff;margin:5px 0 1px;letter-spacing:-0.02em;" class="mono">48</div>
+        <div style="font-size:9px;color:#52525b;" class="mono">/ 60g</div>
+        <div class="pfc-bar"><div class="pfc-bar-fill" style="width:80%;background:linear-gradient(90deg,#f59e0b,#fbbf24);"></div></div>
+      </div>
+      <div class="pfc-cell">
+        <div style="font-size:8px;font-weight:900;color:#60a5fa;letter-spacing:0.1em;" class="mono">CARBS</div>
+        <div style="font-size:24px;font-weight:900;color:#fff;margin:5px 0 1px;letter-spacing:-0.02em;" class="mono">195</div>
+        <div style="font-size:9px;color:#52525b;" class="mono">/ 250g</div>
+        <div class="pfc-bar"><div class="pfc-bar-fill" style="width:78%;background:linear-gradient(90deg,#3b82f6,#60a5fa);"></div></div>
+      </div>
+    </div>
+
+    <!-- FEEDBACK -->
+    <div class="feedback">
+      <p style="font-size:12px;color:#a1a1aa;line-height:1.5;">Pあと38g。次は鶏むねやプロテインで届かせよう。</p>
+    </div>
+  </div>
+
+  <!-- WORKOUT CARD -->
+  <div class="workout-card">
+    <div style="padding:11px;background:rgba(163,230,53,0.12);border-radius:16px;color:#a3e635;flex-shrink:0;box-shadow:0 0 14px rgba(163,230,53,0.1);">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 5v14M18 5v14M6 12h12M2 9h4M18 9h4M2 15h4M18 15h4"/></svg>
+    </div>
+    <div style="flex:1;">
+      <div style="font-size:9px;font-weight:900;color:#a3e635;text-transform:uppercase;letter-spacing:0.12em;" class="mono">TRAINING TODAY</div>
+      <div style="font-size:14px;font-weight:700;color:#fff;margin-top:2px;">3 種目記録中</div>
+      <div style="font-size:10px;color:#52525b;margin-top:2px;">胸 · 背中 · 腕</div>
+    </div>
+    <button style="background:#a3e635;color:#000;font-weight:900;padding:10px 16px;border-radius:12px;font-size:12px;text-transform:uppercase;font-style:italic;cursor:pointer;letter-spacing:0.05em;box-shadow:0 0 16px rgba(163,230,53,0.18);border:none;flex-shrink:0;">開く</button>
+  </div>
+
+  <!-- MUSCLE STATUS -->
+  <div class="muscle-card">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
+      <div style="padding:4px;background:rgba(163,230,53,0.12);border-radius:6px;color:#a3e635;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <span style="font-size:10px;font-weight:900;color:#71717a;text-transform:uppercase;letter-spacing:0.12em;" class="mono">MUSCLE STATUS</span>
+    </div>
+    <div class="muscle-grid">
+      <div class="muscle-cell m-lime">
+        <span style="font-size:12px;font-weight:900;color:#fff;" class="mono">胸</span>
+        <div class="muscle-bar"><div class="muscle-bar-fill" style="width:75%;background:linear-gradient(90deg,#84cc16,#a3e635);"></div></div>
+        <span style="font-size:8px;font-weight:900;color:#a3e635;letter-spacing:-0.01em;">超回復中</span>
+      </div>
+      <div class="muscle-cell m-amber">
+        <span style="font-size:12px;font-weight:900;color:#fff;" class="mono">背中</span>
+        <div class="muscle-bar"><div class="muscle-bar-fill" style="width:75%;background:linear-gradient(90deg,#d97706,#f59e0b);"></div></div>
+        <span style="font-size:8px;font-weight:900;color:#f59e0b;letter-spacing:-0.01em;">修復中</span>
+      </div>
+      <div class="muscle-cell">
+        <span style="font-size:12px;font-weight:900;color:#3f3f46;" class="mono">肩</span>
+        <div class="muscle-bar"><div class="muscle-bar-fill" style="width:0%;"></div></div>
+        <span style="font-size:8px;font-weight:900;color:#3f3f46;">通常</span>
+      </div>
+      <div class="muscle-cell">
+        <span style="font-size:12px;font-weight:900;color:#3f3f46;" class="mono">腕</span>
+        <div class="muscle-bar"><div class="muscle-bar-fill" style="width:0%;"></div></div>
+        <span style="font-size:8px;font-weight:900;color:#3f3f46;">通常</span>
+      </div>
+      <div class="muscle-cell m-rose">
+        <span style="font-size:12px;font-weight:900;color:#fff;" class="mono">脚</span>
+        <div class="muscle-bar"><div class="muscle-bar-fill" style="width:20%;background:#f43f5e;"></div></div>
+        <span style="font-size:8px;font-weight:900;color:#f43f5e;letter-spacing:-0.01em;">要プロテイン</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

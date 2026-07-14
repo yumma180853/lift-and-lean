@@ -1,0 +1,262 @@
+<!-- @dsCard group="Foundation" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design Tokens — Lift & Lean</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; color: #f4f4f5; font-family: 'Inter', system-ui, sans-serif; padding: 24px; }
+  h1 { font-size: 11px; font-weight: 900; letter-spacing: 0.2em; color: #a3e635; text-transform: uppercase; margin-bottom: 28px; font-family: monospace; }
+  h2 { font-size: 9px; font-weight: 900; letter-spacing: 0.15em; color: #52525b; text-transform: uppercase; margin-bottom: 14px; font-family: monospace; margin-top: 28px; }
+  .section { margin-bottom: 8px; }
+
+  /* COLOR SWATCHES */
+  .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .swatch { border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); }
+  .swatch-color { height: 52px; }
+  .swatch-info { background: #111113; padding: 8px 10px; }
+  .swatch-name { font-size: 10px; font-weight: 700; color: #fff; }
+  .swatch-hex { font-size: 9px; color: #71717a; font-family: monospace; margin-top: 2px; }
+  .swatch-use { font-size: 8px; color: #52525b; margin-top: 3px; }
+
+  /* TYPOGRAPHY */
+  .type-row { display: flex; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid #18181b; }
+  .type-label { font-size: 9px; color: #52525b; font-family: monospace; width: 100px; shrink: 0; }
+  .type-preview { flex: 1; color: #fff; }
+
+  /* SPACING */
+  .spacing-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+  .spacing-bar { background: #a3e635; border-radius: 2px; height: 8px; }
+  .spacing-label { font-size: 9px; color: #71717a; font-family: monospace; min-width: 80px; }
+
+  /* RADIUS */
+  .radius-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+  .radius-box { width: 60px; height: 60px; background: #1c1c1e; border: 1px solid #3f3f46; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .radius-label { font-size: 8px; color: #71717a; font-family: monospace; margin-top: 6px; text-align: center; }
+
+  /* SHADOWS */
+  .shadow-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+  .shadow-card { width: 100px; height: 60px; background: #1c1c1e; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+  .shadow-name { font-size: 8px; color: #71717a; font-family: monospace; margin-top: 6px; text-align: center; }
+
+  /* IMPROVEMENTS */
+  .improvement-list { background: #111113; border: 1px solid #27272a; border-radius: 12px; padding: 16px; space-y: 8px; }
+  .improvement-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #1c1c1e; align-items: flex-start; }
+  .improvement-item:last-child { border-bottom: none; }
+  .improvement-tag { font-size: 8px; font-weight: 900; background: #a3e635; color: #000; padding: 2px 6px; border-radius: 4px; white-space: nowrap; font-family: monospace; flex-shrink: 0; margin-top: 1px; }
+  .improvement-text { font-size: 11px; color: #a1a1aa; line-height: 1.5; }
+  .improvement-text strong { color: #fff; }
+</style>
+</head>
+<body>
+<h1>Lift &amp; Lean — Design Tokens</h1>
+
+<section class="section">
+  <h2>Colors</h2>
+  <div class="swatch-grid">
+    <div class="swatch">
+      <div class="swatch-color" style="background:#a3e635"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Lime 400</div>
+        <div class="swatch-hex">#a3e635</div>
+        <div class="swatch-use">Primary accent / CTA / active</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#84cc16"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Lime 500</div>
+        <div class="swatch-hex">#84cc16</div>
+        <div class="swatch-use">Hover state / pressed</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#0a0a0a"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Background</div>
+        <div class="swatch-hex">#0a0a0a</div>
+        <div class="swatch-use">Page background</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#111113"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Surface 1</div>
+        <div class="swatch-hex">#111113</div>
+        <div class="swatch-use">Card background ← 推奨改善</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#1c1c1e"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Surface 2</div>
+        <div class="swatch-hex">#1c1c1e</div>
+        <div class="swatch-use">Input / inner card</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#27272a"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Border</div>
+        <div class="swatch-hex">#27272a</div>
+        <div class="swatch-use">Card border ← 推奨改善 (zinc-800)</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#f43f5e"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Rose 500</div>
+        <div class="swatch-hex">#f43f5e</div>
+        <div class="swatch-use">Protein bar</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#f59e0b"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Amber 500</div>
+        <div class="swatch-hex">#f59e0b</div>
+        <div class="swatch-use">Fat bar / muscle warn</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#3b82f6"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Blue 500</div>
+        <div class="swatch-hex">#3b82f6</div>
+        <div class="swatch-use">Carbs bar</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#818cf8"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Indigo 400</div>
+        <div class="swatch-hex">#818cf8</div>
+        <div class="swatch-use">Nutrition section accent</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#10b981"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Emerald 500</div>
+        <div class="swatch-hex">#10b981</div>
+        <div class="swatch-use">Completed / recovered</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#71717a"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Zinc 500</div>
+        <div class="swatch-hex">#71717a</div>
+        <div class="swatch-use">Secondary text</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Typography</h2>
+  <div>
+    <div class="type-row">
+      <span class="type-label">page-title</span>
+      <span class="type-preview" style="font-size:20px;font-weight:900;font-style:italic;letter-spacing:0.05em;text-transform:uppercase;">LIFT &amp; LEAN</span>
+    </div>
+    <div class="type-row">
+      <span class="type-label">section-label</span>
+      <span class="type-preview" style="font-size:9px;font-weight:900;letter-spacing:0.2em;text-transform:uppercase;color:#a3e635;font-family:monospace;">TRAINING TODAY</span>
+    </div>
+    <div class="type-row">
+      <span class="type-label">card-title</span>
+      <span class="type-preview" style="font-size:14px;font-weight:700;">今日のトレーニング</span>
+    </div>
+    <div class="type-row">
+      <span class="type-label">stat-number</span>
+      <span class="type-preview" style="font-size:28px;font-weight:900;font-family:monospace;color:#a3e635;">1,840</span>
+    </div>
+    <div class="type-row">
+      <span class="type-label">stat-unit</span>
+      <span class="type-preview" style="font-size:11px;font-weight:700;font-family:monospace;color:#71717a;">/ 2200 KCAL</span>
+    </div>
+    <div class="type-row">
+      <span class="type-label">body-sm</span>
+      <span class="type-preview" style="font-size:12px;color:#a1a1aa;">Pあと45g。次は鶏むねやプロテインで届かせよう。</span>
+    </div>
+    <div class="type-row">
+      <span class="type-label">label-xs</span>
+      <span class="type-preview" style="font-size:10px;font-weight:700;color:#71717a;">食事名 / メニュー</span>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Spacing Scale</h2>
+  <div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:4px"></div><span class="spacing-label">1 = 4px</span><span style="font-size:9px;color:#52525b;">アイコン内余白</span></div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:8px"></div><span class="spacing-label">2 = 8px</span><span style="font-size:9px;color:#52525b;">タグ・バッジ</span></div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:12px"></div><span class="spacing-label">3 = 12px</span><span style="font-size:9px;color:#52525b;">grid gap</span></div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:16px"></div><span class="spacing-label">4 = 16px</span><span style="font-size:9px;color:#52525b;">カード内padding（推奨改善）</span></div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:20px"></div><span class="spacing-label">5 = 20px</span><span style="font-size:9px;color:#52525b;">カード内padding（現状p-5）</span></div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:24px"></div><span class="spacing-label">6 = 24px</span><span style="font-size:9px;color:#52525b;">セクション間</span></div>
+    <div class="spacing-row"><div class="spacing-bar" style="width:96px"></div><span class="spacing-label">24 = 96px</span><span style="font-size:9px;color:#52525b;">pb（ナビ分確保）</span></div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Border Radius</h2>
+  <div class="radius-grid">
+    <div>
+      <div class="radius-box" style="border-radius:6px;"></div>
+      <div class="radius-label">rounded<br/>6px<br/>バッジ</div>
+    </div>
+    <div>
+      <div class="radius-box" style="border-radius:12px;"></div>
+      <div class="radius-label">xl<br/>12px<br/>ボタン小</div>
+    </div>
+    <div>
+      <div class="radius-box" style="border-radius:16px;"></div>
+      <div class="radius-label">2xl<br/>16px<br/>インプット</div>
+    </div>
+    <div>
+      <div class="radius-box" style="border-radius:20px;"></div>
+      <div class="radius-label">3xl<br/>20px<br/>カード主</div>
+    </div>
+    <div>
+      <div class="radius-box" style="border-radius:9999px;"></div>
+      <div class="radius-label">full<br/>pill<br/>フィルタ</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>改善提案サマリー</h2>
+  <div class="improvement-list">
+    <div class="improvement-item">
+      <span class="improvement-tag">BORDER</span>
+      <span class="improvement-text"><strong>zinc-900 → zinc-800</strong> に統一。現状ほぼ背景と同色で視認性ゼロ。カードが浮いて見えない原因。</span>
+    </div>
+    <div class="improvement-item">
+      <span class="improvement-tag">CALORIE</span>
+      <span class="improvement-text">カロリーサークル<strong>w-12 → w-20</strong>に拡大。数値を大きく表示して一目でわかるように。</span>
+    </div>
+    <div class="improvement-item">
+      <span class="improvement-tag">PFC GRID</span>
+      <span class="improvement-text">3列グリッドの情報密度を下げる。<strong>数値を大きく・ラベルを小さく</strong>する階層の明確化。</span>
+    </div>
+    <div class="improvement-item">
+      <span class="improvement-tag">NAV</span>
+      <span class="improvement-text">アクティブタブに<strong>lime背景pill</strong>を追加。現状は文字色変化のみで分かりにくい。</span>
+    </div>
+    <div class="improvement-item">
+      <span class="improvement-tag">DIET</span>
+      <span class="improvement-text">食事カードに<strong>左border accent</strong>を追加（lime/rose/amberで種類分け）。ぱっと見で内容が伝わる。</span>
+    </div>
+    <div class="improvement-item">
+      <span class="improvement-tag">SURFACE</span>
+      <span class="improvement-text">カード背景を<strong>#0a0a0a → #111113</strong>に。現状ほぼ背景と同化している。コントラスト確保が必要。</span>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

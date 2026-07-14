@@ -1,0 +1,234 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bottom Nav — Lift & Lean</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0a; font-family: 'Inter', system-ui, sans-serif; padding: 24px; display: flex; flex-direction: column; gap: 32px; }
+.label { font-size: 9px; font-weight: 900; letter-spacing: 0.15em; color: #52525b; text-transform: uppercase; font-family: monospace; margin-bottom: 12px; }
+.nav-wrap { max-width: 375px; border: 1px solid #27272a; border-radius: 16px; overflow: hidden; }
+
+/* BEFORE */
+.nav-before {
+  background: rgba(9,9,11,0.8);
+  border-top: 1px solid #18181b;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(20px);
+}
+.nav-before-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.nav-before-item.active { color: #a3e635; }
+.nav-before-item:not(.active) { color: #3f3f46; }
+.nav-before-label { font-size: 10px; font-weight: 700; }
+
+/* AFTER */
+.nav-after {
+  background: rgba(9,9,11,0.9);
+  border-top: 1px solid #27272a;
+  padding: 12px 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(20px);
+}
+.nav-after-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  flex: 1;
+}
+.nav-after-item.active { color: #a3e635; }
+.nav-after-item:not(.active) { color: #52525b; }
+.nav-after-label { font-size: 9px; font-weight: 700; letter-spacing: 0.02em; }
+
+/* Active pill for after */
+.nav-pill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.nav-pill-bg {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 36px;
+  background: rgba(163,230,53,0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(163,230,53,0.15);
+}
+.nav-indicator {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a3e635;
+  position: absolute;
+  bottom: -2px;
+}
+
+/* VARIANT C: floating pill -->
+.nav-float {
+  background: #111113;
+  border: 1px solid #27272a;
+  border-radius: 20px;
+  margin: 0 16px 8px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.nav-float-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  flex: 1;
+}
+.nav-float-item.active { color: #a3e635; }
+.nav-float-item:not(.active) { color: #52525b; }
+.nav-float-label { font-size: 9px; font-weight: 700; }
+.nav-float-active-bg {
+  width: 48px;
+  height: 40px;
+  background: rgba(163,230,53,0.12);
+  border: 1px solid rgba(163,230,53,0.2);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.diff-note { font-size: 11px; color: #71717a; margin-top: 8px; max-width: 375px; line-height: 1.5; }
+.diff-note strong { color: #a1a1aa; }
+</style>
+</head>
+<body>
+
+<!-- BEFORE -->
+<div>
+  <div class="label">Before — アクティブ = 文字色のみ変化</div>
+  <div class="nav-wrap">
+    <div class="nav-before">
+      <div class="nav-before-item active">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="nav-before-label">ホーム</span>
+      </div>
+      <div class="nav-before-item">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 5v14M18 5v14M6 12h12M2 9h4M18 9h4M2 15h4M18 15h4"/></svg>
+        <span class="nav-before-label">ログ</span>
+      </div>
+      <div class="nav-before-item">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+        <span class="nav-before-label">食事</span>
+      </div>
+      <div class="nav-before-item">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M19 3v4M21 5h-4"/></svg>
+        <span class="nav-before-label">AI</span>
+      </div>
+      <div class="nav-before-item">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-before-label">分析</span>
+      </div>
+      <div class="nav-before-item">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-before-label">設定</span>
+      </div>
+    </div>
+  </div>
+  <p class="diff-note"><strong>問題：</strong> アクティブ状態が色のみで、押した感・選択感が弱い。</p>
+</div>
+
+<!-- AFTER A: pill background -->
+<div>
+  <div class="label">After A — アクティブにpill背景 + 視認性向上</div>
+  <div class="nav-wrap">
+    <div class="nav-after">
+      <div class="nav-after-item active">
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 10px;background:rgba(163,230,53,0.1);border:1px solid rgba(163,230,53,0.2);border-radius:12px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-after-label">ホーム</span>
+        </div>
+      </div>
+      <div class="nav-after-item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 5v14M18 5v14M6 12h12M2 9h4M18 9h4M2 15h4M18 15h4"/></svg>
+        <span class="nav-after-label">ログ</span>
+      </div>
+      <div class="nav-after-item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+        <span class="nav-after-label">食事</span>
+      </div>
+      <div class="nav-after-item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M19 3v4M21 5h-4"/></svg>
+        <span class="nav-after-label">AI</span>
+      </div>
+      <div class="nav-after-item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-after-label">分析</span>
+      </div>
+      <div class="nav-after-item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-after-label">設定</span>
+      </div>
+    </div>
+  </div>
+  <p class="diff-note"><strong>改善：</strong> アクティブアイテムにlime/10の pill背景 + border。「選ばれている感」が明確に。</p>
+</div>
+
+<!-- AFTER B: floating -->
+<div>
+  <div class="label">After B — フローティングスタイル（より個性的）</div>
+  <div style="max-width:375px;background:#0a0a0a;border:1px solid #27272a;border-radius:16px;padding:8px 0 0;">
+    <div class="nav-float">
+      <div class="nav-float-item active">
+        <div class="nav-float-active-bg">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-float-label" style="font-size:8px;">ホーム</span>
+        </div>
+      </div>
+      <div class="nav-float-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 5v14M18 5v14M6 12h12M2 9h4M18 9h4M2 15h4M18 15h4"/></svg>
+        <span class="nav-float-label">ログ</span>
+      </div>
+      <div class="nav-float-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+        <span class="nav-float-label">食事</span>
+      </div>
+      <div class="nav-float-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M19 3v4M21 5h-4"/></svg>
+        <span class="nav-float-label">AI</span>
+      </div>
+      <div class="nav-float-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-float-label">分析</span>
+      </div>
+      <div class="nav-float-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-float-label">設定</span>
+      </div>
+    </div>
+  </div>
+  <p class="diff-note"><strong>改善B：</strong> フローティング pill カード。アプリとしての完成度と高級感が上がる。</p>
+</div>
+
+</body>
+</html>
