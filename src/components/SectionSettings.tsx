@@ -438,27 +438,27 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
                       <div className="mt-3 space-y-2">
                         <div className="flex justify-between items-center px-1">
                           <span className="text-[10px] text-zinc-500 font-bold">最終目標</span>
-                          <span className="ll-num text-sm text-zinc-400">{suggestion.targetWeight}kg <span className="text-[9px] text-zinc-600">/ 約{suggestion.periodMonths}ヶ月</span></span>
+                          <span className="ll-num text-sm text-zinc-400">{suggestion.targetWeight}kg</span>
                         </div>
                         <div className="flex justify-between items-center px-3 py-2 rounded-xl" style={{ background: 'rgba(163,230,53,0.08)', border: '1px solid rgba(163,230,53,0.25)' }}>
                           <span className="text-[10px] text-lime-400 font-bold">まずの中間目標</span>
                           <span className="ll-num text-base text-lime-400">{suggestion.interimTargetWeight}kg</span>
                         </div>
                         <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] text-zinc-500 font-bold">推奨ペース</span>
-                          <span className="text-[11px] text-zinc-400 font-mono">月{suggestion.targetWeight >= suggestion.interimTargetWeight ? '+' : '−'}{suggestion.recommendedPaceKgPerMonth}kg</span>
+                          <span className="text-[10px] text-zinc-500 font-bold">目安期間</span>
+                          <span className="text-[11px] text-zinc-400 font-mono">{suggestion.periodMonths}ヶ月</span>
                         </div>
                       </div>
                     ) : (
                       <div className="flex justify-between items-center mt-3 px-1">
-                        <span className="text-[10px] text-zinc-500 font-bold">目標体重の目安</span>
-                        <span className="ll-num text-sm text-white">{suggestion.targetWeight}kg <span className="text-[9px] text-zinc-600">/ 約{suggestion.periodMonths}ヶ月</span></span>
+                        <span className="text-[10px] text-zinc-500 font-bold">{suggestion.periodMonths}ヶ月後の目安</span>
+                        <span className="ll-num text-sm text-white">{suggestion.targetWeight}kg</span>
                       </div>
                     )}
                   </div>
                   {suggestion.isAggressiveGoal && (
                     <p className="text-[10px] text-amber-400 leading-relaxed">
-                      最終目標までは少しペースが速めです。まずは中間目標を目安に、無理のないペースから始めましょう。
+                      まず{suggestion.periodMonths}ヶ月で{suggestion.interimTargetWeight}kgを目安にしましょう。その後、体重の増え方を見て{suggestion.targetWeight}kgを目指します。
                     </p>
                   )}
                   <p className="text-[11px] text-zinc-400 leading-relaxed bg-zinc-800/60 rounded-xl p-3">{suggestion.reason}</p>
