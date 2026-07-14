@@ -954,5 +954,128 @@ ${mealSummary}
     }
   }
 
+  // 3️⃣ AI目標提案エンドポイント（身長・体重・目的等からカロリー/PFC/目標体重の目安を提案）
+  const SUGGEST_GOALS_MODEL = "gpt-4o";
+  if (req.url.includes("suggest-goals")) {
+    try {
+      const { height, weight, age, sex, activity, goal, intensity, targetWeight, periodMonths, struggles } = req.body;
+      const h = parseFloat(height);
+      const w = parseFloat(weight);
+      const a = parseFloat(age);
+      if (!(h > 100 && h < 250) || !(w > 25 && w < 300) || !(a > 10 && a < 100)) {
+        return res.status(400).json({ error: "身長・体重・年齢を正しく入力してください" });
+      }
+
+      const suggestPrompt = `あなたはフィットネス・栄養に詳しいAIコーチです。以下のユーザー情報から、1日の目標カロリーとPFC、目標体重の「目安」を提案してください。
+これは医療・栄養指導ではなく、一般的な目安の提案です。断定的な効果（必ず痩せる・必ず筋肉が増える等）は約束しません。
+
+【ユーザー情報】
+身長: ${h}cm / 体重: ${w}kg / 年齢: ${a}歳${sex ? ` / 性別: ${String(sex).slice(0, 10)}` : ''}
+運動頻度: ${String(activity || '不明').slice(0, 20)}
+目的: ${String(goal || '不明').slice(0, 20)}
+食事管理の本気度: ${String(intensity || '標準').slice(0, 10)}
+${targetWeight ? `目標体重: ${parseFloat(targetWeight)}kg` : ''}
+${periodMonths ? `希望期間: ${parseFloat(periodMonths)}ヶ月` : ''}
+${struggles ? `続かなくなりがちな理由: ${String(struggles).slice(0, 100)}` : ''}
+
+【提案の考え方】
+- 基礎代謝・活動量から消費カロリーを概算し、目的に応じて増減させる（筋肉を増やしたい/体を大きくしたい→やや多め、体脂肪を落としたい/引き締めたい→やや少なめ、健康維持→維持量）
+- 増減は無理のない範囲にする（極端な赤字・黒字は避ける）
+- タンパク質は体重1kgあたり1.6〜2.2gを目安にする
+- 脂質はカロリーの20〜30%程度、残りを炭水化物に配分する
+- 「続かなくなりがちな理由」が書かれていたら、reasonの中でその対策に軽く触れる（例：自炊が苦手→コンビニで揃えやすい配分に寄せた、等）
+- targetWeightが未指定の場合は、現在体重から目的に沿った無理のない目安値を提案してよい
+- periodMonthsが未指定の場合は3〜12の範囲で妥当な期間を提案する
+
+【reasonのルール】
+- 2〜3文の日本語。数値の根拠を簡潔に説明する
+- 「必ず」「絶対」「保証」等の断定語は禁止
+- 「まずはこの数値から始めましょう」のような、試しながら調整していくトーンにする
+- 医療用語・診断的な言い回しは禁止
+
+必ず以下のJSON形式のみで返してください：
+{"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"targetWeight":数値,"periodMonths":数値,"reason":"2〜3文の説明"}`;
+
+      const completion = await openai.chat.completions.create({
+        model: SUGGEST_GOALS_MODEL,
+        response_format: { type: "json_object" },
+        max_tokens: 400,
+        messages: [{ role: "user", content: suggestPrompt }],
+      });
+
+      const rawText = completion.choices[0]?.message?.content || "{}";
+      let parsed: any;
+      try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
+
+      let calories = Math.round(parseFloat(parsed.calories) || 0);
+      let protein  = Math.round(parseFloat(parsed.protein)  || 0);
+      let fat      = Math.round(parseFloat(parsed.fat)      || 0);
+      let carbs    = Math.round(parseFloat(parsed.carbs)    || 0);
+      let suggestedTargetWeight = Math.round((parseFloat(parsed.targetWeight) || w) * 10) / 10;
+      let suggestedPeriodMonths = Math.round(parseFloat(parsed.periodMonths) || 6);
+
+      if (calories <= 0 || protein <= 0 || fat <= 0 || carbs <= 0) {
+        return res.status(422).json({ error: "目標を提案できませんでした。入力内容を見直してもう一度試してください。" });
+      }
+
+      const clampNotes: string[] = [];
+
+      // カロリー：一般的な安全範囲（1200〜4500kcal）にクランプ
+      const calBefore = calories;
+      calories = Math.min(4500, Math.max(1200, calories));
+      if (calories !== calBefore) clampNotes.push('カロリーを安全な範囲に調整しました');
+
+      // タンパク質：体重×0.8〜3.0gの範囲にクランプ
+      const proteinBefore = protein;
+      protein = Math.min(w * 3.0, Math.max(w * 0.8, protein));
+      protein = Math.round(protein);
+      if (protein !== proteinBefore) clampNotes.push('タンパク質量を無理のない範囲に調整しました');
+
+      // 脂質：カロリーの15〜35%の範囲にクランプ
+      const fatMin = Math.round((calories * 0.15) / 9);
+      const fatMax = Math.round((calories * 0.35) / 9);
+      const fatBefore = fat;
+      fat = Math.min(fatMax, Math.max(fatMin, fat));
+      if (fat !== fatBefore) clampNotes.push('脂質量を調整しました');
+
+      // 炭水化物：PFC×カロリー整合チェック（25%以上ズレたら炭水化物側で吸収して補正）
+      const pfcCaloriesWithoutCarbs = protein * 4 + fat * 9;
+      const impliedCarbs = Math.max(0, Math.round((calories - pfcCaloriesWithoutCarbs) / 4));
+      const carbsDiffRatio = carbs > 0 ? Math.abs(carbs - impliedCarbs) / carbs : 1;
+      if (carbsDiffRatio > 0.25) {
+        carbs = impliedCarbs;
+        clampNotes.push('炭水化物量をカロリーと整合するよう調整しました');
+      }
+
+      // 目標体重：現在体重の±20%以内にクランプ（極端な増減提案を防ぐ）
+      const twBefore = suggestedTargetWeight;
+      suggestedTargetWeight = Math.min(w * 1.2, Math.max(w * 0.8, suggestedTargetWeight));
+      suggestedTargetWeight = Math.round(suggestedTargetWeight * 10) / 10;
+      if (suggestedTargetWeight !== twBefore) clampNotes.push('目標体重を無理のない範囲に調整しました');
+
+      // 期間：1〜24ヶ月にクランプ
+      suggestedPeriodMonths = Math.min(24, Math.max(1, suggestedPeriodMonths));
+
+      let reason = String(parsed.reason || 'あなたの入力をもとに、まずはこの数値から始める目安を計算しました。体調や続けやすさに合わせて少しずつ調整してください。').slice(0, 200);
+      if (clampNotes.length > 0) {
+        reason += ` （${Array.from(new Set(clampNotes)).join('、')}）`;
+      }
+
+      return res.json({
+        calories,
+        protein,
+        fat,
+        carbs,
+        targetWeight: suggestedTargetWeight,
+        periodMonths: suggestedPeriodMonths,
+        reason: reason.slice(0, 260),
+        note: "一般的な目安の提案です。医療・栄養指導ではありません。体調に合わせて無理なく調整してください。",
+      });
+    } catch (error: any) {
+      console.error("Suggest-goals OpenAI Error:", error);
+      return res.status(500).json({ error: error.message || "Failed to suggest goals" });
+    }
+  }
+
   return res.status(444).json({ error: "Not found" });
 }
