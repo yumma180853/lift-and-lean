@@ -25,6 +25,11 @@ export interface Meal {
   fat: number;
   carbs: number;
   mealType?: string;
+  servingLabel?: string;
+  sourceType?: 'official' | 'web' | 'ai_estimate';
+  sourceLabel?: string;
+  sourceUrl?: string;
+  note?: string;
 }
 
 export interface WeightRecord {

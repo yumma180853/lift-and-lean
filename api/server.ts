@@ -4,6 +4,13 @@ import OpenAI from "openai";
 import webpush from "web-push";
 import dotenv from "dotenv";
 import { kv } from "@vercel/kv";
+import {
+  buildMatsuyaIntentInstructions,
+  detectMatsuyaBeefYakinikuIntent,
+  isMatsuyaWebResultCompatible,
+  normalizeMatsuyaRiceResult,
+  type MatsuyaBeefYakinikuIntent,
+} from "./meal-estimate-helpers.js";
 
 dotenv.config();
 
@@ -137,6 +144,19 @@ function resolveWebSource(parsed: any): MealEstimateSource {
   return { sourceType: 'web', sourceLabel: label, sourceUrl: url };
 }
 
+function isOfficialMatsuyaSource(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'matsuyafoods.co.jp'
+      || hostname.endsWith('.matsuyafoods.co.jp')
+      || hostname === 'matsuyafoods.jp'
+      || hostname.endsWith('.matsuyafoods.jp');
+  } catch {
+    return false;
+  }
+}
+
 // 料理名推定の数値検証・整形（AI推定・Web検索どちらの結果にも共通で使う）
 // 小数第1位までを保持する（UI表示側でMath.roundするため、ここでは整数に丸めすぎない）
 const round1 = (v: number): number => Math.round(v * 10) / 10;
@@ -205,7 +225,13 @@ function buildMealEstimatePayload(parsed: any, source: MealEstimateSource, noteO
 const ESTIMATE_MEAL_SEARCH_MODEL = "gpt-4o";
 
 // チェーン・ブランド商品名の場合のみ使うWeb検索ベースの推定（公式栄養成分ページを優先）
-async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQueryHint: string): Promise<any | null> {
+async function estimateMealViaWebSearch(
+  openai: OpenAI,
+  name: string,
+  searchQueryHint: string,
+  matsuyaIntent: MatsuyaBeefYakinikuIntent | null = null,
+): Promise<any | null> {
+  const matsuyaInstructions = buildMatsuyaIntentInstructions(matsuyaIntent);
   const instructions = `あなたは日本のチェーン店・ブランド商品の栄養成分を調べるアシスタントです。ウェブ検索が使えます。
 
 【手順】
@@ -239,12 +265,13 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
 - baseAmountは「1食」「1人前」など短い表記
 - confidenceは high/medium/low
 - servingOptionsは3〜5個、multiplier1（基準量）を必ず含める
+${matsuyaInstructions}
 
 ユーザー入力：「${name.slice(0, 60)}」
 検索キーワード（この表記を出発点にすること。一致しなければ自分の知識で公式名称に近づけて再検索してよい）：「${searchQueryHint}」
 
 必ず以下のJSON形式のみで返してください（説明文・マークダウンのコードフェンス禁止）：
-{"name":"整えた商品名","baseAmount":"1食","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","sourceType":"official|web","sourceLabel":"短い説明","sourceUrl":"https://...","note":"短い注記","servingOptions":[{"label":"1食","multiplier":1}]}`;
+{"name":"整えた商品名","baseAmount":"1食","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","sourceType":"official|web","sourceLabel":"短い説明","sourceUrl":"https://...","note":"短い注記","servingOptions":[{"label":"1食","multiplier":1}],"matchedVariant":"該当時のみ指定された区分","calculationMethod":"exact_product_row|combined_components"}`;
 
   const response = await openai.responses.create({
     model: ESTIMATE_MEAL_SEARCH_MODEL,
@@ -256,8 +283,25 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
   const rawText = response.output_text || '';
   const parsed = extractJson(rawText);
   if (!parsed || parsed.notFound) return null;
+  if (!isMatsuyaWebResultCompatible(parsed, matsuyaIntent)) {
+    console.warn(`Rejected mismatched Matsuya estimate: requested=${matsuyaIntent?.variant}, returned=${parsed?.matchedVariant}`);
+    return null;
+  }
 
   let source = resolveWebSource(parsed);
+  const riceNormalization = normalizeMatsuyaRiceResult(parsed, matsuyaIntent);
+  if (riceNormalization.forceWeb) {
+    source = { ...source, sourceType: 'web' };
+  }
+  if (matsuyaIntent && source.sourceType === 'official' && !isOfficialMatsuyaSource(source.sourceUrl)) {
+    source = {
+      ...source,
+      sourceType: 'web',
+      sourceLabel: source.sourceLabel
+        ? `${source.sourceLabel}（松屋公式ドメインと確認できないため参考情報として表示）`
+        : undefined,
+    };
+  }
 
   // "official"を名乗っている場合でも、実際にそのURLへアクセスして栄養成分らしき記載があるか確認する。
   // モデルの自己申告（sourceLabel）だけでは、実際は商品紹介ページでも「栄養成分情報」と誤ラベルされることがあるため
@@ -272,7 +316,7 @@ async function estimateMealViaWebSearch(openai: OpenAI, name: string, searchQuer
     }
   }
 
-  return buildMealEstimatePayload(parsed, source);
+  return buildMealEstimatePayload(parsed, source, riceNormalization.noteOverride);
 }
 
 // sourceUrlに実際にアクセスし、栄養成分らしき記載（kcal・PFC等のキーワード）があるかを確認する。
@@ -491,17 +535,23 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: "name is required" });
       }
       const trimmedName = name.trim().slice(0, 60);
+      const matsuyaIntent = detectMatsuyaBeefYakinikuIntent(trimmedName);
 
       // チェーン・ブランド名を含む場合のみ、先に公式栄養成分をWeb検索で探す
       const matchedChain = findMatchedChain(trimmedName);
       if (matchedChain) {
         try {
           const searchQueryHint = buildSearchQueryHint(trimmedName, matchedChain);
-          let webResult = await estimateMealViaWebSearch(openai, trimmedName, searchQueryHint);
+          let webResult = await estimateMealViaWebSearch(openai, trimmedName, searchQueryHint, matsuyaIntent);
           if (!webResult) {
             // notFoundで諦める前に、補正なしのシンプルなクエリで一度だけ再試行する
             console.log(`Estimate-meal web search retry for: ${trimmedName}`);
-            webResult = await estimateMealViaWebSearch(openai, trimmedName, `${trimmedName} カロリー たんぱく質 脂質 炭水化物`);
+            webResult = await estimateMealViaWebSearch(
+              openai,
+              trimmedName,
+              `${trimmedName} カロリー たんぱく質 脂質 炭水化物`,
+              matsuyaIntent,
+            );
           }
           if (webResult) return res.json(webResult);
           console.log(`Estimate-meal web search notFound after retry (falling back to AI estimate): ${trimmedName}`);
@@ -513,6 +563,7 @@ export default async function handler(req: any, res: any) {
       const estimatePrompt = `料理名から、一般的な1食分のカロリーとPFCの「目安」を推定してください。これは正確な栄養計算ではなくAIによる推定です。
 
 料理名：「${trimmedName}」
+${buildMatsuyaIntentInstructions(matsuyaIntent)}
 
 【推定ルール】
 - 日本で一般的に提供される量を基準にする（外食・家庭料理の平均的な1人前）
@@ -537,7 +588,7 @@ export default async function handler(req: any, res: any) {
 料理名が食品として解釈できない場合は {"error":"unknown"} を返す。
 
 必ず以下のJSON形式で返してください：
-{"name":"整えた料理名","baseAmount":"1杯","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","note":"短い説明","servingOptions":[{"label":"少なめ 0.7杯","multiplier":0.7},{"label":"普通 1杯","multiplier":1}]}`;
+{"name":"整えた料理名","baseAmount":"1杯","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","note":"短い説明","servingOptions":[{"label":"少なめ 0.7杯","multiplier":0.7},{"label":"普通 1杯","multiplier":1}],"matchedVariant":"該当時のみ指定された区分","calculationMethod":"exact_product_row|combined_components"}`;
 
       const completion = await openai.chat.completions.create({
         model: ESTIMATE_MEAL_MODEL,
@@ -549,11 +600,15 @@ export default async function handler(req: any, res: any) {
       const rawText = completion.choices[0]?.message?.content || "{}";
       let parsed: any;
       try { parsed = JSON.parse(rawText); } catch { parsed = {}; }
+      if (!isMatsuyaWebResultCompatible(parsed, matsuyaIntent)) {
+        return res.status(422).json({ error: "松屋の商品区分を正しく照合できませんでした。W定食・ご飯サイズ・単品を明記して再度お試しください。" });
+      }
 
       // チェーン一致だがWeb検索で公式・Web情報が見つからなかった場合は、その旨をnoteで明示する
-      const chainFallbackNote = matchedChain
+      const riceNormalization = normalizeMatsuyaRiceResult(parsed, matsuyaIntent);
+      const chainFallbackNote = riceNormalization.noteOverride || (matchedChain
         ? `${matchedChain}の公式栄養成分は確認できなかったため、一般的な目安（AI推定）です。店舗・時期・キャンペーンメニューにより実際の数値と異なる場合があります。`
-        : undefined;
+        : undefined);
 
       const result = buildMealEstimatePayload(parsed, { sourceType: 'ai_estimate' }, chainFallbackNote);
       if (!result) {

@@ -56,7 +56,8 @@ interface CachedEstimate extends EstimateResult {
   createdAt: string;
 }
 
-const ESTIMATE_CACHE_KEY = 'estimatedMealCache';
+// 推定ルール変更前の誤ったチェーン商品キャッシュを再利用しない。旧キーのデータ自体は削除しない。
+const ESTIMATE_CACHE_KEY = 'estimatedMealCache:v2';
 
 const normalizeMealNameForCache = (name: string): string => name.trim().toLowerCase();
 
@@ -89,6 +90,45 @@ const SOURCE_STYLE: Record<string, { label: string; color: string; bg: string }>
   official:    { label: '公式情報', color: '#a3e635', bg: 'rgba(163,230,53,0.1)' },
   web:         { label: 'Web参照', color: '#818cf8', bg: 'rgba(129,140,248,0.1)' },
   ai_estimate: { label: 'AI推定',  color: '#a1a1aa', bg: 'rgba(161,161,170,0.1)' },
+};
+
+const LEGACY_SOURCE_TYPES: Record<string, NonNullable<Meal['sourceType']>> = {
+  '公式情報': 'official',
+  'Web参照': 'web',
+  'AI推定': 'ai_estimate',
+};
+
+const looksLikeServingLabel = (value: string): boolean =>
+  /^(?:(?:少なめ|普通|大盛り?|特盛)\s*)?(?:\d+(?:\.\d+)?\s*)?(?:食|人前|杯|個|枚|皿|本|切れ|g|グラム)$/.test(value);
+
+// 旧データの「料理名（1食・Web参照）」だけを表示時に分離する。
+// Meal自体は更新しないため、既存localStorageデータを破壊しない。
+const getMealDisplay = (meal: Meal): {
+  name: string;
+  servingLabel?: string;
+  sourceType?: NonNullable<Meal['sourceType']>;
+} => {
+  let name = meal.name.trim();
+  let servingLabel = meal.servingLabel;
+  let sourceType = meal.sourceType;
+
+  if (!servingLabel || !sourceType) {
+    const suffixMatch = name.match(/^(.*?)[（(]([^()（）]+)[）)]\s*$/);
+    if (suffixMatch) {
+      const parts = suffixMatch[2].split('・').map(part => part.trim()).filter(Boolean);
+      const parsedSource = parts.find(part => LEGACY_SOURCE_TYPES[part]);
+      const parsedServing = parts.find(looksLikeServingLabel);
+      const allPartsRecognized = parts.length > 0 && parts.every(part => LEGACY_SOURCE_TYPES[part] || looksLikeServingLabel(part));
+
+      if (allPartsRecognized && (parsedSource || parsedServing)) {
+        name = suffixMatch[1].trim();
+        sourceType ||= parsedSource ? LEGACY_SOURCE_TYPES[parsedSource] : undefined;
+        servingLabel ||= parsedServing;
+      }
+    }
+  }
+
+  return { name: name || meal.name, servingLabel, sourceType };
 };
 
 const MEAL_TYPE_STYLE: Record<string, { border: string; chip: string; label: string }> = {
@@ -313,15 +353,19 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
     if (!estResult) return;
     const opt = estResult.servingOptions.find(o => o.multiplier === estMultiplier);
     const amountLabel = opt ? opt.label : `×${estMultiplier}`;
-    const sourceSuffix = SOURCE_STYLE[estResult.sourceType || 'ai_estimate'].label;
     recordMealWithFeedback({
       date: selectedDate,
-      name: `${estResult.name}（${amountLabel}・${sourceSuffix}）`,
+      name: estResult.name,
       calories: Math.round(estResult.calories * estMultiplier),
       protein: Math.round(estResult.protein * estMultiplier),
       fat: Math.round(estResult.fat * estMultiplier),
       carbs: Math.round(estResult.carbs * estMultiplier),
       mealType: estMealType || undefined,
+      servingLabel: amountLabel,
+      sourceType: estResult.sourceType || 'ai_estimate',
+      sourceLabel: estResult.sourceLabel,
+      sourceUrl: estResult.sourceUrl,
+      note: estResult.note,
     });
     resetEstimate();
   };
@@ -909,6 +953,8 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
         <div className="space-y-2.5">
           {dayMeals.map((meal) => {
             const typeStyle = meal.mealType ? MEAL_TYPE_STYLE[meal.mealType] : null;
+            const display = getMealDisplay(meal);
+            const sourceStyle = display.sourceType ? SOURCE_STYLE[display.sourceType] : null;
             return (
               <div
                 key={meal.id}
@@ -916,37 +962,65 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
                 tabIndex={0}
                 onClick={() => openEdit(meal)}
                 onKeyDown={(e) => { if (e.key === 'Enter') openEdit(meal); }}
-                className="ll-card ll-pop p-4 flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform"
+                className="ll-card ll-pop max-w-full overflow-hidden p-3.5 flex items-start gap-2.5 cursor-pointer active:scale-[0.99] transition-transform"
                 style={typeStyle ? { borderLeft: `3px solid ${typeStyle.border}` } : undefined}
               >
-                <div className="min-w-0 flex-1">
-                  {meal.mealType && typeStyle && (
-                    <span
-                      className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-1.5"
-                      style={{ background: typeStyle.chip, color: typeStyle.label, border: `1px solid ${typeStyle.border}33` }}
-                    >
-                      {meal.mealType}
-                    </span>
+                <div className="min-w-0 max-w-full flex-1 overflow-hidden">
+                  {(meal.mealType || display.servingLabel || sourceStyle) && (
+                    <div className="flex max-w-full flex-wrap gap-1 mb-1.5">
+                      {meal.mealType && typeStyle && (
+                        <span
+                          className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: typeStyle.chip, color: typeStyle.label, border: `1px solid ${typeStyle.border}33` }}
+                        >
+                          {meal.mealType}
+                        </span>
+                      )}
+                      {display.servingLabel && (
+                        <span className="shrink-0 text-[9px] font-bold text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded-full border border-zinc-700">
+                          {display.servingLabel}
+                        </span>
+                      )}
+                      {sourceStyle && (
+                        <span
+                          className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ color: sourceStyle.color, background: sourceStyle.bg, border: `1px solid ${sourceStyle.color}33` }}
+                        >
+                          {sourceStyle.label}
+                        </span>
+                      )}
+                    </div>
                   )}
-                  <h4 className="font-bold text-white text-sm ll-clamp2">{meal.name}</h4>
-                  <div className="flex gap-2.5 mt-1 text-[11px] font-mono text-zinc-600">
+                  <h4 className="max-w-full font-bold text-white text-sm break-words line-clamp-2 ll-clamp2">{display.name}</h4>
+                  <div className="flex max-w-full flex-wrap gap-x-2.5 gap-y-0.5 mt-1 text-[11px] font-mono text-zinc-600">
                     <span>P <strong className="text-rose-400">{meal.protein}g</strong></span>
                     <span>F <strong className="text-amber-400">{meal.fat}g</strong></span>
                     <span>C <strong className="text-blue-400">{meal.carbs}g</strong></span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 ml-3 shrink-0">
+                <div className="shrink-0 flex flex-col items-end gap-1.5">
                   <div className="text-right">
                     <div className="ll-num text-lg text-white leading-none">{meal.calories}</div>
                     <div className="ll-label text-zinc-600 text-[9px]">kcal</div>
                   </div>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(meal); }} className="text-zinc-700 hover:text-lime-400 transition-colors p-1.5">
-                    <Pencil size={15} />
-                  </button>
-                  <div className="w-px h-4 bg-zinc-800" />
-                  <button type="button" onClick={(e) => { e.stopPropagation(); deleteMeal(meal.id); }} className="text-zinc-700 hover:text-rose-400 transition-colors p-1.5">
-                    <Trash2 size={15} />
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      aria-label={`${display.name}を編集`}
+                      onClick={(e) => { e.stopPropagation(); openEdit(meal); }}
+                      className="w-8 h-8 shrink-0 rounded-lg text-zinc-500 hover:text-lime-400 hover:bg-zinc-800 transition-colors flex items-center justify-center"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${display.name}を削除`}
+                      onClick={(e) => { e.stopPropagation(); deleteMeal(meal.id); }}
+                      className="w-8 h-8 shrink-0 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors flex items-center justify-center"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
