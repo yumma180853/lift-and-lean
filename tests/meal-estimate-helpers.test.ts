@@ -4,7 +4,7 @@ import {
   detectMatsuyaBeefYakinikuIntent,
   isMatsuyaWebResultCompatible,
   normalizeMatsuyaRiceResult,
-} from './meal-estimate-helpers.ts';
+} from '../src/server/meal-estimate-helpers.ts';
 
 test('松屋 牛焼肉定食の入力区分を混同しない', () => {
   const cases = [

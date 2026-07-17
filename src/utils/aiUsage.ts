@@ -64,4 +64,18 @@ export const incrementAiUsage = (
   return usage;
 };
 
+// サーバーがモデル実行前に落ちた等、コストが発生していないことが明らかな失敗時に回数を返却する
+export const decrementAiUsage = (
+  key: 'estimateMealCount' | 'estimateMealWebCount' | 'suggestGoalsCount',
+): AiUsage => {
+  const usage = loadAiUsage();
+  usage[key] = Math.max(0, usage[key] - 1);
+  try {
+    localStorage.setItem(USAGE_KEY, JSON.stringify(usage));
+  } catch {
+    // 保存失敗は無視
+  }
+  return usage;
+};
+
 export const remainingOf = (used: number, limit: number): number => Math.max(0, limit - used);

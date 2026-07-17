@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
-import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
+import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, decrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
 
 export interface SectionDietProps {
   /** 選択中の日付（selectedDate）の食事一覧 */
@@ -343,8 +343,14 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
       });
-      const data = await response.json();
-      if (!response.ok || !data.name) {
+      // サーバークラッシュ時はJSONでないHTMLが返るため、安全にパースする
+      let data: any = null;
+      try { data = await response.json(); } catch { /* 非JSON応答 */ }
+      if (!data) {
+        // モデル実行前にサーバーが落ちておりコストは発生していないため回数を返却
+        setAiUsage(decrementAiUsage('estimateMealCount'));
+        setEstError('推定サーバーでエラーが発生しました。時間をおいてもう一度お試しください。');
+      } else if (!response.ok || !data.name) {
         setEstError(data.error || '推定に失敗しました。別の書き方で試してください。');
       } else {
         const result = data as EstimateResult;
@@ -359,7 +365,9 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
         saveEstimateCache(cache);
       }
     } catch {
-      setEstError('通信エラーが発生しました。時間をおいて試してください。');
+      // リクエスト自体が届いていない可能性が高いため回数を返却
+      setAiUsage(decrementAiUsage('estimateMealCount'));
+      setEstError('通信エラーが発生しました。電波状況を確認して、もう一度お試しください。');
     } finally {
       setEstLoading(false);
     }
