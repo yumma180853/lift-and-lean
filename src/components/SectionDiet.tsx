@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Plus, Camera, Calendar, Sparkles, Trash2, Pencil, X, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Meal, UserGoals } from '../types';
+import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
 
 export interface SectionDietProps {
   /** 選択中の日付（selectedDate）の食事一覧 */
@@ -200,6 +201,8 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
   const [estMultiplier, setEstMultiplier] = useState(1);
   const [estMealType, setEstMealType] = useState('');
   const [estFromCache, setEstFromCache] = useState(false);
+  // AI利用回数（1日あたりの端末ローカル制限）。表示更新用にstateにも持つ
+  const [aiUsage, setAiUsage] = useState<AiUsage>(loadAiUsage);
 
   // 登録済み食事の編集
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
@@ -321,10 +324,19 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
       }
     }
 
+    // 1日あたりの利用回数制限（キャッシュヒットは消費しない）。上限時はAPIを呼ばない
+    const usage = loadAiUsage();
+    if (usage.estimateMealCount >= AI_DAILY_LIMITS.estimateMeal) {
+      setEstError('今日のAI推定回数の上限に達しました。明日また使えます。（手入力での記録はいつでもできます）');
+      return;
+    }
+
     setEstLoading(true);
     setEstError(null);
     setEstResult(null);
     setEstFromCache(false);
+    // API呼び出しが発生する時点でカウント（失敗してもサーバー側コストは発生するため）
+    setAiUsage(incrementAiUsage('estimateMealCount'));
     try {
       const response = await fetch('/api/estimate-meal', {
         method: 'POST',
@@ -336,6 +348,10 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
         setEstError(data.error || '推定に失敗しました。別の書き方で試してください。');
       } else {
         const result = data as EstimateResult;
+        // Web/公式参照の使用有無はサーバー判定のため、レスポンスのsourceTypeで事後カウント
+        if (result.sourceType === 'official' || result.sourceType === 'web') {
+          setAiUsage(incrementAiUsage('estimateMealWebCount'));
+        }
         setEstResult(result);
         setEstMultiplier(1);
         const cache = loadEstimateCache();
@@ -643,6 +659,13 @@ export function SectionDiet({ dayMeals, allMeals, selectedDate, today, onSelectD
               {estLoading ? '推定中…' : '目安を出す'}
             </button>
           </div>
+
+          <p className="text-[9px] font-bold text-zinc-600">
+            今日あと{remainingOf(aiUsage.estimateMealCount, AI_DAILY_LIMITS.estimateMeal)}回
+            {remainingOf(aiUsage.estimateMealWebCount, AI_DAILY_LIMITS.estimateMealWeb) === 0 && (
+              <span className="text-amber-500/80">（公式/Web参照は本日の目安回数を使い切りました）</span>
+            )}
+          </p>
 
           {estLoading && (
             <div className="flex items-center justify-center gap-2 py-4 text-lime-400 text-xs font-bold animate-pulse">

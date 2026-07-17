@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, Bell, BellOff, Sparkles, X, RefreshCw } from 'lucide-react';
 import { UserGoals } from '../types';
+import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
 
 interface SectionSettingsProps {
   goals: UserGoals;
@@ -51,6 +52,8 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<GoalSuggestion | null>(null);
   const [reflectedMsg, setReflectedMsg] = useState(false);
+  // AI利用回数（1日あたりの端末ローカル制限）。表示更新用にstateにも持つ
+  const [aiUsage, setAiUsage] = useState<AiUsage>(loadAiUsage);
 
   const resetSuggestFlow = () => {
     setIsSuggesting(false);
@@ -68,9 +71,17 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
   const canProceedStep0 = height.trim() !== '' && weight.trim() !== '' && age.trim() !== '';
 
   const handleSuggest = async () => {
+    // 1日あたりの利用回数制限。上限時はAPIを呼ばない
+    const usage = loadAiUsage();
+    if (usage.suggestGoalsCount >= AI_DAILY_LIMITS.suggestGoals) {
+      setSuggestError('今日のAI目標提案回数の上限に達しました。明日また使えます。');
+      return;
+    }
     setSuggestLoading(true);
     setSuggestError(null);
     setSuggestion(null);
+    // API呼び出しが発生する時点でカウント（失敗してもサーバー側コストは発生するため）
+    setAiUsage(incrementAiUsage('suggestGoalsCount'));
     try {
       const response = await fetch('/api/suggest-goals', {
         method: 'POST',
@@ -401,6 +412,9 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
                       </button>
                     ))}
                   </div>
+                  <p className="text-[9px] font-bold text-zinc-600">
+                    AI目標提案は1日{AI_DAILY_LIMITS.suggestGoals}回まで・今日あと{remainingOf(aiUsage.suggestGoalsCount, AI_DAILY_LIMITS.suggestGoals)}回
+                  </p>
                   {suggestError && (
                     <p className="text-[11px] text-rose-400 font-bold">{suggestError}</p>
                   )}
