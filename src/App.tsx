@@ -366,9 +366,8 @@ export default function App() {
         <nav className={`fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 px-3 py-2 flex items-center justify-between z-50 ${dietEditOpen ? 'hidden' : ''}`} style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           {([
             { id: 'dashboard',  Icon: Activity,  label: 'ホーム' },
-            { id: 'workout',    Icon: Dumbbell,  label: 'ログ' },
             { id: 'diet',       Icon: Utensils,  label: '食事' },
-            { id: 'aitrainer',  Icon: Sparkles,  label: 'AI' },
+            { id: 'workout',    Icon: Dumbbell,  label: 'トレーニング' },
             { id: 'analysis',   Icon: BarChart3, label: '分析' },
             { id: 'settings',   Icon: Settings,  label: '設定' },
           ] as const).map(({ id, Icon, label }) => (
