@@ -10,7 +10,7 @@ import {
   isMatsuyaWebResultCompatible,
   normalizeMatsuyaRiceResult,
   type MatsuyaBeefYakinikuIntent,
-} from "./meal-estimate-helpers.js";
+} from "../src/server/meal-estimate-helpers.js";
 
 dotenv.config();
 
@@ -221,8 +221,10 @@ function buildMealEstimatePayload(parsed: any, source: MealEstimateSource, noteO
 }
 
 // 検索→公式表から該当行を特定→転記、という多段タスクはminiでは取りこぼしが多く
-// notFoundフォールバックが頻発したため、料理名推定と同じ高精度モデルに揃える
-const ESTIMATE_MEAL_SEARCH_MODEL = "gpt-4o";
+// notFoundフォールバックが頻発したため上位モデルを使う。食事記録は利用頻度が上がる想定のため
+// Sol固定は避けterraを既定にする。環境変数で切替可、エラー時は旧モデルにフォールバックする
+const ESTIMATE_MEAL_SEARCH_MODEL = process.env.ESTIMATE_MEAL_SEARCH_MODEL || "gpt-5.6-terra";
+const ESTIMATE_MEAL_SEARCH_FALLBACK_MODEL = process.env.ESTIMATE_MEAL_SEARCH_FALLBACK_MODEL || "gpt-4o";
 
 // チェーン・ブランド商品名の場合のみ使うWeb検索ベースの推定（公式栄養成分ページを優先）
 async function estimateMealViaWebSearch(
@@ -273,12 +275,24 @@ ${matsuyaInstructions}
 必ず以下のJSON形式のみで返してください（説明文・マークダウンのコードフェンス禁止）：
 {"name":"整えた商品名","baseAmount":"1食","calories":数値,"protein":数値,"fat":数値,"carbs":数値,"confidence":"high|medium|low","sourceType":"official|web","sourceLabel":"短い説明","sourceUrl":"https://...","note":"短い注記","servingOptions":[{"label":"1食","multiplier":1}],"matchedVariant":"該当時のみ指定された区分","calculationMethod":"exact_product_row|combined_components"}`;
 
-  const response = await openai.responses.create({
-    model: ESTIMATE_MEAL_SEARCH_MODEL,
-    tools: [{ type: 'web_search_preview' }],
-    instructions,
-    input: [{ role: 'user', content: [{ type: 'input_text', text: `検索キーワード：${searchQueryHint}` }] }],
-  });
+  const searchInput = [{ role: 'user' as const, content: [{ type: 'input_text' as const, text: `検索キーワード：${searchQueryHint}` }] }];
+  let response;
+  try {
+    response = await openai.responses.create({
+      model: ESTIMATE_MEAL_SEARCH_MODEL,
+      tools: [{ type: 'web_search' }],
+      instructions,
+      input: searchInput,
+    });
+  } catch (e: any) {
+    console.warn(`estimateMealViaWebSearch: ${ESTIMATE_MEAL_SEARCH_MODEL} failed (${e?.message}), falling back to ${ESTIMATE_MEAL_SEARCH_FALLBACK_MODEL}`);
+    response = await openai.responses.create({
+      model: ESTIMATE_MEAL_SEARCH_FALLBACK_MODEL,
+      tools: [{ type: 'web_search_preview' }],
+      instructions,
+      input: searchInput,
+    });
+  }
 
   const rawText = response.output_text || '';
   const parsed = extractJson(rawText);
@@ -1010,8 +1024,10 @@ ${mealSummary}
   }
 
   // 3️⃣ AI目標提案エンドポイント（身長・体重・目的等からカロリー/PFC/目標体重の目安を提案）
-  // 数値の納得感を優先するため、他機能より上位のモデルを使用（このエンドポイントのみ）
-  const SUGGEST_GOALS_MODEL = "gpt-4.1";
+  // 数値の納得感を優先するため最上位モデルを使用（呼び出し頻度が低いためコスト影響は小さい）
+  // 環境変数で切替可（コストを抑えるなら gpt-5.6-terra）、エラー時は旧モデルにフォールバックする
+  const SUGGEST_GOALS_MODEL = process.env.SUGGEST_GOALS_MODEL || "gpt-5.6-sol";
+  const SUGGEST_GOALS_FALLBACK_MODEL = process.env.SUGGEST_GOALS_FALLBACK_MODEL || "gpt-4.1";
   // 増量・減量の「安全な月間ペース」。中間目標・カロリー補正の算出に使う（AIには判断させずサーバー側で決定的に計算する）
   const GAIN_PACE_KG_PER_MONTH = 1.3;
   const KCAL_PER_KG = 7700;
@@ -1063,12 +1079,25 @@ ${struggles ? `続かなくなりがちな理由: ${String(struggles).slice(0, 1
 必ず以下のJSON形式のみで返してください：
 {"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"targetWeight":数値,"periodMonths":数値,"reason":"2〜3文の説明","nextSteps":"1〜2文の次の行動"}`;
 
-      const completion = await openai.chat.completions.create({
-        model: SUGGEST_GOALS_MODEL,
-        response_format: { type: "json_object" },
-        max_tokens: 500,
-        messages: [{ role: "user", content: suggestPrompt }],
-      });
+      const suggestMessages = [{ role: "user" as const, content: suggestPrompt }];
+      let completion;
+      try {
+        completion = await openai.chat.completions.create({
+          model: SUGGEST_GOALS_MODEL,
+          response_format: { type: "json_object" },
+          // GPT-5.6系はmax_tokens非対応。reasoningトークンも出力枠を消費するため余裕を持たせる
+          max_completion_tokens: 2000,
+          messages: suggestMessages,
+        });
+      } catch (e: any) {
+        console.warn(`suggest-goals: ${SUGGEST_GOALS_MODEL} failed (${e?.message}), falling back to ${SUGGEST_GOALS_FALLBACK_MODEL}`);
+        completion = await openai.chat.completions.create({
+          model: SUGGEST_GOALS_FALLBACK_MODEL,
+          response_format: { type: "json_object" },
+          max_tokens: 500,
+          messages: suggestMessages,
+        });
+      }
 
       const rawText = completion.choices[0]?.message?.content || "{}";
       let parsed: any;
