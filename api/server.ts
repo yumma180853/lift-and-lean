@@ -10,7 +10,7 @@ import {
   isMatsuyaWebResultCompatible,
   normalizeMatsuyaRiceResult,
   type MatsuyaBeefYakinikuIntent,
-} from "../src/server/meal-estimate-helpers.js";
+} from "./meal-estimate-helpers.js";
 
 dotenv.config();
 
