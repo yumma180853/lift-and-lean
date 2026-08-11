@@ -3,3 +3,12 @@ job_hunting_story.md
 psychology_ux_strategy.md
 dist
 node_modules
+
+# 秘密情報：絶対にcommitしない（.env.example のみ追跡する）
+.env
+.env.*
+!.env.example
+
+# Supabase CLI のローカル状態
+supabase/.branches
+supabase/.temp
