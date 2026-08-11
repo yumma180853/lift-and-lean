@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Settings, Bell, BellOff, Sparkles, X, RefreshCw } from 'lucide-react';
+import { Settings, Bell, BellOff, Sparkles, X, RefreshCw, Download } from 'lucide-react';
 import { UserGoals } from '../types';
 import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
+import { downloadBackup } from '../utils/backup';
 
 interface SectionSettingsProps {
   goals: UserGoals;
@@ -54,6 +55,25 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
   const [reflectedMsg, setReflectedMsg] = useState(false);
   // AI利用回数（1日あたりの端末ローカル制限）。表示更新用にstateにも持つ
   const [aiUsage, setAiUsage] = useState<AiUsage>(loadAiUsage);
+
+  // データのバックアップ（端末内のデータをJSONで書き出すだけ。消したり書き換えたりしない）
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  const handleBackup = () => {
+    setBackupMsg(null);
+    setBackupError(null);
+    try {
+      const s = downloadBackup();
+      const parts = [`食事${s.meals}件`, `筋トレ${s.workouts}日`, `体重${s.weights}件`, `${s.totalSets}セット`];
+      setBackupMsg(
+        `保存しました（${parts.join(' / ')}）` +
+        (s.unparsedKeys.length > 0 ? `※読み取れないデータ${s.unparsedKeys.length}件もそのまま含めています` : '')
+      );
+    } catch {
+      setBackupError('バックアップの書き出しに失敗しました。空き容量を確認して、もう一度お試しください。');
+    }
+  };
 
   const resetSuggestFlow = () => {
     setIsSuggesting(false);
@@ -239,6 +259,29 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
             );
           })}
         </div>
+      </div>
+
+      {/* データのバックアップ */}
+      <div className="ll-card p-5 space-y-3">
+        <div>
+          <h3 className="ll-label text-zinc-500 text-xs">データのバックアップ</h3>
+          <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+            記録はこの端末の中にだけ保存されています。ブラウザのデータを消すと元に戻せません。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleBackup}
+          className="w-full ll-inset px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition-all"
+        >
+          <Download size={16} className="text-lime-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-black text-white">JSONファイルで保存する</div>
+            <div className="text-[10px] text-zinc-500 mt-0.5">食事・筋トレ・体重・目標をまとめて書き出します</div>
+          </div>
+        </button>
+        {backupMsg && <p className="text-[11px] text-lime-400 font-bold leading-relaxed">{backupMsg}</p>}
+        {backupError && <p className="text-[11px] text-rose-400 font-bold leading-relaxed">{backupError}</p>}
       </div>
 
       {/* プライバシーポリシー */}
