@@ -52,6 +52,8 @@ export interface AccountInfo {
   userId: string;
   email?: string;
   name?: string;
+  /** メールアドレスの所有確認が済んでいるか。false の間はクラウドのデータに触れない */
+  emailVerified: boolean;
 }
 
 export const authApi = {
@@ -61,6 +63,11 @@ export const authApi = {
   me: () => request<AccountInfo>('/auth/me'),
   /** 再設定メールの送信。登録済みかどうかに関わらず同じ結果が返る */
   requestPasswordReset: (email: string) => post<{ ok: boolean }>('/auth/recovery', { email }),
+  /** 確認メールの再送。ログイン中の本人しか呼べない */
+  resendVerification: () => post<{ ok: boolean }>('/auth/verification'),
+  /** メールのリンクから戻ってきたあとの確認完了 */
+  confirmVerification: (userId: string, secret: string) =>
+    post<{ ok: boolean }>('/auth/verification/confirm', { userId, secret }),
   /** メールのリンクから戻ってきたあとの新パスワード設定 */
   confirmPasswordReset: (userId: string, secret: string, password: string) =>
     post<{ ok: boolean }>('/auth/recovery/confirm', { userId, secret, password }),

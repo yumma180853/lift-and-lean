@@ -9,9 +9,23 @@ const NOW = new Date('2026-08-12T01:00:00Z');
 const TODAY = '2026-08-12';
 
 /** セッションsecret → userId の対応を持つ偽の認証 */
-function fakeAuth(sessions: Map<string, string>, recovery: { requested: string[]; confirmed: any[] } = { requested: [], confirmed: [] }) {
+function fakeAuth(
+  sessions: Map<string, string>,
+  recovery: { requested: string[]; confirmed: any[] } = { requested: [], confirmed: [] },
+  verification: { verified: Set<string>; sent: string[] } = { verified: new Set(), sent: [] },
+) {
   return {
     recovery,
+    verification,
+    async sendEmailVerification(sessionSecret: string) {
+      verification.sent.push(sessionSecret);
+    },
+    async completeEmailVerification(userId: string, secret: string) {
+      if (secret !== 'valid-verification') {
+        throw new AppError('verification_invalid', 400, 'このリンクは期限切れか、すでに使用済みです。');
+      }
+      verification.verified.add(userId);
+    },
     async requestPasswordRecovery(email: string) {
       // 実装と同じく、未登録でも何も起きない（呼び出し側からは区別できない）
       recovery.requested.push(email);
@@ -25,19 +39,19 @@ function fakeAuth(sessions: Map<string, string>, recovery: { requested: string[]
     async signUp(email: string) {
       const userId = `user-${email.split('@')[0]}`;
       sessions.set(`secret-${userId}`, userId);
-      return { user: { userId }, secret: `secret-${userId}`, expiresAt: '2026-09-12T00:00:00.000Z' };
+      return { user: { userId, emailVerified: false }, secret: `secret-${userId}`, expiresAt: '2026-09-12T00:00:00.000Z' };
     },
     async logIn(email: string, password: string) {
       if (password !== 'correct-horse') throw new AuthError('メールアドレスかパスワードが違います。');
       const userId = `user-${email.split('@')[0]}`;
       sessions.set(`secret-${userId}`, userId);
-      return { user: { userId }, secret: `secret-${userId}`, expiresAt: '2026-09-12T00:00:00.000Z' };
+      return { user: { userId, emailVerified: false }, secret: `secret-${userId}`, expiresAt: '2026-09-12T00:00:00.000Z' };
     },
     async logOut(secret: string) { sessions.delete(secret); },
     async resolveUser(secret: string | undefined) {
       const userId = secret ? sessions.get(secret) : undefined;
       if (!userId) throw new AuthError();
-      return { userId };
+      return { userId, emailVerified: verification.verified.has(userId) };
     },
   };
 }
@@ -47,9 +61,10 @@ function setup() {
   const sessions = new Map<string, string>();
   const cookies = new Map<string, string>();
   const recovery = { requested: [] as string[], confirmed: [] as any[] };
+  const verification = { verified: new Set<string>(), sent: [] as string[] };
 
   const handle = createV1Router({
-    auth: fakeAuth(sessions, recovery),
+    auth: fakeAuth(sessions, recovery, verification),
     createService: (secret: string) => new LiftAndLeanService({
       repository: repository.asViewer(sessions.get(secret) ?? '(unknown)'),
       clock: { now: () => NOW },
@@ -59,6 +74,11 @@ function setup() {
     setSessionCookie: (res: any, secret: string) => { cookies.set('ll_session', secret); res.cookieSet = secret; },
     clearSessionCookie: (res: any) => { cookies.delete('ll_session'); res.cookieCleared = true; },
   });
+
+    /** メール確認を済ませた状態にする（実機ではメールのリンクで行われる） */
+  function markVerified(userId: string) {
+    verification.verified.add(userId);
+  }
 
   async function call(method: string, url: string, options: { body?: unknown; secret?: string } = {}) {
     const req: any = { method, url, body: options.body, sessionSecret: options.secret, headers: {} };
@@ -75,7 +95,7 @@ function setup() {
     return { handled, status: res.statusCode, body: res.payload as any, res };
   }
 
-  return { call, repository, sessions, cookies, recovery };
+  return { call, markVerified, repository, sessions, cookies, recovery, verification };
 }
 
 // ---------------------------------------------------------------- 経路
@@ -95,15 +115,17 @@ test('未ログインでデータAPIを叩くと401', async () => {
 });
 
 test('存在しないエンドポイントは404', async () => {
-  const { call } = setup();
+  const { call, markVerified } = setup();
   const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'a@example.jp', password: 'correct-horse' } });
+  markVerified(signup.body.userId);
   const result = await call('GET', '/api/v1/unknown', { secret: signup.res.cookieSet });
   assert.equal(result.status, 404);
 });
 
 test('許可していないメソッドは405', async () => {
-  const { call } = setup();
+  const { call, markVerified } = setup();
   const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'a@example.jp', password: 'correct-horse' } });
+  markVerified(signup.body.userId);
   const result = await call('DELETE', '/api/v1/summary', { secret: signup.res.cookieSet });
   assert.equal(result.status, 405);
 });
@@ -150,8 +172,9 @@ test('ログアウトでセッションを捨てる', async () => {
 // ---------------------------------------------------------------- データ
 
 test('記録から読み出しまで一連で動く', async () => {
-  const { call } = setup();
+  const { call, markVerified } = setup();
   const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  markVerified(signup.body.userId);
   const secret = signup.res.cookieSet;
 
   const created = await call('POST', '/api/v1/meals', {
@@ -169,9 +192,11 @@ test('記録から読み出しまで一連で動く', async () => {
 });
 
 test('bodyのuserIdを詐称しても、ログイン中の本人として保存される', async () => {
-  const { call, repository } = setup();
+  const { call, markVerified, repository } = setup();
   const alice = await call('POST', '/api/v1/auth/signup', { body: { email: 'alice@example.jp', password: 'correct-horse' } });
   const bob = await call('POST', '/api/v1/auth/signup', { body: { email: 'bob@example.jp', password: 'correct-horse' } });
+  markVerified(alice.body.userId);
+  markVerified(bob.body.userId);
 
   await call('POST', '/api/v1/meals', {
     secret: bob.res.cookieSet,
@@ -187,9 +212,11 @@ test('bodyのuserIdを詐称しても、ログイン中の本人として保存�
 });
 
 test('他人のセッションで他人の記録を消せない', async () => {
-  const { call, repository } = setup();
+  const { call, markVerified, repository } = setup();
   const alice = await call('POST', '/api/v1/auth/signup', { body: { email: 'alice@example.jp', password: 'correct-horse' } });
   const bob = await call('POST', '/api/v1/auth/signup', { body: { email: 'bob@example.jp', password: 'correct-horse' } });
+  markVerified(alice.body.userId);
+  markVerified(bob.body.userId);
 
   const created = await call('POST', '/api/v1/meals', {
     secret: alice.res.cookieSet,
@@ -202,8 +229,9 @@ test('他人のセッションで他人の記録を消せない', async () => {
 });
 
 test('移行APIは preview / 本実行 / 検証 の3つが揃っている', async () => {
-  const { call } = setup();
+  const { call, markVerified } = setup();
   const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  markVerified(signup.body.userId);
   const secret = signup.res.cookieSet;
   const backup = {
     app: 'lift-and-lean',
@@ -226,8 +254,9 @@ test('移行APIは preview / 本実行 / 検証 の3つが揃っている', asyn
 });
 
 test('目標とプロフィールを保存して読み戻せる', async () => {
-  const { call } = setup();
+  const { call, markVerified } = setup();
   const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  markVerified(signup.body.userId);
   const secret = signup.res.cookieSet;
 
   await call('PUT', '/api/v1/goals', {
@@ -294,4 +323,88 @@ test('再設定の入力も検証する（短いパスワードはAppwriteへ届
   });
   assert.equal(result.status, 400);
   assert.equal(result.body.code, 'validation_error');
+});
+
+// ---------------------------------------------------------------- メール確認の強制
+
+test('メール未確認ではデータAPIを一切使えない（403）', async () => {
+  const { call } = setup();
+  const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  const secret = signup.res.cookieSet;
+
+  const endpoints: [string, string, unknown?][] = [
+    ['GET', '/api/v1/summary'],
+    ['GET', '/api/v1/meals'],
+    ['POST', '/api/v1/meals', { name: 'x', calories: 1, protein: 1, fat: 1, carbs: 1 }],
+    ['POST', '/api/v1/weights', { weight: 70 }],
+    ['GET', '/api/v1/goals'],
+    ['POST', '/api/v1/migrate', { app: 'lift-and-lean', data: {} }],
+    ['POST', '/api/v1/migrate/preview', { app: 'lift-and-lean', data: {} }],
+  ];
+
+  for (const [method, url, body] of endpoints) {
+    const result = await call(method, url, { secret, body });
+    assert.equal(result.status, 403, `${method} ${url}`);
+    assert.equal(result.body.code, 'email_not_verified', `${method} ${url}`);
+  }
+});
+
+test('メール未確認でも、確認に必要な操作だけはできる', async () => {
+  const { call } = setup();
+  const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  const secret = signup.res.cookieSet;
+
+  const me = await call('GET', '/api/v1/auth/me', { secret });
+  assert.equal(me.status, 200);
+  assert.equal(me.body.emailVerified, false);
+
+  const resend = await call('POST', '/api/v1/auth/verification', { secret });
+  assert.equal(resend.status, 200);
+
+  const logout = await call('POST', '/api/v1/auth/logout', { secret });
+  assert.equal(logout.status, 200);
+});
+
+test('確認メールの再送はログイン中の本人しか呼べない（列挙に使えない）', async () => {
+  const { call, verification } = setup();
+  const result = await call('POST', '/api/v1/auth/verification');
+  assert.equal(result.status, 401);
+  assert.deepEqual(verification.sent, []);
+});
+
+test('メール確認を完了するとデータAPIが使えるようになる', async () => {
+  const { call } = setup();
+  const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  const secret = signup.res.cookieSet;
+
+  const blocked = await call('GET', '/api/v1/summary', { secret });
+  assert.equal(blocked.status, 403);
+
+  const confirm = await call('POST', '/api/v1/auth/verification/confirm', {
+    body: { userId: signup.body.userId, secret: 'valid-verification' },
+  });
+  assert.equal(confirm.status, 200);
+
+  const allowed = await call('GET', '/api/v1/summary', { secret });
+  assert.equal(allowed.status, 200);
+});
+
+test('確認の完了はセッションが無くても呼べる（別ブラウザでリンクを開くため）', async () => {
+  const { call, verification } = setup();
+  const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+
+  const confirm = await call('POST', '/api/v1/auth/verification/confirm', {
+    body: { userId: signup.body.userId, secret: 'valid-verification' },
+  });
+  assert.equal(confirm.status, 200);
+  assert.equal(verification.verified.has(signup.body.userId), true);
+});
+
+test('壊れた確認リンクは400で案内する', async () => {
+  const { call } = setup();
+  const result = await call('POST', '/api/v1/auth/verification/confirm', {
+    body: { userId: 'u1', secret: 'expired' },
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.code, 'verification_invalid');
 });

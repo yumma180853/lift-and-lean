@@ -90,6 +90,13 @@ export const recoveryConfirmSchema = z.object({
   password: z.string().min(8, 'パスワードは8文字以上にしてください。').max(256),
 });
 
+/** メール確認リンクから戻ってきたときの完了要求 */
+export const verificationConfirmSchema = z.object({
+  userId: z.string().trim().min(1).max(64),
+  secret: z.string().trim().min(1).max(512),
+});
+
+export type VerificationConfirm = z.infer<typeof verificationConfirmSchema>;
 export type RecoveryRequest = z.infer<typeof recoveryRequestSchema>;
 export type RecoveryConfirm = z.infer<typeof recoveryConfirmSchema>;
 

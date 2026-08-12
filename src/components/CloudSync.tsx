@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, CloudOff, LogOut, ShieldCheck } from 'lucide-react';
+import { Cloud, CloudOff, LogOut, MailWarning, ShieldCheck } from 'lucide-react';
 import { ApiError, authApi, migrationApi } from '../utils/api';
 import type { AccountInfo, MigrationReport } from '../utils/api';
 import { buildMigrationPayload } from '../utils/backup';
@@ -12,7 +12,7 @@ import { buildMigrationPayload } from '../utils/backup';
  * アプリの表示元は引き続き端末内のデータ（切り替えは検証がすべて通ったあと）。
  */
 
-type Phase = 'checking' | 'unavailable' | 'signedOut' | 'signedIn';
+type Phase = 'checking' | 'unavailable' | 'signedOut' | 'unverified' | 'signedIn';
 
 const messageOf = (error: unknown): string =>
   error instanceof ApiError ? error.message : '処理に失敗しました。時間をおいて試してください。';
@@ -34,7 +34,7 @@ export function CloudSync() {
   useEffect(() => {
     let cancelled = false;
     authApi.me()
-      .then(info => { if (!cancelled) { setAccount(info); setPhase('signedIn'); } })
+      .then(info => { if (!cancelled) { setAccount(info); setPhase(info.emailVerified ? 'signedIn' : 'unverified'); } })
       .catch((e: unknown) => {
         if (cancelled) return;
         // 401 = 未ログイン。それ以外（未設定・障害）はカードごと隠す
@@ -53,8 +53,11 @@ export function CloudSync() {
       await call(email.trim(), password);
       const info = await authApi.me();
       setAccount(info);
-      setPhase('signedIn');
+      setPhase(info.emailVerified ? 'signedIn' : 'unverified');
       setPassword('');
+      if (!info.emailVerified) {
+        setNotice('確認メールを送りました。メール内のリンクを開くとクラウド同期が使えます。');
+      }
     } catch (e) {
       setError(messageOf(e));
       // すでに登録済みなら、ログインタブへ寄せて袋小路にしない
@@ -86,6 +89,36 @@ export function CloudSync() {
     }
   };
 
+  const resendVerification = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await authApi.resendVerification();
+      setNotice('確認メールを送り直しました。メール内のリンクを開いてください。');
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** メールのリンクを別画面で開いたあと、この画面を最新の状態にする */
+  const recheckVerification = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const info = await authApi.me();
+      setAccount(info);
+      setPhase(info.emailVerified ? 'signedIn' : 'unverified');
+      setNotice(info.emailVerified ? null : 'まだ確認が済んでいません。メール内のリンクを開いてください。');
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const signOut = async () => {
     setBusy(true);
     try {
@@ -95,6 +128,7 @@ export function CloudSync() {
     } finally {
       setAccount(null);
       setPhase('signedOut');
+      setMode('login');
       setPreview(null);
       setResult(null);
       setVerified(null);
@@ -230,6 +264,48 @@ export function CloudSync() {
           </button>
           {notice && <p className="text-[11px] text-lime-400 font-bold leading-relaxed">{notice}</p>}
         </form>
+      )}
+
+      {phase === 'unverified' && (
+        <div className="space-y-3">
+          <div className="ll-inset px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2 text-amber-400">
+              <MailWarning size={16} />
+              <p className="text-xs font-black">メールアドレスの確認が必要です</p>
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
+              <span className="text-zinc-300">{account?.email}</span> に送った確認メールのリンクを開いてください。
+              確認が済むまでクラウドへのコピーはできません。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={recheckVerification}
+            disabled={busy}
+            className="w-full bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all"
+          >
+            {busy ? '確認中…' : '確認できたか調べる'}
+          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={resendVerification}
+              disabled={busy}
+              className="flex-1 text-[11px] font-bold text-zinc-500 hover:text-lime-400 transition-colors py-1 disabled:opacity-50"
+            >
+              確認メールを送り直す
+            </button>
+            <button
+              type="button"
+              onClick={signOut}
+              disabled={busy}
+              className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-zinc-500 hover:text-white px-2 py-1"
+            >
+              <LogOut size={12} /> ログアウト
+            </button>
+          </div>
+          {notice && <p className="text-[11px] text-lime-400 font-bold leading-relaxed">{notice}</p>}
+        </div>
       )}
 
       {phase === 'signedIn' && (

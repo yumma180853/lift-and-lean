@@ -2,14 +2,19 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import {ResetPassword} from './components/ResetPassword.tsx';
+import {VerifyEmail} from './components/VerifyEmail.tsx';
 import './index.css';
 
-// パスワード再設定だけはアプリ本体と別画面。
-// ルーターは入れず、メールのリンク先パスだけを見分ける（既存の画面遷移は変えない）
-const isResetPassword = window.location.pathname.replace(/\/+$/, '') === '/reset-password';
+// メールのリンクから来る画面だけはアプリ本体と分ける。
+// ルーターは入れず、パスだけを見分ける（既存の画面遷移は変えない）
+const path = window.location.pathname.replace(/\/+$/, '');
+
+const screen = path === '/reset-password' ? <ResetPassword />
+  : path === '/verify-email' ? <VerifyEmail />
+  : <App />;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isResetPassword ? <ResetPassword /> : <App />}
+    {screen}
   </StrictMode>,
 );

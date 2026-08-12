@@ -305,3 +305,112 @@ test('すでに失効しているセッションのログアウトはエラー�
     restore();
   }
 });
+
+// ---------------------------------------------------------------- メール確認
+
+test('新規登録すると、そのまま確認メールを送る', async () => {
+  const { calls, gateways } = fakeAccounts({
+    create: () => ({ $id: 'user-1' }),
+    createEmailPasswordSession: validSession,
+  });
+  const restore = auth.__setAccountGatewaysForTest(gateways);
+  try {
+    await auth.signUp('a@example.jp', 'password-1234');
+  } finally {
+    restore();
+  }
+
+  const call = calls.find(c => c.method === 'createVerification');
+  assert.equal(call?.via, 'session', 'ログイン中の本人として送ること');
+  assert.equal(call?.params.url, 'https://lift-and-lean.example/verify-email');
+});
+
+test('確認メールが送れなくても登録自体は成立させる（画面から再送できる）', async () => {
+  const { gateways } = fakeAccounts({
+    create: () => ({ $id: 'user-1' }),
+    createEmailPasswordSession: validSession,
+    createVerification: () => { throw new AppwriteException('mail down', 500, 'general_error'); },
+  });
+  const restore = auth.__setAccountGatewaysForTest(gateways);
+  try {
+    const result = await auth.signUp('a@example.jp', 'password-1234');
+    assert.equal(result.secret, 'session-secret-value');
+  } finally {
+    restore();
+  }
+});
+
+test('確認状態は毎回Appwriteから取り直す', async () => {
+  for (const verified of [true, false]) {
+    const { gateways } = fakeAccounts({
+      get: () => ({ $id: 'user-1', email: 'a@example.jp', name: '', emailVerification: verified }),
+    });
+    const restore = auth.__setAccountGatewaysForTest(gateways);
+    try {
+      const user = await auth.resolveUser('session-secret');
+      assert.equal(user.emailVerified, verified);
+    } finally {
+      restore();
+    }
+  }
+});
+
+test('確認の完了はまずセッション無しで試す（別ブラウザで開かれるため）', async () => {
+  const { calls, gateways } = fakeAccounts();
+  const restore = auth.__setAccountGatewaysForTest(gateways);
+  try {
+    await auth.completeEmailVerification('user-1', 'mail-secret');
+  } finally {
+    restore();
+  }
+
+  const call = calls.find(c => c.method === 'updateVerification');
+  assert.equal(call?.via, 'guest');
+  assert.deepEqual(call?.params, { userId: 'user-1', secret: 'mail-secret' });
+});
+
+test('セッションが要る場合は手元のセッションで再挑戦する', async () => {
+  let firstCall = true;
+  const calls: any[] = [];
+  const make = (via: string) => new Proxy({}, {
+    get: () => async (params: any) => {
+      calls.push({ via, params });
+      if (via === 'guest' && firstCall) {
+        firstCall = false;
+        throw new AppwriteException('needs session', 401, 'general_unauthorized');
+      }
+      return {};
+    },
+  });
+  const restore = auth.__setAccountGatewaysForTest({
+    guest: () => make('guest'), session: () => make('session'),
+  });
+  try {
+    await auth.completeEmailVerification('user-1', 'mail-secret', 'session-secret');
+  } finally {
+    restore();
+  }
+
+  assert.deepEqual(calls.map(c => c.via), ['guest', 'session']);
+});
+
+test('壊れた確認リンクは理由を問わず同じ案内にする', async () => {
+  const messages: string[] = [];
+  for (const code of [400, 401, 404]) {
+    const { gateways } = fakeAccounts({
+      updateVerification: () => { throw new AppwriteException('bad', code, 'user_invalid_token'); },
+    });
+    const restore = auth.__setAccountGatewaysForTest(gateways);
+    try {
+      await auth.completeEmailVerification('user-1', 'stale');
+      assert.fail(`${code} で例外が投げられていない`);
+    } catch (error: any) {
+      assert.equal(error.status, 400, String(code));
+      assert.equal(error.code, 'verification_invalid', String(code));
+      messages.push(error.message);
+    } finally {
+      restore();
+    }
+  }
+  assert.equal(new Set(messages).size, 1);
+});

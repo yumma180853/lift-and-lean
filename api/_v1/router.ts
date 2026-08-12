@@ -4,15 +4,16 @@
  * 不変条件:
  *   - userId は **必ずセッションから解決する**。body/query の userId は読まない
  *   - 例外は AppError だけが利用者へ文言を返す（それ以外は固定の汎用文）
- *   - 認証が要らないのは /auth/signup と /auth/login のみ
+ *   - 認証が要らないのは /auth/signup / /auth/login / パスワード再設定 / メール確認の完了
+ *   - **メール未確認のユーザーはデータAPIを一切使えない**（403）
  *
  * 将来のMCPサーバーは同じサービス層を呼ぶ。ここを経由しないので、
  * ChatGPT側の仕様が変わってもこのファイルは影響を受けない。
  */
 
 import { AppError, AuthError, toErrorResponse } from '../_core/errors.js';
-import { credentialsSchema, parseInput, recoveryConfirmSchema, recoveryRequestSchema } from '../_core/validation.js';
-import type { Credentials, RecoveryConfirm, RecoveryRequest } from '../_core/validation.js';
+import { credentialsSchema, parseInput, recoveryConfirmSchema, recoveryRequestSchema, verificationConfirmSchema } from '../_core/validation.js';
+import type { Credentials, RecoveryConfirm, RecoveryRequest, VerificationConfirm } from '../_core/validation.js';
 import type { AuthenticatedUser } from '../_core/ports.js';
 import type { LiftAndLeanService } from '../_core/service.js';
 
@@ -25,6 +26,8 @@ export interface AuthGateway {
   resolveUser(secret: string | undefined): Promise<AuthenticatedUser>;
   requestPasswordRecovery(email: string): Promise<void>;
   completePasswordRecovery(userId: string, secret: string, password: string): Promise<void>;
+  sendEmailVerification(sessionSecret: string): Promise<void>;
+  completeEmailVerification(userId: string, secret: string, sessionSecret?: string): Promise<void>;
 }
 
 export interface RouterDeps {
@@ -132,7 +135,23 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
     if (second === 'me' && ctx.method === 'GET') {
       const secret = deps.readCookie(req);
       const user = await deps.auth.resolveUser(secret);
-      return send(res, 200, { userId: user.userId, email: user.email, name: user.name });
+      return send(res, 200, {
+        userId: user.userId, email: user.email, name: user.name, emailVerified: user.emailVerified,
+      });
+    }
+    // メール確認は**未確認のままでも呼べる**（そうでないと確認しようがない）
+    if (second === 'verification' && ctx.method === 'POST') {
+      if (third === 'confirm') {
+        const input = parseInput<VerificationConfirm>(verificationConfirmSchema, ctx.body);
+        await deps.auth.completeEmailVerification(input.userId, input.secret, deps.readCookie(req));
+        return send(res, 200, { ok: true });
+      }
+      // 再送。ログイン中の本人しか呼べないので、列挙には使えない
+      const secret = deps.readCookie(req);
+      if (!secret) throw new AuthError();
+      await deps.auth.resolveUser(secret);
+      await deps.auth.sendEmailVerification(secret);
+      return send(res, 200, { ok: true });
     }
     if (second === 'recovery' && ctx.method === 'POST') {
       if (third === 'confirm') {
@@ -152,6 +171,17 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
   const secret = deps.readCookie(req);
   if (!secret) throw new AuthError();
   const user = await deps.auth.resolveUser(secret);
+
+  // **メールアドレスの所有確認が済むまで、クラウドのデータには一切触らせない。**
+  // 画面側でも隠しているが、APIを直接叩かれても同じように止める
+  if (!user.emailVerified) {
+    throw new AppError(
+      'email_not_verified',
+      403,
+      'メールアドレスの確認が済んでいません。届いた確認メールのリンクを開いてください。',
+    );
+  }
+
   const service = deps.createService(secret);
   const userId = user.userId; // bodyのuserIdは読まない
 

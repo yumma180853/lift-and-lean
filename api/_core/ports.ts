@@ -92,6 +92,11 @@ export interface AuthenticatedUser {
   userId: string;
   email?: string;
   name?: string;
+  /**
+   * メールアドレスの所有確認が済んでいるか。
+   * **クラウドのデータに触れるのはこれが true のときだけ**（router で強制する）。
+   */
+  emailVerified: boolean;
 }
 
 export interface Clock {

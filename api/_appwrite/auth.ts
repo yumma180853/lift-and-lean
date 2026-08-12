@@ -107,8 +107,9 @@ export async function signUp(email: string, password: string, name?: string): Pr
   // ここから先で失敗しても**アカウントは作成済み**。
   // 「登録に失敗した」と誤解させると、別のパスワードで登録し直そうとして
   // 「すでに登録されています」の袋小路に入る。作成済みだと明示する。
+  let session: SessionResult;
   try {
-    return await logIn(email, password);
+    session = await logIn(email, password);
   } catch (error) {
     const detail = error instanceof AppError ? error.message : '';
     throw new AppError(
@@ -117,6 +118,15 @@ export async function signUp(email: string, password: string, name?: string): Pr
       `アカウントは作成できましたが、自動ログインに失敗しました。「ログイン」から同じパスワードでお試しください。${detail ? `（${detail}）` : ''}`,
     );
   }
+
+  // 確認メールの送信に失敗しても登録自体は成立させる。
+  // 未確認のままでもデータには触れない（routerで止める）し、画面から再送できる
+  try {
+    await sendEmailVerification(session.secret);
+  } catch (error) {
+    console.error('failed to send verification email on signup:', error);
+  }
+  return session;
 }
 
 export async function logIn(email: string, password: string): Promise<SessionResult> {
@@ -132,7 +142,8 @@ export async function logIn(email: string, password: string): Promise<SessionRes
       throw new AppError('session_unavailable', 503, 'ログイン処理の設定が未完了です。時間をおいて試してください。');
     }
     return {
-      user: { userId: session.userId },
+      // 確認済みかどうかは resolveUser で毎回取り直す（ここでは未確認扱いで返す）
+      user: { userId: session.userId, emailVerified: false },
       secret: session.secret,
       expiresAt: session.expire,
     };
@@ -181,6 +192,57 @@ export async function completePasswordRecovery(userId: string, secret: string, p
   }
 }
 
+/**
+ * メールアドレスの所有確認メールを送る。
+ *
+ * **ログイン中のユーザー本人としてしか呼べない**（Appwriteの Account API）。
+ * そのため「このアドレスは登録済みか」を外から探る用途には使えず、
+ * 列挙対策として追加の細工は要らない。
+ */
+export async function sendEmailVerification(sessionSecret: string): Promise<void> {
+  const url = `${publicAppUrl()}/verify-email`;
+  try {
+    await gateways.session(sessionSecret).createVerification({ url });
+  } catch (error) {
+    mapAuthError(error);
+  }
+}
+
+/**
+ * メールのリンクから戻ってきた確認を完了する。
+ *
+ * リンクは別のブラウザで開かれることがある（スマホのメールアプリなど）ため、
+ * **セッションが無くても完了できる経路を先に試す**。
+ * 失敗した場合だけ、手元のセッションで再挑戦する。
+ */
+export async function completeEmailVerification(userId: string, secret: string, sessionSecret?: string): Promise<void> {
+  try {
+    await gateways.guest().updateVerification({ userId, secret });
+    return;
+  } catch (error) {
+    const needsSession = error instanceof AppwriteException && error.code === 401 && Boolean(sessionSecret);
+    if (!needsSession) {
+      // 期限切れ・使用済み・userId不在は区別せず同じ案内にする
+      if (error instanceof AppwriteException && [400, 401, 404].includes(error.code)) {
+        throw new AppError('verification_invalid', 400, VERIFICATION_INVALID_MESSAGE);
+      }
+      mapAuthError(error);
+    }
+  }
+
+  try {
+    await gateways.session(sessionSecret!).updateVerification({ userId, secret });
+  } catch (error) {
+    if (error instanceof AppwriteException && [400, 401, 404].includes(error.code)) {
+      throw new AppError('verification_invalid', 400, VERIFICATION_INVALID_MESSAGE);
+    }
+    mapAuthError(error);
+  }
+}
+
+const VERIFICATION_INVALID_MESSAGE =
+  'このリンクは期限切れか、すでに使用済みです。アプリの設定画面から確認メールを送り直してください。';
+
 /** セッションを削除する。連携解除時はこれでJWTも即失効する */
 export async function logOut(secret: string): Promise<void> {
   try {
@@ -199,7 +261,12 @@ export async function resolveUser(secret: string | undefined): Promise<Authentic
   if (!secret) throw new AuthError();
   try {
     const account = await gateways.session(secret).get();
-    return { userId: account.$id, email: account.email, name: account.name };
+    return {
+      userId: account.$id,
+      email: account.email,
+      name: account.name,
+      emailVerified: Boolean(account.emailVerification),
+    };
   } catch (error) {
     if (error instanceof AppwriteException && (error.code === 401 || error.code === 404)) {
       throw new AuthError('ログインの有効期限が切れました。もう一度ログインしてください。');
