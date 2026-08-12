@@ -52,6 +52,12 @@ async function startServer() {
     }
   });
 
+  // ドメインAPI（/api/v1/*）。開発サーバーでも本番と同じハンドラを通す
+  app.all("/api/v1/*", async (req, res) => {
+    const { default: handler } = await import("./api/server.js");
+    return handler(req, res);
+  });
+
   // API Route: AI Personal Trainer Chat (delegates to api/server.ts handler)
   app.post("/api/chat-trainer", async (req, res) => {
     const { default: handler } = await import("./api/server.js");

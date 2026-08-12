@@ -238,32 +238,57 @@ Appwrite の rowId は「36文字以内・先頭は英数字・使用可能文�
 
 ---
 
-## 9. 実装状況（2026-08-11時点）
+## 9. 実装状況（2026-08-12時点）
 
-### 実装済み（Appwriteアカウント無しで動くもの）
+### 完了済み
 
 | 対象 | 実体 | 検証 |
 |---|---|---|
-| バックアップDL（§4-1） | `src/utils/backup.ts` + 設定画面のカード | `tests/backup.test.ts` |
+| バックアップDL（§4-1） | `src/utils/backup.ts` + 設定画面 | `tests/backup.test.ts` |
 | 変換・正規化・冪等rowId（§3） | `api/migration-helpers.ts` | `tests/migration-helpers.test.ts` |
 | 件数検証（§5-[3]） | `expectedCounts` / `planCounts` / `diffCounts` | 同上 |
-| スキーマ as code（§2） | `scripts/appwrite-setup.ts` | `npm run db:verify` |
+| スキーマ as code（§2） | `scripts/appwrite-setup.ts` | **実Appwriteへ反映済み（88件）** |
+| Appwrite Cloud プロジェクト | Singapore / `liftandlean` DB・9テーブル | `npm run db:verify` = 定義どおり |
+| 認証（メール+パスワード） | `api/appwrite/auth.ts` + `/api/v1/auth/*` | `tests/v1-router.test.ts` |
+| repository層 | `api/core/ports.ts` / `api/appwrite/repository.ts` | `tests/appwrite-repository.test.ts` |
+| サービス層 | `api/core/service.ts` | `tests/service.test.ts` |
+| REST（PWA用・MCPと共通のサービス層） | `api/v1/router.ts` | `tests/v1-router.test.ts` |
+| 移行API（preview / 実行 / 検証） | `LiftAndLeanService.migrateFromBackup` ほか | `tests/migration-service.test.ts` |
+| 移行UI | `src/components/CloudSync.tsx`（設定画面） | 実機確認は未 |
 
-`normalizeBackup()` は Appwrite に接続しないため、移行の正しさは全て
-ローカルの単体テストで確認できる。DBに触るのは書き込み層だけ。
+### 層の構成
 
-### 人間の作業（ここから先はゆまが手を動かす必要がある）
+```
+入口:  /api/v1/*（PWA）        将来: MCP tools（ChatGPT）
+          └──────────┬──────────┘
+サービス層（api/core/service.ts）… 検証・認可・JST・冪等性・rate limit・audit
+          ↓
+repository契約（api/core/ports.ts）… DB非依存。ここまではAppwriteを知らない
+          ↓
+Appwrite実装（api/appwrite/repository.ts）
+```
 
-1. Appwrite Cloud でプロジェクトを作成
-2. API key を発行（scope: databases / tables / rows / users の read+write）
-3. `cp .env.example .env` して `APPWRITE_PROJECT_ID` と `APPWRITE_API_KEY` を記入
-4. `npm run db:setup` → `npm run db:verify` が「定義どおりです」になるまで
+**認証情報の使い分け**（`tests/appwrite-repository.test.ts` で強制）:
+- 書き込み = API key（userIdと行権限をサーバーが権威的に決める）
+- 読み取り = ユーザーのセッション（Appwriteが行権限を強制する）
+- セッションが無いときは読み取りを**拒否する**。API keyでの代替はしない
 
-### その後に実装するもの
+### 残っている人間の作業
+
+| # | 作業 | なぜ人間が必要か |
+|---|---|---|
+| 1 | **本番稼働用API keyの発行**（scope: rows.read/write, users.read/write, sessions.write） | secretの発行・保管はコード側で行わない |
+| 2 | **Vercelの環境変数**へ `APPWRITE_ENDPOINT` / `APPWRITE_PROJECT_ID` / `APPWRITE_API_KEY` / `APPWRITE_DATABASE_ID` を登録 | Vercelダッシュボード操作 |
+| 3 | ローカル `.env` に本番稼働用API keyを入れて統合テスト実行（任意） | 同上 |
+| 4 | Appwrite Console でメール+パスワード認証が有効か確認 | Console操作 |
+
+`.env` の `APPWRITE_PROJECT_ID` は個人アカウント側（Singapore）の値へ修正済み。
+`APPWRITE_API_KEY` は**空のまま**にしてある。
+
+### 残りの実装（人間の作業1〜2の完了後）
 
 | 順 | 対象 | 前提 |
 |---|---|---|
-| 1 | Appwrite Auth でのログイン（userId の確定） | 上記4まで完了 |
-| 2 | `/api/migrate`（バックアップJSONを受け取り冪等に書き込む） | 1 |
-| 3 | 件数検証UI → 読み込み元の切替（`VITE_DATA_SOURCE=db`） | 2 |
-| 4 | MCPサーバー + OAuth リソースサーバー | 3 |
+| 1 | 実Appwriteでの疎通確認（`APPWRITE_ALLOW_INTEGRATION_TESTS=1 npm run test:integration`） | API key |
+| 2 | 読み込み元の切替（`VITE_DATA_SOURCE=db`）とオフライン同期キュー | 1 |
+| 3 | MCPサーバー + OAuth リソースサーバー | 2 |

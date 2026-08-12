@@ -430,6 +430,13 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
+  // 新しいドメインAPI（/api/v1/*）。既存エンドポイントとは独立していて、
+  // ここで読み込みに失敗しても従来の機能は動き続ける
+  if (typeof req.url === 'string' && req.url.startsWith('/api/v1')) {
+    const { handleV1 } = await import("./v1/index.js");
+    if (await handleV1(req, res)) return;
+  }
+
   // VAPIDキー取得（GET）
   if (req.url.includes("wp-public-key")) {
     const pubKey = process.env.VAPID_PUBLIC_KEY;

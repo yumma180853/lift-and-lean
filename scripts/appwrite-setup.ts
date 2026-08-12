@@ -398,11 +398,16 @@ async function main(): Promise<void> {
   log('\n次は npm run db:verify で定義どおりか確認してください。');
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof AppwriteException) {
-    console.error(`Appwrite エラー (${error.code} ${error.type}): ${error.message}`);
-  } else {
-    console.error(error);
-  }
-  process.exit(1);
-});
+// SCHEMA を他所から import しても実行されないよう、直接起動されたときだけ動かす
+const executedDirectly = Boolean(process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop() ?? ' '));
+
+if (executedDirectly) {
+  main().catch((error: unknown) => {
+    if (error instanceof AppwriteException) {
+      console.error(`Appwrite エラー (${error.code} ${error.type}): ${error.message}`);
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  });
+}

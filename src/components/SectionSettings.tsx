@@ -3,6 +3,7 @@ import { Settings, Bell, BellOff, Sparkles, X, RefreshCw, Download } from 'lucid
 import { UserGoals } from '../types';
 import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
 import { downloadBackup } from '../utils/backup';
+import { CloudSync } from './CloudSync';
 
 interface SectionSettingsProps {
   goals: UserGoals;
@@ -283,6 +284,9 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
         {backupMsg && <p className="text-[11px] text-lime-400 font-bold leading-relaxed">{backupMsg}</p>}
         {backupError && <p className="text-[11px] text-rose-400 font-bold leading-relaxed">{backupError}</p>}
       </div>
+
+      {/* クラウド同期（移行の第2工程） */}
+      <CloudSync />
 
       {/* プライバシーポリシー */}
       <div className="ll-card p-5">
