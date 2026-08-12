@@ -432,3 +432,63 @@ signup → account.create 成功（アカウントは残る）
 1. Appwrite Console → **API keyのscopeに `sessions.write` を追加**（キーの値は変わらないのでVercelの再設定は不要）
 2. Appwrite Console → **Platforms に Web platform を追加**（ホスト名 `lift-and-lean.vercel.app`）
    未登録だと再設定メールのURLが `general_argument_invalid` で拒否される（実測で確認済み）
+
+---
+
+## 14. 本番の移行失敗（2026-08-13）と、そこから分かったこと
+
+### 症状
+
+「コピーされる件数」までは正しく出るのに、「クラウドへコピーする」で
+**「データベースへの接続に失敗しました」**となり移行できない。
+
+### 実ログで確定した原因
+
+```
+appwrite error: 400 row_invalid_structure
+Invalid document structure: Unknown attribute: "fat"     (POST /api/v1/migrate)
+```
+
+- **権限・scope・行permissionsの問題ではない。** `general_unauthorized_scope` も
+  権限関連のエラーもログに一切出ていない
+- `weights` は書けている（`meals` より先に書かれ、エラーが出ていない）
+- `meals` の書き込みで、`fat` 列が「存在しない列」として拒否されている
+
+### なぜ `db:verify` が「定義どおりです」と言っていたか
+
+**Appwriteの列作成は非同期で、一覧に出ていても `status` が `available` に
+なるまで書き込みに使えない**（`failed` で終わることもある）。
+`db:verify` は「キーが一覧にあるか」しか見ていなかったため、
+書き込みに使えない列を「ある」と判定していた。
+
+### 修正
+
+| 対象 | 修正 |
+|---|---|
+| `db:verify` | 列の `status` を検査し、`available` でないものを理由つきで報告する |
+| `db:setup` | `failed` / `stuck` の列は削除して作り直す（作成に失敗した列にデータは無い） |
+| `listColumns` | 明示的に上限を指定（既定25件での取りこぼしを防ぐ） |
+| エラー分類 | `row_invalid_structure` を「接続に失敗」と言わない。スキーマ不整合として区別する |
+| ログ | **どのテーブルの何の操作で失敗したか**を必ず残す（今回テーブル名が無く切り分けに手間取った） |
+
+### 再実行の安全性
+
+途中まで書けた状態から再実行しても問題ない。
+
+- rowId は決定的なので、`weights` は同じ行を上書きするだけ（重複しない）
+- `meals` は create なので、既にあれば「保存済み」として数えるだけ
+- 件数が合わなければ `applied: false` を返し**1行も書かない**
+- 既存の行を削除する経路は移行処理に存在しない
+
+`tests/migration-service.test.ts` の
+「途中のテーブルで失敗しても、直してから再実行すれば過不足なく揃う」で固定した。
+
+### 復旧に必要な人間の作業
+
+1. Appwrite Console で **一時的な setup 用 API key** を発行
+   （scope: `databases.*` / `tables.*` / `columns.*` / `indexes.*` の read+write）
+2. ローカル `.env` の `APPWRITE_API_KEY` にその値を入れて
+   `npm run db:verify` → 使えない列が一覧で出る
+   `npm run db:setup` → 作り直す
+   `npm run db:verify` → 「定義どおりです」になるまで
+3. **一時キーを削除**し、`.env` の値も消す（本番キーは `rows.write` + `sessions.write` のまま）
