@@ -13,7 +13,7 @@
  */
 
 import 'dotenv/config';
-import { Client, TablesDB, AppwriteException, TablesDBIndexType } from 'node-appwrite';
+import { Client, TablesDB, AppwriteException, TablesDBIndexType, Query } from 'node-appwrite';
 
 // ---------------------------------------------------------------- スキーマ定義
 
@@ -292,17 +292,58 @@ async function createColumn(db: TablesDB, tableId: string, column: ColumnDef): P
   }
 }
 
+/**
+ * 列の一覧を状態つきで取得する。
+ *
+ * **列は「存在する」だけでは使えない。** Appwriteの列作成は非同期で、
+ * `status` が `available` になるまで書き込みに使えず、`failed` になることもある。
+ * 一覧に出るかどうかだけを見ていると、
+ * 「スキーマは定義どおり」と表示されるのに書き込みが
+ * `Unknown attribute` で失敗する状態を見逃す（実際に本番で起きた）。
+ */
+async function readColumnStatus(db: TablesDB, tableId: string): Promise<Map<string, { status: string; error: string }>> {
+  const list = await db.listColumns({ databaseId: DATABASE_ID, tableId, queries: [Query.limit(100)] });
+  return new Map(list.columns.map((column: any) => [column.key, { status: column.status, error: column.error }]));
+}
+
 async function ensureColumns(db: TablesDB, table: TableDef): Promise<void> {
-  const list = await db.listColumns({ databaseId: DATABASE_ID, tableId: table.id });
-  const existing = new Set(list.columns.map(c => c.key));
+  const existing = await readColumnStatus(db, table.id);
 
   for (const column of table.columns) {
-    if (existing.has(column.key)) continue;
-    if (verifyOnly) {
+    const current = existing.get(column.key);
+
+    // 使える状態なら何もしない
+    if (current && current.status === 'available') continue;
+
+    // 一覧には出るが使えない（失敗・停止）。作り直しが要る
+    if (current && (current.status === 'failed' || current.status === 'stuck')) {
+      const detail = `${table.id}.${column.key} が ${current.status}${current.error ? `（${current.error}）` : ''}`;
+      if (verifyOnly) {
+        missing.push(detail);
+        log(`✗ ${detail}`);
+        continue;
+      }
+      log(`! ${detail} → 作り直します`);
+      // 作成に失敗した列にデータは入っていないので、消して作り直して問題ない
+      try {
+        await db.deleteColumn({ databaseId: DATABASE_ID, tableId: table.id, key: column.key });
+        await waitForColumnGone(db, table.id, column.key);
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+    } else if (current && current.status === 'processing') {
+      log(`… ${table.id}.${column.key} は作成中です`);
+      if (verifyOnly) {
+        missing.push(`${table.id}.${column.key} が作成中`);
+        continue;
+      }
+      continue; // 待つのはindex作成前のwaitForColumnsに任せる
+    } else if (verifyOnly) {
       missing.push(`${table.id}.${column.key}`);
       log(`✗ ${table.id}.${column.key} がありません`);
       continue;
     }
+
     try {
       await createColumn(db, table.id, column);
       created.push(`${table.id}.${column.key}`);
@@ -314,12 +355,19 @@ async function ensureColumns(db: TablesDB, table: TableDef): Promise<void> {
   }
 }
 
+async function waitForColumnGone(db: TablesDB, tableId: string, key: string): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const columns = await readColumnStatus(db, tableId);
+    if (!columns.has(key)) return;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+}
+
 /** index は列が available になってからでないと作れない */
 async function waitForColumns(db: TablesDB, table: TableDef, keys: string[]): Promise<boolean> {
   for (let attempt = 0; attempt < 30; attempt++) {
-    const list = await db.listColumns({ databaseId: DATABASE_ID, tableId: table.id });
-    const byKey = new Map(list.columns.map(c => [c.key, c.status]));
-    const pending = keys.filter(key => byKey.get(key) !== 'available');
+    const columns = await readColumnStatus(db, table.id);
+    const pending = keys.filter(key => columns.get(key)?.status !== 'available');
     if (pending.length === 0) return true;
     await new Promise(resolve => setTimeout(resolve, 1000));
   }

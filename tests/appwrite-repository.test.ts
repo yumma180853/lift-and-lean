@@ -344,3 +344,47 @@ test('並行書き込みの途中で本当のエラーが出たら握りつぶ�
     (error: any) => error.status === 502,
   );
 });
+
+// ---------------------------------------------------------------- エラーの切り分け
+
+test('スキーマ不整合を「接続失敗」と言わない（原因を探せなくなるため）', async () => {
+  const schemaError = new AppwriteException(
+    'Invalid document structure: Unknown attribute: "fat"', 400, 'row_invalid_structure',
+  );
+  const { gateways } = fakeGateways({ failWith: schemaError });
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+
+  await assert.rejects(
+    () => repository.putOwnedRows('meals', 'alice', [{ rowId: 'r1', data: {} }], 'create'),
+    (error: any) => error.code === 'schema_mismatch' && error.status === 503
+      // 列名・テーブル名は利用者に出さない
+      && !/fat/.test(error.message) && !/meals/.test(error.message),
+  );
+});
+
+test('APIキーのscope不足も「接続失敗」と区別する', async () => {
+  const scopeError = new AppwriteException('missing scope', 401, 'general_unauthorized_scope');
+  const { gateways } = fakeGateways({ failWith: scopeError });
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+
+  await assert.rejects(
+    () => repository.putOwnedRows('meals', 'alice', [{ rowId: 'r1', data: {} }], 'create'),
+    (error: any) => error.code === 'not_configured' && error.status === 503,
+  );
+});
+
+test('サーバーログにはどのテーブルの何で失敗したかを残す', async () => {
+  const original = console.error;
+  const lines: string[] = [];
+  console.error = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+  try {
+    const schemaError = new AppwriteException('Unknown attribute: "fat"', 400, 'row_invalid_structure');
+    const { gateways } = fakeGateways({ failWith: schemaError });
+    const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+    await repository.putOwnedRows('meals', 'alice', [{ rowId: 'r1', data: {} }], 'create').catch(() => {});
+  } finally {
+    console.error = original;
+  }
+
+  assert.equal(lines.some(line => line.includes('meals.create') && line.includes('fat')), true);
+});

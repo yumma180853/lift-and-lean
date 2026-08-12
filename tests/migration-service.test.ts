@@ -149,3 +149,63 @@ test('移行のあとにアプリから記録を足しても衝突しない', as
   const origins = repository.rawRows('meals').map(row => row.origin).sort();
   assert.deepEqual(origins, ['app', 'migration', 'migration']);
 });
+
+// ---------------------------------------------------------------- 途中で失敗したあとの再実行
+
+test('途中のテーブルで失敗しても、直してから再実行すれば過不足なく揃う', async () => {
+  const repository = new MemoryRepository(ALICE);
+  const backup = backupFile();
+
+  // 本番で起きた状況の再現: weights は書けたが meals でスキーマ不整合になる
+  let mealsBroken = true;
+  const original = repository.putOwnedRows.bind(repository);
+  repository.putOwnedRows = async (table, ownerId, rows, mode) => {
+    if (table === 'meals' && mealsBroken) {
+      const error: any = new Error('Unknown attribute: "fat"');
+      error.status = 503;
+      error.code = 'schema_mismatch';
+      throw error;
+    }
+    return original(table, ownerId, rows, mode);
+  };
+
+  const service = new LiftAndLeanService({
+    repository, clock: { now: () => NOW }, onAuditFailure: () => {},
+  });
+
+  await assert.rejects(() => service.migrateFromBackup(ALICE, backup), (e: any) => e.code === 'schema_mismatch');
+
+  // 体重だけ入った中途半端な状態
+  assert.equal(repository.countOf('weights'), 2);
+  assert.equal(repository.countOf('meals'), 0);
+
+  // 検証は「合っていない」と正しく言う
+  const beforeRepair = await service.verifyMigration(ALICE, backup);
+  assert.equal(beforeRepair.ok, false);
+
+  // スキーマを直して再実行
+  mealsBroken = false;
+  const report = await service.migrateFromBackup(ALICE, backup);
+  assert.equal(report.applied, true);
+
+  // 体重は重複せず、他も過不足なし
+  assert.equal(repository.countOf('weights'), 2);
+  assert.equal(repository.countOf('meals'), 2);
+  assert.equal(repository.countOf('workout_sets'), 2);
+
+  const afterRepair = await service.verifyMigration(ALICE, backup);
+  assert.equal(afterRepair.ok, true);
+  assert.deepEqual(afterRepair.issues, []);
+});
+
+test('再実行しても既存の記録を消さない（upsertは同じ行を上書きするだけ）', async () => {
+  const { repository, service } = setup();
+  const backup = backupFile();
+  await service.migrateFromBackup(ALICE, backup);
+  const idsBefore = repository.rawRows('weights').map(row => row.$id).sort();
+
+  await service.migrateFromBackup(ALICE, backup);
+  const idsAfter = repository.rawRows('weights').map(row => row.$id).sort();
+
+  assert.deepEqual(idsAfter, idsBefore);
+});

@@ -60,15 +60,37 @@ function buildQueries(options: ListOptions = {}): string[] {
   return queries;
 }
 
-function wrap(error: unknown): never {
+/**
+ * Appwriteのエラーをアプリのエラーへ変換する。
+ *
+ * `context`（どのテーブルの何をしていたか）を**必ずログに出す**。
+ * 本番で `Unknown attribute: "fat"` が出たとき、どのテーブルか分からず
+ * 切り分けに時間がかかったため、文脈をログに残す。
+ * 利用者向けの文言にはテーブル名・列名を出さない。
+ */
+function wrap(error: unknown, context: string): never {
   if (error instanceof AppError) throw error;
   if (error instanceof AppwriteException) {
     if (error.code === NOT_FOUND) throw new NotFoundError();
-    // Appwriteの生メッセージはテーブル名・列名を含むので利用者へは出さない
-    console.error('appwrite error:', error.code, error.type, error.message);
+
+    // スキーマ不整合。「接続に失敗」と言うと原因を探せなくなる
+    if (error.type === 'row_invalid_structure' || error.type === 'document_invalid_structure') {
+      console.error(`appwrite schema error [${context}]:`, error.code, error.type, error.message);
+      throw new AppError(
+        'schema_mismatch',
+        503,
+        'サーバー側のデータ定義が最新ではありません。復旧までお待ちください。',
+      );
+    }
+    if (error.type === 'general_unauthorized_scope') {
+      console.error(`appwrite scope error [${context}]: API key is missing a required scope`);
+      throw new AppError('not_configured', 503, 'サーバーの設定が未完了です。時間をおいて試してください。');
+    }
+
+    console.error(`appwrite error [${context}]:`, error.code, error.type, error.message);
     throw new UpstreamError();
   }
-  console.error('appwrite unexpected error:', error);
+  console.error(`appwrite unexpected error [${context}]:`, error);
   throw new UpstreamError();
 }
 
@@ -129,7 +151,7 @@ export class AppwriteRepository implements Repository {
           existed++;
           return;
         }
-        wrap(error);
+        wrap(error, `${table}.${mode}`);
       }
     };
 
@@ -148,7 +170,7 @@ export class AppwriteRepository implements Repository {
       });
       return result.rows as StoredRow[];
     } catch (error) {
-      wrap(error);
+      wrap(error, `${table}.list`);
     }
   }
 
@@ -168,7 +190,7 @@ export class AppwriteRepository implements Repository {
     try {
       await this.gateways.admin().updateRow({ databaseId: databaseId(), tableId: table, rowId, data });
     } catch (error) {
-      wrap(error);
+      wrap(error, `${table}.update`);
     }
   }
 
@@ -177,7 +199,7 @@ export class AppwriteRepository implements Repository {
     try {
       await this.gateways.admin().deleteRow({ databaseId: databaseId(), tableId: table, rowId });
     } catch (error) {
-      wrap(error);
+      wrap(error, `${table}.delete`);
     }
   }
 
@@ -187,7 +209,7 @@ export class AppwriteRepository implements Repository {
       await this.gateways.admin().createRow({ databaseId: databaseId(), tableId: table, rowId, data, permissions: [] });
     } catch (error) {
       if (error instanceof AppwriteException && error.code === CONFLICT) return;
-      wrap(error);
+      wrap(error, `${table}.append`);
     }
   }
 
@@ -207,7 +229,7 @@ export class AppwriteRepository implements Repository {
     try {
       return await increment();
     } catch (error) {
-      if (!(error instanceof AppwriteException) || error.code !== NOT_FOUND) wrap(error);
+      if (!(error instanceof AppwriteException) || error.code !== NOT_FOUND) wrap(error, `${table}.increment`);
     }
 
     // 初回はカウンタ行が無い。作ってから数え始める
@@ -220,7 +242,7 @@ export class AppwriteRepository implements Repository {
     } catch (error) {
       // 同時に作られた場合は既にあるので、もう一度増やす
       if (error instanceof AppwriteException && error.code === CONFLICT) return increment();
-      wrap(error);
+      wrap(error, `${table}.seed`);
     }
   }
 }
