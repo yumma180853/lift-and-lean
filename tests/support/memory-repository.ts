@@ -136,25 +136,44 @@ export class MemoryRepository implements Repository {
     this.rows.delete(this.key(table, rowId));
   }
 
-  async putServerRow(table: TableName, rowId: string, data: Record<string, unknown>, mode: WriteMode): Promise<void> {
+  async appendServerRow(table: TableName, rowId: string, data: Record<string, unknown>): Promise<void> {
     const key = this.key(table, rowId);
-    const current = this.rows.get(key);
-    if (current && mode === 'create') return;
+    if (this.rows.has(key)) return;
     this.rows.set(key, {
       id: rowId,
       table,
-      data: { ...(current?.data ?? {}), ...data },
+      data,
       permissions: [], // 誰にも行権限を与えない＝サーバー専用
-      createdAt: current?.createdAt ?? this.nextTimestamp(),
+      createdAt: this.nextTimestamp(),
     });
   }
 
-  async getServerRow(table: TableName, rowId: string): Promise<StoredRow | null> {
-    const record = this.rows.get(this.key(table, rowId));
-    return record ? this.toStoredRow(record) : null;
+  async bumpServerCounter(table: TableName, rowId: string, column: string, seed: Record<string, unknown>): Promise<number> {
+    const key = this.key(table, rowId);
+    const current = this.rows.get(key);
+    const next = Number(current?.data[column] ?? 0) + 1;
+    this.rows.set(key, {
+      id: rowId,
+      table,
+      data: { ...seed, ...(current?.data ?? {}), [column]: next },
+      permissions: [],
+      createdAt: current?.createdAt ?? this.nextTimestamp(),
+    });
+    return next;
   }
 
   // ---- テスト用のヘルパー
+
+  /** カウンタを任意の値に置く（上限到達をテストするため） */
+  presetCounter(table: TableName, rowId: string, column: string, value: number): void {
+    this.rows.set(this.key(table, rowId), {
+      id: rowId,
+      table,
+      data: { [column]: value },
+      permissions: [],
+      createdAt: this.nextTimestamp(),
+    });
+  }
 
   countOf(table: TableName): number {
     return [...this.rows.values()].filter(record => record.table === table).length;

@@ -69,7 +69,7 @@ test('サーバー専用テーブルには行権限を一切与えない', async
   const { gateways, adminCalls } = fakeGateways();
   const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
 
-  await repository.putServerRow('audit_log', 'a1', { userId: 'alice', action: 'meal.create' }, 'create');
+  await repository.appendServerRow('audit_log', 'a1', { userId: 'alice', action: 'meal.create' });
   assert.deepEqual(adminCalls[0].params.permissions, []);
 });
 
@@ -146,12 +146,65 @@ test('Appwriteの生のエラー文言は利用者へ返さない', async () => 
   );
 });
 
-test('存在しない行の取得は例外ではなくnull', async () => {
-  const missing = new AppwriteException('not found', 404, 'row_not_found');
-  const { gateways } = fakeGateways({ failWith: missing });
+// ---------------------------------------------------------------- 最小権限
+
+test('API keyでは一切読み取りを行わない（rows.readが要らないことの担保）', async () => {
+  const { gateways, adminCalls, sessionCalls } = fakeGateways({ rows: [{ $id: 'r1', userId: 'alice' }] });
   const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
 
-  assert.equal(await repository.getServerRow('rate_limits', 'r1'), null);
+  // 実運用で通る書き込み経路を一通り呼ぶ
+  await repository.putOwnedRows('meals', 'alice', [{ rowId: 'r1', data: {} }], 'create');
+  await repository.putOwnedRows('weights', 'alice', [{ rowId: 'r2', data: {} }], 'upsert');
+  await repository.patchOwnedRow('meals', 'alice', 'r1', { name: 'y' });
+  await repository.deleteOwnedRow('meals', 'alice', 'r1');
+  await repository.appendServerRow('audit_log', 'a1', {});
+  await repository.bumpServerCounter('rate_limits', 'c1', 'count', { userId: 'alice' });
+
+  const readMethods = ['getRow', 'listRows', 'listTables', 'listColumns', 'getTable'];
+  const adminReads = adminCalls.filter(call => readMethods.includes(call.method));
+  assert.deepEqual(adminReads, [], 'API keyで読み取りAPIを呼んでいないこと');
+  // 読み取りは必ずユーザーのセッション側に出る
+  assert.equal(sessionCalls.every(call => call.method === 'listRows'), true);
+});
+
+test('カウンタは読まずに増分操作で進める', async () => {
+  const { gateways, adminCalls } = fakeGateways();
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+
+  await repository.bumpServerCounter('rate_limits', 'c1', 'count', { userId: 'alice' });
+
+  assert.deepEqual(adminCalls.map(call => call.method), ['incrementRowColumn']);
+  assert.equal(adminCalls[0].params.column, 'count');
+  assert.equal(adminCalls[0].params.value, 1);
+});
+
+test('カウンタ行が無ければ作ってから数え始める', async () => {
+  const missing = new AppwriteException('not found', 404, 'row_not_found');
+  const adminCalls: Call[] = [];
+  let firstIncrement = true;
+  const gateways = {
+    admin: () => ({
+      async incrementRowColumn(params: any) {
+        adminCalls.push({ method: 'incrementRowColumn', params });
+        if (firstIncrement) { firstIncrement = false; throw missing; }
+        return { count: 2 };
+      },
+      async createRow(params: any) {
+        adminCalls.push({ method: 'createRow', params });
+        return { $id: params.rowId };
+      },
+    }),
+    session: () => ({}),
+  };
+
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+  const value = await repository.bumpServerCounter('rate_limits', 'c1', 'count', { userId: 'alice', bucket: 'write' });
+
+  assert.equal(value, 1);
+  assert.deepEqual(adminCalls.map(call => call.method), ['incrementRowColumn', 'createRow']);
+  assert.equal(adminCalls[1].params.data.count, 1);
+  assert.equal(adminCalls[1].params.data.bucket, 'write');
+  assert.deepEqual(adminCalls[1].params.permissions, []);
 });
 
 // ---------------------------------------------------------------- クエリ

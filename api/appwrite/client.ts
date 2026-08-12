@@ -9,7 +9,7 @@
  * ようにするための多層防御なので、横着して1つにまとめない。
  */
 
-import { Client, TablesDB, Account, Users } from 'node-appwrite';
+import { Client, TablesDB, Account } from 'node-appwrite';
 import { AppError } from '../core/errors.ts';
 
 export interface AppwriteConfig {
@@ -66,9 +66,13 @@ export function guestClient(): Client {
   return baseClient();
 }
 
+/**
+ * API keyを使うのは**行の書き込みだけ**。
+ * ユーザー管理（Users API）は使わない ＝ APIキーに users / sessions のscopeは不要。
+ * 認証は Account API（project IDだけで叩ける）とセッションで完結させる。
+ */
 export const adminTables = (): TablesDB => new TablesDB(adminClient());
 export const sessionTables = (secret: string): TablesDB => new TablesDB(sessionClient(secret));
 export const sessionAccount = (secret: string): Account => new Account(sessionClient(secret));
 export const guestAccount = (): Account => new Account(guestClient());
-export const adminUsers = (): Users => new Users(adminClient());
 export const databaseId = (): string => loadConfig().databaseId;

@@ -121,38 +121,35 @@ export class LiftAndLeanService {
     const limit = RATE_LIMITS[bucket];
     const windowStart = this.today();
     const rowId = deriveRowId(userId, 'rate', `${bucket}:${windowStart}`);
-    let current = 0;
+
+    let used: number;
     try {
-      const existing = await this.repository.getServerRow('rate_limits', rowId);
-      current = existing ? num(existing.count) : 0;
+      used = await this.repository.bumpServerCounter('rate_limits', rowId, 'count', {
+        userId, bucket, windowStart,
+      });
     } catch (error) {
-      // 数えられない場合は通す（記録できないことを理由に記録を拒まない）
+      // 数えられないことを理由に記録を拒まない（fail open）。
+      // 濫用の抑止が目的であって、正確な課金計算ではないため
       this.onAuditFailure(error);
       return;
     }
-    if (current >= limit) {
+
+    if (used > limit) {
       throw new RateLimitError(`今日の上限（${limit}回）に達しました。明日また使えます。`);
-    }
-    try {
-      await this.repository.putServerRow('rate_limits', rowId, {
-        userId, bucket, windowStart, count: current + 1,
-      }, 'upsert');
-    } catch (error) {
-      this.onAuditFailure(error);
     }
   }
 
   /** 監査ログ。書けなくても利用者の操作は止めない（記録の失敗で記録を失わせない） */
   async audit(userId: string, action: string, target: string, detail?: string): Promise<void> {
     try {
-      await this.repository.putServerRow('audit_log', randomUUID(), compact({
+      await this.repository.appendServerRow('audit_log', randomUUID(), compact({
         userId,
         action,
         target,
         detail: detail ? detail.slice(0, 2000) : undefined,
         source: 'app',
         occurredAt: this.clock.now().toISOString(),
-      }), 'create');
+      }));
     } catch (error) {
       this.onAuditFailure(error);
     }

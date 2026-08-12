@@ -218,9 +218,7 @@ test('監査ログは本人にも読めない（サーバー専用）', async ()
 test('1日の書き込み上限を超えると429になる', async () => {
   const { repository, service } = setup();
   const rowId = deriveRowId(ALICE, 'rate', `write:${TODAY}`);
-  await repository.putServerRow('rate_limits', rowId, {
-    userId: ALICE, bucket: 'write', windowStart: TODAY, count: RATE_LIMITS.write,
-  }, 'upsert');
+  repository.presetCounter('rate_limits', rowId, 'count', RATE_LIMITS.write);
 
   await assert.rejects(() => service.logMeal(ALICE, meal()), (error: any) => error.status === 429);
   assert.equal(repository.countOf('meals'), 0);
@@ -229,9 +227,7 @@ test('1日の書き込み上限を超えると429になる', async () => {
 test('日付が変わると上限はリセットされる', async () => {
   const { repository, service } = setup();
   const rowId = deriveRowId(ALICE, 'rate', `write:${TODAY}`);
-  await repository.putServerRow('rate_limits', rowId, {
-    userId: ALICE, bucket: 'write', windowStart: TODAY, count: RATE_LIMITS.write,
-  }, 'upsert');
+  repository.presetCounter('rate_limits', rowId, 'count', RATE_LIMITS.write);
 
   const tomorrow = new LiftAndLeanService({
     repository,

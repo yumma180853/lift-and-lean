@@ -1,6 +1,6 @@
 # localStorage → Appwrite TablesDB 移行計画
 
-最終更新: 2026-08-11
+最終更新: 2026-08-12
 バックエンド: **Appwrite Cloud**（Auth + TablesDB）
 
 **大原則: 移行完了が検証できるまで、既存 localStorage データを絶対に破壊しない。**
@@ -85,7 +85,9 @@ Permission.update(Role.user(ownerId))
 Permission.delete(Role.user(ownerId))
 ```
 
-`audit_log` / `rate_limits` は**行権限も付与しない**（API key を持つサーバーのみアクセス可能）。
+`audit_log` / `rate_limits` は**行権限も付与しない**（サーバーのAPI key経由でしか触れない）。
+なお本番のAPI keyは `rows.write` のみを持つため、**サーバー自身もこの2つを読み出せない**。
+監査ログは書くだけ、レート制限は増分操作だけで成立させている（§10）。
 
 ---
 
@@ -273,19 +275,42 @@ Appwrite実装（api/appwrite/repository.ts）
 - 読み取り = ユーザーのセッション（Appwriteが行権限を強制する）
 - セッションが無いときは読み取りを**拒否する**。API keyでの代替はしない
 
-### 残っている人間の作業
+---
+
+## 10. 本番APIキーの最小権限（2026-08-12 監査）
+
+**確定: 本番稼働用API keyに必要なscopeは `rows.write` のみ。**
+
+| scope | 必要か | 根拠 |
+|---|---|---|
+| `rows.write` | **必要** | `AppwriteRepository` の createRow / upsertRow / updateRow / deleteRow / incrementRowColumn。行の所有者と権限をサーバーが権威的に決めるため、書き込みだけはAPIキーで行う |
+| `rows.read` | **不要** | 読み取りは全てユーザーのセッション経由（`sessionTables`）。唯一APIキーで読んでいたレート制限カウンタを、増分操作（`incrementRowColumn`）へ置き換えて解消した。監査ログは書くだけで読まない |
+| `users.read` / `users.write` | **不要** | Users API（管理者向け）を本番コードで一度も呼ばない。ユーザー作成は Account API（`account.create`）で行う |
+| `sessions.write` | **不要** | セッションは `account.createEmailPasswordSession`（本人の資格情報で作る）。`users.createSession`（管理者が代理で作る）は使わない |
+| `databases.*` / `tables.*` / `columns.*` / `indexes.*` | **不要（本番では）** | スキーマ操作は `scripts/appwrite-setup.ts` だけが行う。変更時に一時キーを発行する |
+
+**この最小化で得られる性質: 本番APIキーが漏れても、利用者のデータは1行も読み出せない。**
+書き換え・削除は可能なので無害ではないが、**情報漏洩と改ざんを切り離せている**。
+（読み取り権限を1つ足すだけでこの性質は失われるので、安易に足さないこと）
+
+実測での裏づけは `tests/integration/appwrite.test.ts` の
+「本番APIキーは rows.write だけで全ての書き込み経路が動く」で行う。
+
+---
+
+## 11. 残っている人間の作業
 
 | # | 作業 | なぜ人間が必要か |
 |---|---|---|
-| 1 | **本番稼働用API keyの発行**（scope: rows.read/write, users.read/write, sessions.write） | secretの発行・保管はコード側で行わない |
+| 1 | **本番稼働用API keyの発行（scope: `rows.write` のみ）** | secretの発行・保管はコード側で行わない |
 | 2 | **Vercelの環境変数**へ `APPWRITE_ENDPOINT` / `APPWRITE_PROJECT_ID` / `APPWRITE_API_KEY` / `APPWRITE_DATABASE_ID` を登録 | Vercelダッシュボード操作 |
-| 3 | ローカル `.env` に本番稼働用API keyを入れて統合テスト実行（任意） | 同上 |
+| 3 | ローカル `.env` にそのキーを入れて `APPWRITE_ALLOW_INTEGRATION_TESTS=1 npm run test:integration`（scopeの答え合わせ） | 同上 |
 | 4 | Appwrite Console でメール+パスワード認証が有効か確認 | Console操作 |
 
 `.env` の `APPWRITE_PROJECT_ID` は個人アカウント側（Singapore）の値へ修正済み。
 `APPWRITE_API_KEY` は**空のまま**にしてある。
 
-### 残りの実装（人間の作業1〜2の完了後）
+### 人間の作業1〜2が済んだあとに実装するもの
 
 | 順 | 対象 | 前提 |
 |---|---|---|

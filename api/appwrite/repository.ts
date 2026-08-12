@@ -155,26 +155,45 @@ export class AppwriteRepository implements Repository {
     }
   }
 
-  /** 行権限を一切与えない＝APIキーを持つサーバーからしか読めない */
-  async putServerRow(table: TableName, rowId: string, data: Record<string, unknown>, mode: WriteMode): Promise<void> {
-    const db = this.gateways.admin();
+  /** 行権限を一切与えない＝誰にも読めない行として追記する */
+  async appendServerRow(table: TableName, rowId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      if (mode === 'upsert') {
-        await db.upsertRow({ databaseId: databaseId(), tableId: table, rowId, data, permissions: [] });
-        return;
-      }
-      await db.createRow({ databaseId: databaseId(), tableId: table, rowId, data, permissions: [] });
+      await this.gateways.admin().createRow({ databaseId: databaseId(), tableId: table, rowId, data, permissions: [] });
     } catch (error) {
       if (error instanceof AppwriteException && error.code === CONFLICT) return;
       wrap(error);
     }
   }
 
-  async getServerRow(table: TableName, rowId: string): Promise<StoredRow | null> {
+  /**
+   * 増分操作でカウンタを進める。**読み取りAPIは使わない。**
+   * 返ってくるのは「自分が今書いた結果」なので、APIキーに読み取り権限は要らない。
+   */
+  async bumpServerCounter(table: TableName, rowId: string, column: string, seed: Record<string, unknown>): Promise<number> {
+    const db = this.gateways.admin();
+    const increment = async (): Promise<number> => {
+      const row = await db.incrementRowColumn({
+        databaseId: databaseId(), tableId: table, rowId, column, value: 1,
+      });
+      return Number(row?.[column] ?? 0);
+    };
+
     try {
-      return await this.gateways.admin().getRow({ databaseId: databaseId(), tableId: table, rowId }) as StoredRow;
+      return await increment();
     } catch (error) {
-      if (error instanceof AppwriteException && error.code === NOT_FOUND) return null;
+      if (!(error instanceof AppwriteException) || error.code !== NOT_FOUND) wrap(error);
+    }
+
+    // 初回はカウンタ行が無い。作ってから数え始める
+    try {
+      await db.createRow({
+        databaseId: databaseId(), tableId: table, rowId,
+        data: { ...seed, [column]: 1 }, permissions: [],
+      });
+      return 1;
+    } catch (error) {
+      // 同時に作られた場合は既にあるので、もう一度増やす
+      if (error instanceof AppwriteException && error.code === CONFLICT) return increment();
       wrap(error);
     }
   }

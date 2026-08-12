@@ -71,9 +71,20 @@ export interface Repository {
   /** 所有者チェックの上で削除する */
   deleteOwnedRow(table: TableName, ownerId: string, rowId: string): Promise<void>;
 
-  /** 行権限を誰にも与えないサーバー専用行（audit_log / rate_limits） */
-  putServerRow(table: TableName, rowId: string, data: Record<string, unknown>, mode: WriteMode): Promise<void>;
-  getServerRow(table: TableName, rowId: string): Promise<StoredRow | null>;
+  /**
+   * 行権限を誰にも与えないサーバー専用行に**追記**する（audit_log）。
+   * 読み出す手段は用意しない。読めない＝APIキーに読み取り権限が要らない。
+   */
+  appendServerRow(table: TableName, rowId: string, data: Record<string, unknown>): Promise<void>;
+
+  /**
+   * サーバー専用カウンタを1つ増やし、**増やした後の値**を返す（rate_limits）。
+   *
+   * 「読んでから書く」ではなく増分操作にしてあるのは2つの理由による:
+   *   1. 同時実行でも数え漏らさない
+   *   2. APIキーに読み取り権限を持たせずに済む（自分が書いた結果を受け取るだけ）
+   */
+  bumpServerCounter(table: TableName, rowId: string, column: string, seed: Record<string, unknown>): Promise<number>;
 }
 
 /** 認証済みユーザー。userId は必ずサーバーが解決した値 */
