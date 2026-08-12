@@ -159,12 +159,18 @@ export async function requestPasswordRecovery(email: string): Promise<void> {
   }
 }
 
-/** メールのリンクから戻ってきたユーザーの新しいパスワードを設定する */
+/**
+ * メールのリンクから戻ってきたユーザーの新しいパスワードを設定する。
+ *
+ * リンクが壊れている理由（期限切れ / 使用済み / userIdが存在しない）は
+ * **区別せず同じ案内にする**。区別すると「そのuserIdは実在するか」を
+ * 外から確かめられてしまう。利用者の次の行動もどれも同じ（やり直す）。
+ */
 export async function completePasswordRecovery(userId: string, secret: string, password: string): Promise<void> {
   try {
     await gateways.guest().updateRecovery({ userId, secret, password });
   } catch (error) {
-    if (error instanceof AppwriteException && (error.code === 401 || error.code === 400)) {
+    if (error instanceof AppwriteException && [400, 401, 404].includes(error.code)) {
       throw new AppError(
         'recovery_invalid',
         400,

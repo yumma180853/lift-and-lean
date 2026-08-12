@@ -256,21 +256,26 @@ test('新しいパスワードの設定はuserIdとsecretをそのまま渡す',
   assert.deepEqual(call?.params, { userId: 'user-1', secret: 'mail-secret', password: 'brand-new-password' });
 });
 
-test('期限切れ・使用済みのリンクはやり直しを案内する', async () => {
-  for (const code of [400, 401]) {
+test('壊れたリンクは理由を問わず同じ案内にする（userIdの実在も漏らさない）', async () => {
+  const messages: string[] = [];
+  // 400=不正な値 / 401=secretが違う / 404=userIdが存在しない
+  for (const [code, type] of [[400, 'general_argument_invalid'], [401, 'user_invalid_token'], [404, 'user_not_found']] as const) {
     const { gateways } = fakeAccounts({
-      updateRecovery: () => { throw new AppwriteException('bad', code, 'user_invalid_token'); },
+      updateRecovery: () => { throw new AppwriteException('bad', code as number, type as string); },
     });
     const restore = auth.__setAccountGatewaysForTest(gateways);
     try {
-      await assert.rejects(
-        () => auth.completePasswordRecovery('user-1', 'stale', 'brand-new-password'),
-        (error: any) => error.status === 400 && /やり直/.test(error.message),
-      );
+      await auth.completePasswordRecovery('user-1', 'stale', 'brand-new-password');
+      assert.fail(`${type} で例外が投げられていない`);
+    } catch (error: any) {
+      assert.equal(error.status, 400, type);
+      assert.match(error.message, /やり直/, type);
+      messages.push(error.message);
     } finally {
       restore();
     }
   }
+  assert.equal(new Set(messages).size, 1, '理由によって文言を変えないこと');
 });
 
 // ---------------------------------------------------------------- セッションの扱い
