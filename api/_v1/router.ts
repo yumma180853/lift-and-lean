@@ -11,8 +11,8 @@
  */
 
 import { AppError, AuthError, toErrorResponse } from '../_core/errors.js';
-import { credentialsSchema, parseInput } from '../_core/validation.js';
-import type { Credentials } from '../_core/validation.js';
+import { credentialsSchema, parseInput, recoveryConfirmSchema, recoveryRequestSchema } from '../_core/validation.js';
+import type { Credentials, RecoveryConfirm, RecoveryRequest } from '../_core/validation.js';
 import type { AuthenticatedUser } from '../_core/ports.js';
 import type { LiftAndLeanService } from '../_core/service.js';
 
@@ -23,6 +23,8 @@ export interface AuthGateway {
   logIn(email: string, password: string): Promise<{ user: AuthenticatedUser; secret: string; expiresAt: string }>;
   logOut(secret: string): Promise<void>;
   resolveUser(secret: string | undefined): Promise<AuthenticatedUser>;
+  requestPasswordRecovery(email: string): Promise<void>;
+  completePasswordRecovery(userId: string, secret: string, password: string): Promise<void>;
 }
 
 export interface RouterDeps {
@@ -131,6 +133,17 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
       const secret = deps.readCookie(req);
       const user = await deps.auth.resolveUser(secret);
       return send(res, 200, { userId: user.userId, email: user.email, name: user.name });
+    }
+    if (second === 'recovery' && ctx.method === 'POST') {
+      if (third === 'confirm') {
+        const input = parseInput<RecoveryConfirm>(recoveryConfirmSchema, ctx.body);
+        await deps.auth.completePasswordRecovery(input.userId, input.secret, input.password);
+        return send(res, 200, { ok: true });
+      }
+      const input = parseInput<RecoveryRequest>(recoveryRequestSchema, ctx.body);
+      await deps.auth.requestPasswordRecovery(input.email);
+      // 登録済みかどうかに関わらず同じ応答にする（アカウント列挙を助長しない）
+      return send(res, 200, { ok: true });
     }
     return send(res, 404, { error: '不明なエンドポイントです。', code: 'not_found' });
   }

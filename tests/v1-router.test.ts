@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AuthError } from '../api/_core/errors.ts';
+import { AppError, AuthError } from '../api/_core/errors.ts';
 import { LiftAndLeanService } from '../api/_core/service.ts';
 import { createV1Router } from '../api/_v1/router.ts';
 import { MemoryRepository } from './support/memory-repository.ts';
@@ -9,8 +9,19 @@ const NOW = new Date('2026-08-12T01:00:00Z');
 const TODAY = '2026-08-12';
 
 /** セッションsecret → userId の対応を持つ偽の認証 */
-function fakeAuth(sessions: Map<string, string>) {
+function fakeAuth(sessions: Map<string, string>, recovery: { requested: string[]; confirmed: any[] } = { requested: [], confirmed: [] }) {
   return {
+    recovery,
+    async requestPasswordRecovery(email: string) {
+      // 実装と同じく、未登録でも何も起きない（呼び出し側からは区別できない）
+      recovery.requested.push(email);
+    },
+    async completePasswordRecovery(userId: string, secret: string, password: string) {
+      if (secret !== 'valid-secret') {
+        throw new AppError('recovery_invalid', 400, 'このリンクは期限切れか、すでに使用済みです。もう一度「パスワードをお忘れですか？」からやり直してください。');
+      }
+      recovery.confirmed.push({ userId, password });
+    },
     async signUp(email: string) {
       const userId = `user-${email.split('@')[0]}`;
       sessions.set(`secret-${userId}`, userId);
@@ -35,9 +46,10 @@ function setup() {
   const repository = new MemoryRepository();
   const sessions = new Map<string, string>();
   const cookies = new Map<string, string>();
+  const recovery = { requested: [] as string[], confirmed: [] as any[] };
 
   const handle = createV1Router({
-    auth: fakeAuth(sessions),
+    auth: fakeAuth(sessions, recovery),
     createService: (secret: string) => new LiftAndLeanService({
       repository: repository.asViewer(sessions.get(secret) ?? '(unknown)'),
       clock: { now: () => NOW },
@@ -63,7 +75,7 @@ function setup() {
     return { handled, status: res.statusCode, body: res.payload as any, res };
   }
 
-  return { call, repository, sessions, cookies };
+  return { call, repository, sessions, cookies, recovery };
 }
 
 // ---------------------------------------------------------------- 経路
@@ -233,4 +245,53 @@ test('目標とプロフィールを保存して読み戻せる', async () => {
   assert.equal(goals.body.goals.trainerStyle, 'stoic');
   assert.equal(profile.body.profile.longestStreak, 12);
   assert.equal(profile.body.profile.customExerciseCategories, '{"ヒップスラスト":"脚"}');
+});
+
+// ---------------------------------------------------------------- パスワード再設定
+
+test('再設定の申し込みは、登録済みでも未登録でも同じ応答にする（列挙を助長しない）', async () => {
+  const { call, recovery } = setup();
+  await call('POST', '/api/v1/auth/signup', { body: { email: 'known@example.jp', password: 'correct-horse' } });
+
+  const known = await call('POST', '/api/v1/auth/recovery', { body: { email: 'known@example.jp' } });
+  const unknown = await call('POST', '/api/v1/auth/recovery', { body: { email: 'nobody@example.jp' } });
+
+  assert.equal(known.status, 200);
+  assert.equal(unknown.status, 200);
+  assert.deepEqual(known.body, unknown.body);
+  assert.deepEqual(recovery.requested, ['known@example.jp', 'nobody@example.jp']);
+});
+
+test('再設定はログイン不要で呼べる', async () => {
+  const { call } = setup();
+  const result = await call('POST', '/api/v1/auth/recovery', { body: { email: 'a@example.jp' } });
+  assert.equal(result.status, 200);
+});
+
+test('メールのリンクから新しいパスワードを設定できる', async () => {
+  const { call, recovery } = setup();
+  const result = await call('POST', '/api/v1/auth/recovery/confirm', {
+    body: { userId: 'user-1', secret: 'valid-secret', password: 'brand-new-password' },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(recovery.confirmed, [{ userId: 'user-1', password: 'brand-new-password' }]);
+});
+
+test('期限切れ・使用済みのリンクは400で案内する', async () => {
+  const { call } = setup();
+  const result = await call('POST', '/api/v1/auth/recovery/confirm', {
+    body: { userId: 'user-1', secret: 'expired', password: 'brand-new-password' },
+  });
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /やり直/);
+});
+
+test('再設定の入力も検証する（短いパスワードはAppwriteへ届く前に弾く）', async () => {
+  const { call } = setup();
+  const result = await call('POST', '/api/v1/auth/recovery/confirm', {
+    body: { userId: 'user-1', secret: 'valid-secret', password: 'short' },
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.code, 'validation_error');
 });

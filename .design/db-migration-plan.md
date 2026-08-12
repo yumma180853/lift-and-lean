@@ -284,17 +284,20 @@ Appwrite実装（api/appwrite/repository.ts）
 
 ## 10. 本番APIキーの最小権限（2026-08-12 監査）
 
-**確定: 本番稼働用API keyに必要なscopeは `rows.write` のみ。**
+**確定: 本番稼働用API keyに必要なscopeは `rows.write` と `sessions.write` の2つ。**
+（当初 `rows.write` のみと判断したが、セッション発行にAPIキーが要ることが本番で判明。§13）
 
 | scope | 必要か | 根拠 |
 |---|---|---|
 | `rows.write` | **必要** | `AppwriteRepository` の createRow / upsertRow / updateRow / deleteRow / incrementRowColumn。行の所有者と権限をサーバーが権威的に決めるため、書き込みだけはAPIキーで行う |
 | `rows.read` | **不要** | 読み取りは全てユーザーのセッション経由（`sessionTables`）。唯一APIキーで読んでいたレート制限カウンタを、増分操作（`incrementRowColumn`）へ置き換えて解消した。監査ログは書くだけで読まない |
 | `users.read` / `users.write` | **不要** | Users API（管理者向け）を本番コードで一度も呼ばない。ユーザー作成は Account API（`account.create`）で行う |
-| `sessions.write` | **不要** | セッションは `account.createEmailPasswordSession`（本人の資格情報で作る）。`users.createSession`（管理者が代理で作る）は使わない |
+| `sessions.write` | **必要**（2026-08-12 訂正） | ログイン時のセッション発行。**APIキー無しで `createEmailPasswordSession` を呼ぶと `secret` が空文字で返る**（Appwriteはブラウザ向けにCookieで返す設計のため）。当初「Account APIだから不要」と判断したが、本番で「登録できたのに毎回未ログイン」となり誤りが判明した（§13） |
 | `databases.*` / `tables.*` / `columns.*` / `indexes.*` | **不要（本番では）** | スキーマ操作は `scripts/appwrite-setup.ts` だけが行う。変更時に一時キーを発行する |
 
 **この最小化で得られる性質: 本番APIキーが漏れても、利用者のデータは1行も読み出せない。**
+（`sessions.write` を足してもこの性質は変わらない。セッション発行は本人の
+メールアドレスとパスワードの提示が前提で、鍵だけでは誰にもなりすませない）
 書き換え・削除は可能なので無害ではないが、**情報漏洩と改ざんを切り離せている**。
 （読み取り権限を1つ足すだけでこの性質は失われるので、安易に足さないこと）
 
@@ -365,3 +368,67 @@ Appwriteのバージョンは 1.9.6。
 | 1 | 実Appwriteでの疎通確認（`APPWRITE_ALLOW_INTEGRATION_TESTS=1 npm run test:integration`） | API key |
 | 2 | 読み込み元の切替（`VITE_DATA_SOURCE=db`）とオフライン同期キュー | 1 |
 | 3 | MCPサーバー + OAuth リソースサーバー | 2 |
+
+---
+
+## 13. 認証フローの不具合と修正（2026-08-12 本番で発覚）
+
+### 症状
+
+本番で新規登録すると「登録できた（201）」のに、直後から**ずっと未ログイン扱い**になる。
+利用者からは「登録に失敗した」ように見えるため別のパスワードで登録し直すが、
+アカウントは作成済みなので今度は「すでに登録されています」になり、袋小路に入る。
+
+### 原因
+
+**APIキーを付けずに `account.createEmailPasswordSession` を呼ぶと、
+Appwriteは `secret` を空文字で返す。**
+ブラウザ向けにはセッションをCookieで返す設計のため、レスポンス本文には入らない。
+
+その結果:
+
+```
+signup → account.create 成功（アカウントは残る）
+       → createEmailPasswordSession 成功だが secret=""
+       → Set-Cookie: ll_session=;   ← 空のCookie
+       → 次のリクエストでセッション無し → 401
+```
+
+再現時のHTTPログでも `set-cookie: ll_session=; ... Max-Age=31535999` と、
+**値だけが空**のCookieが発行されていた。
+
+### 修正
+
+| 対象 | 修正 |
+|---|---|
+| セッション発行 | **APIキー付きクライアント**（`adminAccount`）で行う。必要scopeは `sessions.write` |
+| 空secret | `secret` が空なら503で**止める**。黙って壊れたCookieを発行しない |
+| signupの部分失敗 | アカウント作成後にセッション発行が失敗したら「**アカウントは作成済み。ログインから試して**」と案内する |
+| エラー変換の順序 | `type` を先に判定する。409で先に分岐していたため `user_password_reset_required` を「すでに登録されています」と誤案内していた |
+| scope不足 | `general_unauthorized_scope`（401）を「パスワードが違います」と表示しない。設定不備として503 |
+| パスワード再設定 | `/api/v1/auth/recovery` と `/reset-password` 画面を新設（下記） |
+
+### パスワード再設定の設計
+
+```
+設定画面「パスワードをお忘れですか？」
+   → POST /api/v1/auth/recovery { email }
+   → Appwriteが再設定メールを送信（リンクは1時間有効）
+   → メールのリンク: {APP_PUBLIC_URL}/reset-password?userId=...&secret=...
+   → 新しいパスワードを入力
+   → POST /api/v1/auth/recovery/confirm { userId, secret, password }
+   → 設定画面からログイン
+```
+
+**アカウント列挙を助長しない**: 未登録のメールアドレスでも応答は成功と同一にする
+（Appwriteの404は握りつぶす）。ログインの失敗文言も未登録・パスワード違いで共通。
+※ 新規登録だけはAppwriteが409を返す仕様上、既存判定が避けられない。
+
+**リンク先はHostヘッダから作らない**。`APP_PUBLIC_URL`（未設定ならVercelが渡す
+本番ホスト名）だけを使う。Hostを差し替えられると再設定リンクの宛先を乗っ取られるため。
+
+### この修正に必要な人間の作業
+
+1. Appwrite Console → **API keyのscopeに `sessions.write` を追加**（キーの値は変わらないのでVercelの再設定は不要）
+2. Appwrite Console → **Platforms に Web platform を追加**（ホスト名 `lift-and-lean.vercel.app`）
+   未登録だと再設定メールのURLが `general_argument_invalid` で拒否される（実測で確認済み）

@@ -8,9 +8,11 @@ import {
   SESSION_COOKIE,
   buildClearedSessionCookie,
   buildSessionCookie,
+  completePasswordRecovery,
   logIn,
   logOut,
   parseCookies,
+  requestPasswordRecovery,
   resolveUser,
   signUp,
 } from '../_appwrite/auth.js';
@@ -24,7 +26,7 @@ function appendHeader(res: any, name: string, value: string): void {
 }
 
 export const handleV1 = createV1Router({
-  auth: { signUp, logIn, logOut, resolveUser },
+  auth: { signUp, logIn, logOut, resolveUser, requestPasswordRecovery, completePasswordRecovery },
   createService: (sessionSecret: string) => new LiftAndLeanService({
     repository: new AppwriteRepository({ sessionSecret }),
   }),

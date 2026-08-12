@@ -67,12 +67,31 @@ export function guestClient(): Client {
 }
 
 /**
- * API keyを使うのは**行の書き込みだけ**。
- * ユーザー管理（Users API）は使わない ＝ APIキーに users / sessions のscopeは不要。
- * 認証は Account API（project IDだけで叩ける）とセッションで完結させる。
+ * API keyを使うのは**行の書き込み**と**セッションの発行**だけ。
+ * ユーザー管理（Users API）は使わないので users.* のscopeは不要。
+ *
+ * セッション発行にAPIキーが要るのはAppwriteの仕様で、
+ * **APIキーなしで `createEmailPasswordSession` を呼ぶと `secret` が空で返る**
+ * （ブラウザ向けにはCookieで返す設計のため）。詳細は auth.ts の logIn 参照。
  */
 export const adminTables = (): TablesDB => new TablesDB(adminClient());
 export const sessionTables = (secret: string): TablesDB => new TablesDB(sessionClient(secret));
 export const sessionAccount = (secret: string): Account => new Account(sessionClient(secret));
 export const guestAccount = (): Account => new Account(guestClient());
+/** セッション発行専用。`sessions.write` scope が要る */
+export const adminAccount = (): Account => new Account(adminClient());
 export const databaseId = (): string => loadConfig().databaseId;
+
+/**
+ * パスワード再設定メールのリンク先に使う自分のURL。
+ *
+ * **リクエストのHostヘッダは使わない。** 攻撃者がHostを差し替えると
+ * 再設定リンクの宛先を乗っ取れてしまうため、サーバー側の設定値だけから決める。
+ */
+export function publicAppUrl(): string {
+  const explicit = process.env.APP_PUBLIC_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (vercelHost) return `https://${vercelHost}`;
+  return 'http://localhost:3000';
+}

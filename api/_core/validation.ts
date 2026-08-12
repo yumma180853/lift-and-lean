@@ -78,6 +78,21 @@ export const credentialsSchema = z.object({
   name: z.string().trim().min(1).max(128).optional(),
 });
 
+/** パスワード再設定の申し込み。登録済みかどうかは応答から分からないようにする */
+export const recoveryRequestSchema = z.object({
+  email: z.string().trim().email('メールアドレスの形式が正しくありません。').max(320),
+});
+
+/** メールのリンクから戻ってきたときの新パスワード設定 */
+export const recoveryConfirmSchema = z.object({
+  userId: z.string().trim().min(1).max(64),
+  secret: z.string().trim().min(1).max(512),
+  password: z.string().min(8, 'パスワードは8文字以上にしてください。').max(256),
+});
+
+export type RecoveryRequest = z.infer<typeof recoveryRequestSchema>;
+export type RecoveryConfirm = z.infer<typeof recoveryConfirmSchema>;
+
 export type MealInput = z.infer<typeof mealInputSchema>;
 export type WeightInput = z.infer<typeof weightInputSchema>;
 export type WorkoutInput = z.infer<typeof workoutInputSchema>;

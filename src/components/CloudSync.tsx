@@ -25,6 +25,7 @@ export function CloudSync() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [preview, setPreview] = useState<MigrationReport | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function CloudSync() {
     event.preventDefault();
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const call = mode === 'signup' ? authApi.signUp : authApi.logIn;
       await call(email.trim(), password);
@@ -53,6 +55,30 @@ export function CloudSync() {
       setAccount(info);
       setPhase('signedIn');
       setPassword('');
+    } catch (e) {
+      setError(messageOf(e));
+      // すでに登録済みなら、ログインタブへ寄せて袋小路にしない
+      if (e instanceof ApiError && (e.code === 'email_taken' || e.code === 'signup_session_failed')) {
+        setMode('login');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    const target = email.trim();
+    if (target === '') {
+      setError('メールアドレスを入力してから押してください。');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await authApi.requestPasswordReset(target);
+      // 登録の有無を問わず同じ案内にする（アカウント列挙を助長しない）
+      setNotice('登録済みのメールアドレスであれば、再設定用のリンクを送りました。メールをご確認ください（1時間有効）。');
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -72,6 +98,7 @@ export function CloudSync() {
       setPreview(null);
       setResult(null);
       setVerified(null);
+      setNotice(null);
       setBusy(false);
     }
   };
@@ -150,7 +177,7 @@ export function CloudSync() {
               <button
                 key={option.value}
                 type="button"
-                onClick={() => { setMode(option.value); setError(null); }}
+                onClick={() => { setMode(option.value); setError(null); setNotice(null); }}
                 className={`flex-1 text-[11px] font-bold px-3 py-1.5 rounded-full border ${
                   mode === option.value
                     ? 'bg-lime-400/10 border-lime-400/40 text-lime-400'
@@ -193,6 +220,15 @@ export function CloudSync() {
           >
             {busy ? '通信中…' : mode === 'signup' ? 'アカウントを作る' : 'ログイン'}
           </button>
+          <button
+            type="button"
+            onClick={sendPasswordReset}
+            disabled={busy}
+            className="w-full text-[11px] font-bold text-zinc-500 hover:text-lime-400 transition-colors py-1 disabled:opacity-50"
+          >
+            パスワードをお忘れですか？
+          </button>
+          {notice && <p className="text-[11px] text-lime-400 font-bold leading-relaxed">{notice}</p>}
         </form>
       )}
 

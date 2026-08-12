@@ -11,9 +11,34 @@
 import { AppwriteException, ID } from 'node-appwrite';
 import { AppError, AuthError, UpstreamError } from '../_core/errors.js';
 import type { AuthenticatedUser } from '../_core/ports.js';
-import { guestAccount, loadConfig, sessionAccount } from './client.js';
+import { adminAccount, guestAccount, loadConfig, publicAppUrl, sessionAccount } from './client.js';
 
 export const SESSION_COOKIE = 'll_session';
+
+/**
+ * Account APIの取得口。テストで差し替えて、実際のAppwriteに繋がずに
+ * 「どの資格情報で呼んだか」「エラーをどう変換したか」を検証する。
+ */
+export interface AccountGateways {
+  guest(): any;
+  admin(): any;
+  session(secret: string): any;
+}
+
+const realGateways: AccountGateways = {
+  guest: () => guestAccount(),
+  admin: () => adminAccount(),
+  session: (secret: string) => sessionAccount(secret),
+};
+
+let gateways: AccountGateways = realGateways;
+
+/** テスト専用。戻り値を呼ぶと元に戻る */
+export function __setAccountGatewaysForTest(next: Partial<AccountGateways>): () => void {
+  const previous = gateways;
+  gateways = { ...gateways, ...next };
+  return () => { gateways = previous; };
+}
 
 export interface SessionResult {
   user: AuthenticatedUser;
@@ -21,40 +46,91 @@ export interface SessionResult {
   expiresAt: string;
 }
 
+/**
+ * Appwriteのエラーを利用者向けの案内に変換する。
+ *
+ * **判定は必ず `type` を先に見る。** HTTPコードだけで分けると、
+ * 同じ409を返す `user_already_exists` と `user_password_reset_required` を
+ * 取り違え、「パスワード再設定が必要」な人に「すでに登録されています」と
+ * 案内してしまう（実際にこの取り違えが起きていた）。
+ */
 function mapAuthError(error: unknown): never {
   if (error instanceof AppError) throw error;
-  if (error instanceof AppwriteException) {
-    if (error.type === 'user_already_exists' || error.code === 409) {
-      throw new AppError('email_taken', 409, 'このメールアドレスはすでに登録されています。');
-    }
-    if (error.type === 'user_invalid_credentials' || error.code === 401) {
-      throw new AuthError('メールアドレスかパスワードが違います。');
-    }
-    if (error.type === 'password_personal_data') {
-      throw new AppError('weak_password', 400, 'パスワードにメールアドレスや名前を含めないでください。');
-    }
-    if (error.code === 429) {
-      throw new AppError('rate_limited', 429, '試行回数が多すぎます。しばらく待ってから試してください。');
-    }
-    console.error('appwrite auth error:', error.code, error.type);
+  if (!(error instanceof AppwriteException)) {
+    console.error('appwrite auth unexpected error:', error);
     throw new UpstreamError('認証サーバーへの接続に失敗しました。時間をおいて試してください。');
   }
-  console.error('appwrite auth unexpected error:', error);
+
+  switch (error.type) {
+    case 'user_already_exists':
+    case 'user_email_already_exists':
+      throw new AppError('email_taken', 409, 'このメールアドレスはすでに登録されています。ログインするか、パスワードを再設定してください。');
+    case 'user_password_reset_required':
+      throw new AppError('password_reset_required', 409, 'パスワードの再設定が必要です。「パスワードをお忘れですか？」から手続きしてください。');
+    case 'user_invalid_credentials':
+    case 'user_not_found':
+      // 存在の有無を漏らさないため、未登録でも同じ文言にする
+      throw new AuthError('メールアドレスかパスワードが違います。');
+    case 'password_personal_data':
+      throw new AppError('weak_password', 400, 'パスワードにメールアドレスや名前を含めないでください。');
+    case 'general_argument_invalid':
+      // 再設定リンクの宛先がAppwriteのPlatformに未登録なときにここへ来る
+      console.error('appwrite auth argument error:', error.message);
+      throw new AppError('not_configured', 503, 'メール送信の設定が未完了です。時間をおいて試してください。');
+    case 'general_unauthorized_scope':
+      // APIキーのscope不足。401だが**利用者の入力は正しい**ので、
+      // 「パスワードが違います」と表示してはいけない（原因を探せなくなる）
+      console.error('appwrite auth scope error: API key is missing a required scope');
+      throw new AppError('not_configured', 503, 'ログイン処理の設定が未完了です。時間をおいて試してください。');
+  }
+
+  // typeで判別できないものはHTTPコードで最低限だけ分ける
+  if (error.code === 409) {
+    throw new AppError('email_taken', 409, 'このメールアドレスはすでに登録されています。ログインするか、パスワードを再設定してください。');
+  }
+  if (error.code === 401) throw new AuthError('メールアドレスかパスワードが違います。');
+  if (error.code === 429) {
+    throw new AppError('rate_limited', 429, '試行回数が多すぎます。1時間ほど待ってから試してください。');
+  }
+
+  console.error('appwrite auth error:', error.code, error.type);
   throw new UpstreamError('認証サーバーへの接続に失敗しました。時間をおいて試してください。');
 }
 
 export async function signUp(email: string, password: string, name?: string): Promise<SessionResult> {
   try {
-    await guestAccount().create({ userId: ID.unique(), email, password, name });
+    await gateways.guest().create({ userId: ID.unique(), email, password, name });
   } catch (error) {
     mapAuthError(error);
   }
-  return logIn(email, password);
+
+  // ここから先で失敗しても**アカウントは作成済み**。
+  // 「登録に失敗した」と誤解させると、別のパスワードで登録し直そうとして
+  // 「すでに登録されています」の袋小路に入る。作成済みだと明示する。
+  try {
+    return await logIn(email, password);
+  } catch (error) {
+    const detail = error instanceof AppError ? error.message : '';
+    throw new AppError(
+      'signup_session_failed',
+      502,
+      `アカウントは作成できましたが、自動ログインに失敗しました。「ログイン」から同じパスワードでお試しください。${detail ? `（${detail}）` : ''}`,
+    );
+  }
 }
 
 export async function logIn(email: string, password: string): Promise<SessionResult> {
   try {
-    const session = await guestAccount().createEmailPasswordSession({ email, password });
+    // **APIキー付きのクライアントで発行する必要がある。**
+    // Appwriteはブラウザ向けにはセッションをCookieで返す設計のため、
+    // APIキー無し（guest）で呼ぶと `secret` が空文字で返る。
+    // 空のsecretをCookieに入れると「ログインできたのに毎回未ログイン」になる。
+    const session = await gateways.admin().createEmailPasswordSession({ email, password });
+    if (!session.secret) {
+      // scope不足（`sessions.write`）でここに来る。黙って壊れるより落とす
+      console.error('appwrite session secret is empty: API key needs the sessions.write scope');
+      throw new AppError('session_unavailable', 503, 'ログイン処理の設定が未完了です。時間をおいて試してください。');
+    }
     return {
       user: { userId: session.userId },
       secret: session.secret,
@@ -65,10 +141,44 @@ export async function logIn(email: string, password: string): Promise<SessionRes
   }
 }
 
+/**
+ * パスワード再設定メールを送る。
+ *
+ * **メールアドレスが登録済みかどうかを応答から判別できないようにする。**
+ * 未登録でも成功と同じ結果を返す（アカウント列挙を助長しない）。
+ */
+export async function requestPasswordRecovery(email: string): Promise<void> {
+  const url = `${publicAppUrl()}/reset-password`;
+  try {
+    await gateways.guest().createRecovery({ email, url });
+  } catch (error) {
+    // 未登録のメールアドレス。存在しないことを応答から悟らせない
+    if (error instanceof AppwriteException && (error.code === 404 || error.type === 'user_not_found')) return;
+    // それ以外（レート制限・設定不備）は本人にも起きうるので素直に伝える
+    mapAuthError(error);
+  }
+}
+
+/** メールのリンクから戻ってきたユーザーの新しいパスワードを設定する */
+export async function completePasswordRecovery(userId: string, secret: string, password: string): Promise<void> {
+  try {
+    await gateways.guest().updateRecovery({ userId, secret, password });
+  } catch (error) {
+    if (error instanceof AppwriteException && (error.code === 401 || error.code === 400)) {
+      throw new AppError(
+        'recovery_invalid',
+        400,
+        'このリンクは期限切れか、すでに使用済みです。もう一度「パスワードをお忘れですか？」からやり直してください。',
+      );
+    }
+    mapAuthError(error);
+  }
+}
+
 /** セッションを削除する。連携解除時はこれでJWTも即失効する */
 export async function logOut(secret: string): Promise<void> {
   try {
-    await sessionAccount(secret).deleteSession({ sessionId: 'current' });
+    await gateways.session(secret).deleteSession({ sessionId: 'current' });
   } catch (error) {
     if (error instanceof AppwriteException && (error.code === 401 || error.code === 404)) return;
     mapAuthError(error);
@@ -82,7 +192,7 @@ export async function resolveUser(secret: string | undefined): Promise<Authentic
   loadConfig();
   if (!secret) throw new AuthError();
   try {
-    const account = await sessionAccount(secret).get();
+    const account = await gateways.session(secret).get();
     return { userId: account.$id, email: account.email, name: account.name };
   } catch (error) {
     if (error instanceof AppwriteException && (error.code === 401 || error.code === 404)) {

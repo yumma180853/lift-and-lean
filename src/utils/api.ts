@@ -59,6 +59,11 @@ export const authApi = {
   logIn: (email: string, password: string) => post<{ userId: string }>('/auth/login', { email, password }),
   logOut: () => post<{ ok: boolean }>('/auth/logout'),
   me: () => request<AccountInfo>('/auth/me'),
+  /** 再設定メールの送信。登録済みかどうかに関わらず同じ結果が返る */
+  requestPasswordReset: (email: string) => post<{ ok: boolean }>('/auth/recovery', { email }),
+  /** メールのリンクから戻ってきたあとの新パスワード設定 */
+  confirmPasswordReset: (userId: string, secret: string, password: string) =>
+    post<{ ok: boolean }>('/auth/recovery/confirm', { userId, secret, password }),
 };
 
 export interface MigrationCounts {
