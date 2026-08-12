@@ -5,8 +5,8 @@
  */
 
 import { z } from 'zod';
-import { LIMITS, MEAL_SOURCE_TYPES, TRAINER_STYLES } from '../migration-helpers.ts';
-import { ValidationError } from './errors.ts';
+import { LIMITS, MEAL_SOURCE_TYPES, TRAINER_STYLES } from '../_migration-helpers.js';
+import { ValidationError } from './errors.js';
 
 const macro = () => z.number().finite().min(LIMITS.macro.min).max(LIMITS.macro.max);
 const optionalText = (max: number) => z.string().trim().min(1).max(max).optional();

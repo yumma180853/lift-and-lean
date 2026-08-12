@@ -10,7 +10,7 @@
  */
 
 import { Client, TablesDB, Account } from 'node-appwrite';
-import { AppError } from '../core/errors.ts';
+import { AppError } from '../_core/errors.js';
 
 export interface AppwriteConfig {
   endpoint: string;

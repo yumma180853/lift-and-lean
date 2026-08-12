@@ -7,7 +7,7 @@
  * 「アプリ側のフィルタに頼っていないか」をテストで検出できるようにするための作り。
  */
 
-import { AppError, NotFoundError } from '../../api/core/errors.ts';
+import { AppError, NotFoundError } from '../../api/_core/errors.ts';
 import type {
   ListOptions,
   Repository,
@@ -16,7 +16,7 @@ import type {
   WriteMode,
   WriteResult,
   WriteRow,
-} from '../../api/core/ports.ts';
+} from '../../api/_core/ports.ts';
 
 interface StoredRecord {
   id: string;

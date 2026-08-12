@@ -257,6 +257,11 @@ Appwrite の rowId は「36文字以内・先頭は英数字・使用可能文�
 | REST（PWA用・MCPと共通のサービス層） | `api/v1/router.ts` | `tests/v1-router.test.ts` |
 | 移行API（preview / 実行 / 検証） | `LiftAndLeanService.migrateFromBackup` ほか | `tests/migration-service.test.ts` |
 | 移行UI | `src/components/CloudSync.tsx`（設定画面） | 実機確認は未 |
+| デプロイ規約の固定 | `tests/build-conventions.test.ts` | §11の2件の障害を再発検出 |
+
+**クラウドへ送るのは移行対象のキーだけ**（`buildMigrationPayload`）。
+AIチャット履歴（`chat_messages`）と端末の通知設定は**送信もしない**。
+バックアップDLは全キーを含む（復元のため）が、送信対象とは別に管理する。
 
 ### 層の構成
 
@@ -298,14 +303,57 @@ Appwrite実装（api/appwrite/repository.ts）
 
 ---
 
-## 11. 残っている人間の作業
+## 11. デプロイ前チェック（2026-08-12 実施）
 
-| # | 作業 | なぜ人間が必要か |
+Vercel本番でだけ壊れる不具合を、pushの前にローカルで捕まえるための手順。
+
+```
+npx vercel build --yes                 # 実際のVercelビルダーで組む
+find .vercel/output/functions -name "*.func" -type d   # 関数の数を数える
+cd .vercel/output/functions/api/server.func && node -e "...handler を実際に呼ぶ"
+```
+
+**この手順で実際に見つかって直した本番障害が2件ある。**
+
+| 見つかった問題 | 症状になったはずの結果 | 対処 |
 |---|---|---|
-| 1 | **本番稼働用API keyの発行（scope: `rows.write` のみ）** | secretの発行・保管はコード側で行わない |
-| 2 | **Vercelの環境変数**へ `APPWRITE_ENDPOINT` / `APPWRITE_PROJECT_ID` / `APPWRITE_API_KEY` / `APPWRITE_DATABASE_ID` を登録 | Vercelダッシュボード操作 |
-| 3 | ローカル `.env` にそのキーを入れて `APPWRITE_ALLOW_INTEGRATION_TESTS=1 npm run test:integration`（scopeの答え合わせ） | 同上 |
-| 4 | Appwrite Console でメール+パスワード認証が有効か確認 | Console操作 |
+| `api/` 配下の相対importに `.ts` を書いていた | Vercelは中身を `.js` にコンパイルするが**import文の拡張子は書き換えない**。実行時に `ERR_MODULE_NOT_FOUND` → **全API 500** | 相対importは `.js` で書く（TSは`.ts`へ、実行時は`.js`へ解決する）。テスト実行は `tsx` に変更して同じ解決規則に揃えた |
+| 共有モジュールが1ファイル1関数になっていた | Serverless Functionが13個に増殖。**Hobbyの上限12個を超えてデプロイ失敗** | `api/` 直下のディレクトリを `_core` / `_appwrite` / `_v1` にリネーム。`_` 始まりは関数化されない。結果2個（`server` と既存の `meal-estimate-helpers`）に戻した |
+
+どちらも `tests/build-conventions.test.ts` で固定してあるので、`npm test` で再発を検出できる。
+
+### Appwrite本番プロジェクトへの疎通（秘密値を使わない確認）
+
+`endpoint` と `project ID` は公開してよい値なので、API keyなしで確認できる。
+
+| 確認 | 結果 |
+|---|---|
+| `GET /account`（未認証） | `401 general_unauthorized_scope` → プロジェクトが存在し到達できる |
+| `POST /account/sessions/email`（存在しない資格情報） | `401 user_invalid_credentials` → **Email/Password認証が有効**で、かつ**Originヘッダの無いサーバーからのAccount API呼び出しが許可されている** |
+
+2つ目が重要で、これが通らないとVercelの関数からサインアップ・ログインができない。
+Appwriteのバージョンは 1.9.6。
+
+### 移行の実行時間
+
+移行は数千行の書き込みになる。1行ずつ直列に書くとVercelの実行時間上限（60秒）を超えるため、
+`putOwnedRows` は**上限8の並行書き込み**にしてある（`WRITE_CONCURRENCY`）。
+決定的rowIdのおかげで途中で落ちても再実行が安全なので、タイムアウトしてもデータは壊れない。
+
+---
+
+## 12. 残っている人間の作業
+
+| # | 作業 | 状態 |
+|---|---|---|
+| 1 | 本番稼働用API keyの発行（scope: `rows.write` のみ） | **完了**（2026-08-12） |
+| 2 | Vercelの環境変数へ4つを登録（API keyはSensitive・Productionのみ） | **完了**（2026-08-12） |
+| 3 | Appwrite Console でメール+パスワード認証が有効か確認 | **完了**（疎通確認で実証済み・§11） |
+| 4 | `git push` して本番へ反映する | **残っている** |
+| 5 | 本番で1回サインアップ→「クラウドへコピー」→検証OKまで実機確認 | 残っている（push後） |
+
+**4と5だけが残り。** コード・テスト・ビルド・疎通確認はすべて済んでいる。
+実データでの移行だけは本番でしか確かめられないため、pushのあとにゆまが1回実施する。
 
 `.env` の `APPWRITE_PROJECT_ID` は個人アカウント側（Singapore）の値へ修正済み。
 `APPWRITE_API_KEY` は**空のまま**にしてある。

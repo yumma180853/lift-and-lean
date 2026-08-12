@@ -24,6 +24,24 @@ export const BACKUP_KEYS = [
 
 export type BackupKey = (typeof BACKUP_KEYS)[number];
 
+/**
+ * クラウドへ送るキー。バックアップとは別に持つ。
+ *
+ * `chat_messages` と `reminders_enabled` は移行対象外なので**送らない**。
+ * 送っても保存はされないが、送らなければそもそもサーバーに渡らない
+ * （AIチャットの内容を端末の外に出さない）。
+ */
+export const MIGRATION_KEYS = [
+  'meals',
+  'workouts',
+  'weight_history',
+  'user_goals',
+  'hidden_workout_dates',
+  'custom_exercise_categories',
+  'freeze_used_dates',
+  'longest_streak',
+] as const satisfies readonly BackupKey[];
+
 export interface BackupFile {
   app: 'lift-and-lean';
   version: number;
@@ -82,6 +100,21 @@ export function buildBackup(read: ReadItem = defaultRead, now: Date = new Date()
     data,
     unparsed,
   };
+}
+
+/**
+ * クラウド移行用のペイロード。移行対象のキーだけを含む。
+ * localStorageは読むだけで、書き換えも削除もしない。
+ */
+export function buildMigrationPayload(read: ReadItem = defaultRead, now: Date = new Date()): BackupFile {
+  const full = buildBackup(read, now);
+  const data: Partial<Record<BackupKey, unknown>> = {};
+  const unparsed: Partial<Record<BackupKey, string>> = {};
+  for (const key of MIGRATION_KEYS) {
+    if (key in full.data) data[key] = full.data[key];
+    if (key in full.unparsed) unparsed[key] = full.unparsed[key];
+  }
+  return { ...full, data, unparsed };
 }
 
 const countArray = (value: unknown): number => (Array.isArray(value) ? value.length : 0);

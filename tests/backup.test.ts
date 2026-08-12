@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   BACKUP_KEYS,
+  BACKUP_VERSION,
+  MIGRATION_KEYS,
   buildBackup,
+  buildMigrationPayload,
   summarizeBackup,
   backupFileName,
 } from '../src/utils/backup.ts';
@@ -64,4 +67,22 @@ test('件数サマリが記録数とセット総数を数える', () => {
 test('ファイル名にローカル日時が入る', () => {
   const name = backupFileName(new Date(2026, 7, 11, 20, 5));
   assert.equal(name, 'lift-and-lean-backup-2026-08-11-2005.json');
+});
+
+test('クラウドへ送るのは移行対象のキーだけ（AIチャット履歴は送らない）', () => {
+  const entries: Record<string, string> = {};
+  for (const key of BACKUP_KEYS) entries[key] = JSON.stringify([key]);
+
+  const payload = buildMigrationPayload(fakeStore(entries));
+
+  assert.deepEqual(Object.keys(payload.data).sort(), [...MIGRATION_KEYS].sort());
+  assert.equal('chat_messages' in payload.data, false);
+  assert.equal('reminders_enabled' in payload.data, false);
+});
+
+test('移行ペイロードもバックアップと同じ形式（サーバー側が同じ経路で扱える）', () => {
+  const payload = buildMigrationPayload(fakeStore({ meals: '[]' }), new Date('2026-08-12T00:00:00Z'));
+  assert.equal(payload.app, 'lift-and-lean');
+  assert.equal(payload.version, BACKUP_VERSION);
+  assert.equal(payload.exportedAt, '2026-08-12T00:00:00.000Z');
 });

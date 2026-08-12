@@ -8,7 +8,7 @@ import {
   expectedCounts,
   planCounts,
   diffCounts,
-} from '../api/migration-helpers.ts';
+} from '../api/_migration-helpers.ts';
 
 const USER = 'user-abc';
 const TODAY = '2026-08-11';

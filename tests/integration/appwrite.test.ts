@@ -31,9 +31,9 @@ const enabled = Boolean(
 const options = enabled ? {} : { skip: '実Appwriteの認証情報とAPPWRITE_ALLOW_INTEGRATION_TESTS=1が必要です' };
 
 test('実Appwriteで他人のデータが読めない・消せない', options, async () => {
-  const { AppwriteRepository } = await import('../../api/appwrite/repository.ts');
-  const { LiftAndLeanService } = await import('../../api/core/service.ts');
-  const { logIn, signUp } = await import('../../api/appwrite/auth.ts');
+  const { AppwriteRepository } = await import('../../api/_appwrite/repository.ts');
+  const { LiftAndLeanService } = await import('../../api/_core/service.ts');
+  const { logIn, signUp } = await import('../../api/_appwrite/auth.ts');
 
   /** 固定のテストアカウント。無ければ作り、あればログインする */
   const account = async (label: string) => {
@@ -126,10 +126,10 @@ test('実Appwriteで他人のデータが読めない・消せない', options, 
  * どこかで 401 unauthorized_scope が出たら、その操作が必要とする scope を足す。
  */
 test('本番APIキーは rows.write だけで全ての書き込み経路が動く', options, async () => {
-  const { AppwriteRepository } = await import('../../api/appwrite/repository.ts');
-  const { LiftAndLeanService } = await import('../../api/core/service.ts');
-  const { logIn, signUp } = await import('../../api/appwrite/auth.ts');
-  const { deriveRowId } = await import('../../api/migration-helpers.ts');
+  const { AppwriteRepository } = await import('../../api/_appwrite/repository.ts');
+  const { LiftAndLeanService } = await import('../../api/_core/service.ts');
+  const { logIn, signUp } = await import('../../api/_appwrite/auth.ts');
+  const { deriveRowId } = await import('../../api/_migration-helpers.ts');
 
   const email = 'integration-alice@lift-and-lean.test';
   const password = 'Integration-alice-2026!';

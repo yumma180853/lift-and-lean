@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LiftAndLeanService, RATE_LIMITS } from '../api/core/service.ts';
-import { deriveRowId } from '../api/migration-helpers.ts';
+import { LiftAndLeanService, RATE_LIMITS } from '../api/_core/service.ts';
+import { deriveRowId } from '../api/_migration-helpers.ts';
 import { MemoryRepository } from './support/memory-repository.ts';
 
 const ALICE = 'alice';

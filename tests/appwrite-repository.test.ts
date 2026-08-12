@@ -16,13 +16,13 @@ process.env.APPWRITE_API_KEY = 'test-key-not-a-secret';
 process.env.APPWRITE_DATABASE_ID = 'testdb';
 process.env.APPWRITE_ENDPOINT = 'https://example.invalid/v1';
 
-const { AppwriteRepository } = await import('../api/appwrite/repository.ts');
+const { AppwriteRepository, WRITE_CONCURRENCY } = await import('../api/_appwrite/repository.ts');
 const { AppwriteException } = await import('node-appwrite');
 const {
   parseCookies,
   buildSessionCookie,
   buildClearedSessionCookie,
-} = await import('../api/appwrite/auth.ts');
+} = await import('../api/_appwrite/auth.ts');
 
 interface Call { method: string; params: any }
 
@@ -239,7 +239,7 @@ test('取得件数には必ず上限を付ける', async () => {
 // ---------------------------------------------------------------- Cookie
 
 test('セッションcookieはJSから読めない形にする', () => {
-  const cookie = buildSessionCookie('secret-value', new Date(Date.now() + 3600_000).toISOString());
+  const cookie = buildSessionCookie('secret-value', new Date(Date.now() + 3600_000).toISOString(), true);
   assert.match(cookie, /^ll_session=secret-value;/);
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /Secure/);
@@ -247,8 +247,25 @@ test('セッションcookieはJSから読めない形にする', () => {
   assert.match(cookie, /Max-Age=3[0-9]{3}/);
 });
 
+test('本番（HTTPS）ではSecureを必ず付ける', () => {
+  const original = process.env.VERCEL;
+  process.env.VERCEL = '1';
+  try {
+    assert.match(buildSessionCookie('s', new Date(Date.now() + 1000).toISOString()), /Secure/);
+    assert.match(buildClearedSessionCookie(), /Secure/);
+  } finally {
+    if (original === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = original;
+  }
+});
+
+test('ローカル開発（HTTP）ではSecureを外す（付けるとcookieが保存されない）', () => {
+  assert.equal(/Secure/.test(buildSessionCookie('s', new Date(Date.now() + 1000).toISOString(), false)), false);
+  assert.equal(/Secure/.test(buildClearedSessionCookie(false)), false);
+});
+
 test('ログアウト用のcookieは即時失効させる', () => {
-  assert.match(buildClearedSessionCookie(), /Max-Age=0/);
+  assert.match(buildClearedSessionCookie(true), /Max-Age=0/);
 });
 
 test('Cookieヘッダから値を取り出す', () => {
@@ -256,4 +273,74 @@ test('Cookieヘッダから値を取り出す', () => {
   assert.equal(cookies.ll_session, 'abc def');
   assert.equal(cookies.other, '1');
   assert.deepEqual(parseCookies(undefined), {});
+});
+
+// ---------------------------------------------------------------- 並行書き込み
+
+test('大量の行を上限つきで並行に書く（移行が実行時間上限に当たらないように）', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const writes: string[] = [];
+  const gateways = {
+    admin: () => ({
+      async createRow(params: any) {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise(resolve => setTimeout(resolve, 1));
+        writes.push(params.rowId);
+        inFlight--;
+        return { $id: params.rowId };
+      },
+    }),
+    session: () => ({}),
+  };
+
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+  const rows = Array.from({ length: 50 }, (_, i) => ({ rowId: `r${i}`, data: {} }));
+  const result = await repository.putOwnedRows('meals', 'alice', rows, 'create');
+
+  assert.equal(result.created, 50, '全ての行が書かれること');
+  assert.equal(writes.length, 50);
+  assert.equal(peak > 1, true, '並行に走っていること');
+  assert.equal(peak <= WRITE_CONCURRENCY, true, `同時実行数が上限(${WRITE_CONCURRENCY})を超えないこと`);
+});
+
+test('並行書き込みでも成功と重複を正しく数える', async () => {
+  const conflict = new AppwriteException('already exists', 409, 'row_already_exists');
+  const gateways = {
+    admin: () => ({
+      async createRow(params: any) {
+        // 偶数番目だけ「既にある」扱いにする
+        if (Number(params.rowId.slice(1)) % 2 === 0) throw conflict;
+        return { $id: params.rowId };
+      },
+    }),
+    session: () => ({}),
+  };
+
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+  const rows = Array.from({ length: 20 }, (_, i) => ({ rowId: `r${i}`, data: {} }));
+  const result = await repository.putOwnedRows('meals', 'alice', rows, 'create');
+
+  assert.deepEqual(result, { created: 10, existed: 10 });
+});
+
+test('並行書き込みの途中で本当のエラーが出たら握りつぶさない', async () => {
+  const failure = new AppwriteException('boom', 500, 'general_error');
+  const gateways = {
+    admin: () => ({
+      async createRow(params: any) {
+        if (params.rowId === 'r5') throw failure;
+        return { $id: params.rowId };
+      },
+    }),
+    session: () => ({}),
+  };
+
+  const repository = new AppwriteRepository({ sessionSecret: 's', gateways });
+  const rows = Array.from({ length: 20 }, (_, i) => ({ rowId: `r${i}`, data: {} }));
+  await assert.rejects(
+    () => repository.putOwnedRows('meals', 'alice', rows, 'create'),
+    (error: any) => error.status === 502,
+  );
 });

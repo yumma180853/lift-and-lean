@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Cloud, CloudOff, LogOut, ShieldCheck } from 'lucide-react';
 import { ApiError, authApi, migrationApi } from '../utils/api';
 import type { AccountInfo, MigrationReport } from '../utils/api';
-import { buildBackup } from '../utils/backup';
+import { buildMigrationPayload } from '../utils/backup';
 
 /**
  * クラウド同期（移行の第2工程）。
@@ -82,7 +82,7 @@ export function CloudSync() {
     setResult(null);
     setVerified(null);
     try {
-      setPreview(await migrationApi.preview(buildBackup()));
+      setPreview(await migrationApi.preview(buildMigrationPayload()));
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -94,7 +94,7 @@ export function CloudSync() {
     setBusy(true);
     setError(null);
     try {
-      const backup = buildBackup();
+      const backup = buildMigrationPayload();
       const report = await migrationApi.apply(backup);
       if (!report.applied) {
         setError(`件数が合わないため中止しました：${report.issues.join(' / ')}`);

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AuthError } from '../api/core/errors.ts';
-import { LiftAndLeanService } from '../api/core/service.ts';
-import { createV1Router } from '../api/v1/router.ts';
+import { AuthError } from '../api/_core/errors.ts';
+import { LiftAndLeanService } from '../api/_core/service.ts';
+import { createV1Router } from '../api/_v1/router.ts';
 import { MemoryRepository } from './support/memory-repository.ts';
 
 const NOW = new Date('2026-08-12T01:00:00Z');

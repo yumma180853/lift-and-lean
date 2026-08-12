@@ -16,9 +16,9 @@ import {
   expectedCounts,
   planCounts,
   diffCounts,
-} from '../migration-helpers.ts';
-import { AppError, NotFoundError, RateLimitError, ValidationError } from './errors.ts';
-import { jstToday, resolveReadDate, resolveWriteDate, shiftDate, isDateString } from './dates.ts';
+} from '../_migration-helpers.js';
+import { AppError, NotFoundError, RateLimitError, ValidationError } from './errors.js';
+import { jstToday, resolveReadDate, resolveWriteDate, shiftDate, isDateString } from './dates.js';
 import {
   goalsInputSchema,
   mealInputSchema,
@@ -28,10 +28,10 @@ import {
   workoutInputSchema,
   setInputSchema,
   exerciseInputSchema,
-} from './validation.ts';
-import type { GoalsInput, MealInput, ProfileInput, WeightInput, WorkoutInput } from './validation.ts';
-import type { Clock, Repository, StoredRow, WriteRow } from './ports.ts';
-import { systemClock } from './ports.ts';
+} from './validation.js';
+import type { GoalsInput, MealInput, ProfileInput, WeightInput, WorkoutInput } from './validation.js';
+import type { Clock, Repository, StoredRow, WriteRow } from './ports.js';
+import { systemClock } from './ports.js';
 
 /** 1日あたりの上限。userId単位で数える（端末ローカルの制限とは別物） */
 export const RATE_LIMITS = {

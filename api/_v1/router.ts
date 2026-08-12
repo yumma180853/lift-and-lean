@@ -10,11 +10,11 @@
  * ChatGPT側の仕様が変わってもこのファイルは影響を受けない。
  */
 
-import { AppError, AuthError, toErrorResponse } from '../core/errors.ts';
-import { credentialsSchema, parseInput } from '../core/validation.ts';
-import type { Credentials } from '../core/validation.ts';
-import type { AuthenticatedUser } from '../core/ports.ts';
-import type { LiftAndLeanService } from '../core/service.ts';
+import { AppError, AuthError, toErrorResponse } from '../_core/errors.js';
+import { credentialsSchema, parseInput } from '../_core/validation.js';
+import type { Credentials } from '../_core/validation.js';
+import type { AuthenticatedUser } from '../_core/ports.js';
+import type { LiftAndLeanService } from '../_core/service.js';
 
 export const V1_PREFIX = '/api/v1';
 

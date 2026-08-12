@@ -9,9 +9,9 @@
  */
 
 import { AppwriteException, ID } from 'node-appwrite';
-import { AppError, AuthError, UpstreamError } from '../core/errors.ts';
-import type { AuthenticatedUser } from '../core/ports.ts';
-import { guestAccount, loadConfig, sessionAccount } from './client.ts';
+import { AppError, AuthError, UpstreamError } from '../_core/errors.js';
+import type { AuthenticatedUser } from '../_core/ports.js';
+import { guestAccount, loadConfig, sessionAccount } from './client.js';
 
 export const SESSION_COOKIE = 'll_session';
 
@@ -107,18 +107,28 @@ export function parseCookies(header: string | undefined): Record<string, string>
   return out;
 }
 
-export function buildSessionCookie(secret: string, expiresAt: string): string {
+/**
+ * HTTPSで配信されているか。
+ * `Secure` 付きcookieはhttpでは保存されないため、ローカル開発では外す必要がある。
+ * 本番（Vercel）では必ず付ける。
+ */
+export function isSecureContext(): boolean {
+  return Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+}
+
+export function buildSessionCookie(secret: string, expiresAt: string, secure = isSecureContext()): string {
   const maxAge = Math.max(Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000), 0);
-  return [
+  const parts = [
     `${SESSION_COOKIE}=${encodeURIComponent(secret)}`,
     'Path=/',
     'HttpOnly',
-    'Secure',
     'SameSite=Lax',
     `Max-Age=${maxAge}`,
-  ].join('; ');
+  ];
+  if (secure) parts.splice(2, 0, 'Secure');
+  return parts.join('; ');
 }
 
-export function buildClearedSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export function buildClearedSessionCookie(secure = isSecureContext()): string {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Lax; Max-Age=0`;
 }

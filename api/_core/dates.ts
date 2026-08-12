@@ -3,7 +3,7 @@
  * サーバーのタイムゾーン設定に依存させない（Vercelの実行環境はUTC）。
  */
 
-import { ValidationError } from './errors.ts';
+import { ValidationError } from './errors.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

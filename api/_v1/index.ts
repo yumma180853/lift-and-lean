@@ -3,7 +3,7 @@
  * テストはこのファイルを使わず、router に偽の依存を差し込む。
  */
 
-import { AppwriteRepository } from '../appwrite/repository.ts';
+import { AppwriteRepository } from '../_appwrite/repository.js';
 import {
   SESSION_COOKIE,
   buildClearedSessionCookie,
@@ -13,9 +13,9 @@ import {
   parseCookies,
   resolveUser,
   signUp,
-} from '../appwrite/auth.ts';
-import { LiftAndLeanService } from '../core/service.ts';
-import { createV1Router } from './router.ts';
+} from '../_appwrite/auth.js';
+import { LiftAndLeanService } from '../_core/service.js';
+import { createV1Router } from './router.js';
 
 function appendHeader(res: any, name: string, value: string): void {
   const existing = typeof res.getHeader === 'function' ? res.getHeader(name) : undefined;

@@ -7,12 +7,35 @@
  */
 
 import { AppwriteException, Permission, Query, Role } from 'node-appwrite';
-import { AppError, NotFoundError, UpstreamError } from '../core/errors.ts';
-import type { ListOptions, Repository, StoredRow, TableName, WriteMode, WriteResult, WriteRow } from '../core/ports.ts';
-import { adminTables, databaseId, sessionTables } from './client.ts';
+import { AppError, NotFoundError, UpstreamError } from '../_core/errors.js';
+import type { ListOptions, Repository, StoredRow, TableName, WriteMode, WriteResult, WriteRow } from '../_core/ports.js';
+import { adminTables, databaseId, sessionTables } from './client.js';
 
 const CONFLICT = 409;
 const NOT_FOUND = 404;
+
+/**
+ * 同時に投げる書き込みの数。
+ * 上げすぎるとAppwrite側で詰まり、下げすぎると移行が実行時間上限に当たる。
+ */
+export const WRITE_CONCURRENCY = 8;
+
+/** 上限つきの並行実行。1件でも失敗したらその例外を投げる（成否を握りつぶさない） */
+export async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let cursor = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      await worker(items[index]);
+    }
+  });
+  await Promise.all(lanes);
+}
 
 const ownerPermissions = (ownerId: string): string[] => [
   Permission.read(Role.user(ownerId)),
@@ -92,24 +115,27 @@ export class AppwriteRepository implements Repository {
     let created = 0;
     let existed = 0;
 
-    for (const row of rows) {
+    const writeOne = async (row: WriteRow): Promise<void> => {
       try {
         if (mode === 'upsert') {
           await db.upsertRow({ databaseId: databaseId(), tableId: table, rowId: row.rowId, data: row.data, permissions });
-          created++;
-          continue;
+        } else {
+          await db.createRow({ databaseId: databaseId(), tableId: table, rowId: row.rowId, data: row.data, permissions });
         }
-        await db.createRow({ databaseId: databaseId(), tableId: table, rowId: row.rowId, data: row.data, permissions });
         created++;
       } catch (error) {
         // 決定的rowIdなので、同じデータの再送は必ずここに来る。エラーにしない
         if (error instanceof AppwriteException && error.code === CONFLICT) {
           existed++;
-          continue;
+          return;
         }
         wrap(error);
       }
-    }
+    };
+
+    // 1行ずつ直列に書くと、移行のような数千行でVercelの実行時間上限（60秒）を超える。
+    // 行どうしに依存が無いので、上限つきで並行に書く。
+    await runWithConcurrency(rows, WRITE_CONCURRENCY, writeOne);
     return { created, existed };
   }
 

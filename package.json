@@ -10,8 +10,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "npm run test:unit",
-    "test:unit": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:integration": "node --experimental-strip-types --test tests/integration/*.test.ts",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "test:integration": "tsx --test tests/integration/*.test.ts",
     "db:setup": "node --experimental-strip-types scripts/appwrite-setup.ts",
     "db:verify": "node --experimental-strip-types scripts/appwrite-setup.ts --verify-only"
   },

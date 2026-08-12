@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LiftAndLeanService } from '../api/core/service.ts';
+import { LiftAndLeanService } from '../api/_core/service.ts';
 import { buildBackup } from '../src/utils/backup.ts';
 import { MemoryRepository } from './support/memory-repository.ts';
 
