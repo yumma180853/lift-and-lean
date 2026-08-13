@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { AppError } from '../api/_core/errors.ts';
 import { LiftAndLeanService } from '../api/_core/service.ts';
 import { buildBackup } from '../src/utils/backup.ts';
 import { MemoryRepository } from './support/memory-repository.ts';
@@ -208,4 +209,54 @@ test('再実行しても既存の記録を消さない（upsertは同じ行を�
   const idsAfter = repository.rawRows('weights').map(row => row.$id).sort();
 
   assert.deepEqual(idsAfter, idsBefore);
+});
+
+test('途中で失敗したときは「やり直してよい」と伝える', async () => {
+  const repository = new MemoryRepository(ALICE);
+  const original = repository.putOwnedRows.bind(repository);
+  repository.putOwnedRows = async (table, ownerId, rows, mode) => {
+    if (table === 'meals') throw new AppError('schema_mismatch', 503, 'サーバー側のデータ定義が最新ではありません。');
+    return original(table, ownerId, rows, mode);
+  };
+  const service = new LiftAndLeanService({
+    repository, clock: { now: () => NOW }, onAuditFailure: () => {},
+  });
+
+  await assert.rejects(
+    () => service.migrateFromBackup(ALICE, backupFile()),
+    (error: any) => error.code === 'schema_mismatch'
+      && /もう一度実行/.test(error.message)
+      && /重複せず/.test(error.message),
+  );
+});
+
+test('検証段階で止まる場合は書き込みを一度も行わない', async () => {
+  const { repository, service } = setup();
+  const report = await service.previewMigration(ALICE, backupFile());
+
+  // preview は検証だけ。ここで書き込みが起きていないことを実体で確かめる
+  assert.equal(report.applied, false);
+  for (const table of ['meals', 'weights', 'workouts', 'goals', 'profiles'] as const) {
+    assert.equal(repository.countOf(table), 0, table);
+  }
+});
+
+test('最初のテーブルで失敗したら、どのテーブルにも行は残らない', async () => {
+  const repository = new MemoryRepository(ALICE);
+  const original = repository.putOwnedRows.bind(repository);
+  repository.putOwnedRows = async (table, ownerId, rows, mode) => {
+    // 書き込みループの1歩目（weights）で落とす
+    if (table === 'weights') throw new AppError('schema_mismatch', 503, 'サーバー側のデータ定義が最新ではありません。');
+    return original(table, ownerId, rows, mode);
+  };
+  const service = new LiftAndLeanService({
+    repository, clock: { now: () => NOW }, onAuditFailure: () => {},
+  });
+
+  await assert.rejects(() => service.migrateFromBackup(ALICE, backupFile()), (e: any) => e.code === 'schema_mismatch');
+
+  // 検証段階では何も書かないので、1歩目で落ちれば全テーブルが空のまま
+  for (const table of ['meals', 'weights', 'workouts', 'workout_exercises', 'workout_sets', 'goals', 'profiles'] as const) {
+    assert.equal(repository.countOf(table), 0, table);
+  }
 });

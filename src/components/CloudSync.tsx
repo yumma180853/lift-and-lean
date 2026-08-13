@@ -165,8 +165,10 @@ export function CloudSync() {
       setVerified(check.ok);
       setResult(check.ok
         ? 'クラウドへコピーし、件数の一致も確認できました。'
-        : `コピーしましたが検証で差分が出ました：${check.issues.join(' / ')}`);
+        : `コピーしましたが検証で差分が出ました：${check.issues.join(' / ')}　もう一度実行すると不足分だけ補われます。`);
     } catch (e) {
+      // 途中まで書き込まれている場合がある。端末のデータは無傷なので、
+      // 「やり直してよい」ことを必ず伝える（重複しない作りになっている）
       setError(messageOf(e));
     } finally {
       setBusy(false);

@@ -591,24 +591,36 @@ export class LiftAndLeanService {
       { table: 'workout_sets', rows: plan.sets.map(toWriteRow), mode: 'create' },
     ];
 
-    for (const step of steps) {
-      if (step.rows.length === 0) continue;
-      const result = await this.repository.putOwnedRows(step.table, userId, step.rows, step.mode);
-      written.push({ table: step.table, created: result.created, existed: result.existed });
-    }
+    // ここから先は**テーブルごとに順次書き込む**。
+    // 途中で失敗すると、それまでに書けたテーブルの行は残る（部分適用）。
+    // 消して巻き戻すことはしない。決定的rowIdのおかげで、
+    // 原因を直して再実行すれば重複せずに続きから揃うため、
+    // 中途半端に消すより残したほうが安全。
+    try {
+      for (const step of steps) {
+        if (step.rows.length === 0) continue;
+        const result = await this.repository.putOwnedRows(step.table, userId, step.rows, step.mode);
+        written.push({ table: step.table, created: result.created, existed: result.existed });
+      }
 
-    if (plan.goals) {
-      const { rowId, ...goalsData } = plan.goals;
-      await this.repository.putOwnedRows('goals', userId, [{ rowId, data: goalsData }], 'upsert');
-      written.push({ table: 'goals', created: 1, existed: 0 });
-    }
-    if (plan.profile) {
-      const { rowId, ...profileData } = plan.profile;
-      await this.repository.putOwnedRows('profiles', userId, [{
-        rowId,
-        data: { ...profileData, migratedAt: this.clock.now().toISOString() },
-      }], 'upsert');
-      written.push({ table: 'profiles', created: 1, existed: 0 });
+      if (plan.goals) {
+        const { rowId, ...goalsData } = plan.goals;
+        await this.repository.putOwnedRows('goals', userId, [{ rowId, data: goalsData }], 'upsert');
+        written.push({ table: 'goals', created: 1, existed: 0 });
+      }
+      if (plan.profile) {
+        const { rowId, ...profileData } = plan.profile;
+        await this.repository.putOwnedRows('profiles', userId, [{
+          rowId,
+          data: { ...profileData, migratedAt: this.clock.now().toISOString() },
+        }], 'upsert');
+        written.push({ table: 'profiles', created: 1, existed: 0 });
+      }
+    } catch (error) {
+      // どこまで書けたかをログに残す（利用者向けの文言にはテーブル名を出さない）
+      const progress = written.map(w => `${w.table}=${w.created + w.existed}`).join(' ') || '(なし)';
+      console.error(`migration aborted after [${progress}]:`, error);
+      throw withRetryHint(error);
     }
 
     await this.audit(userId, 'migrate.apply', 'backup', JSON.stringify(actual));
@@ -652,6 +664,19 @@ export class LiftAndLeanService {
     const issues = diffCounts(expected, stored as any);
     return { ok: issues.length === 0, issues, stored: stored as any };
   }
+}
+
+/**
+ * 移行の途中で失敗したときに「やり直してよい」と伝える。
+ *
+ * 部分的に書き込まれた状態で終わるため、利用者は「二重になるのでは」と不安になる。
+ * 実際は決定的rowIdにより重複しないので、再実行を促すほうが安全な行動に繋がる。
+ */
+function withRetryHint(error: unknown): unknown {
+  if (!(error instanceof AppError)) return error;
+  const hint = '途中まで保存されています。原因が解消したらもう一度実行すると、重複せずに続きから完了します。';
+  if (error.message.includes(hint)) return error;
+  return new AppError(error.code, error.status, `${error.message}${hint}`, error.details);
 }
 
 function toWriteRow(row: Record<string, any>): WriteRow {
