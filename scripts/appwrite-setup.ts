@@ -177,6 +177,124 @@ export const SCHEMA: TableDef[] = [
   },
 ];
 
+
+// ---------------------------------------------------------------- 書き込みで確かめる
+
+/**
+ * **`status` を信じない。実際に1行書いて確かめる。**
+ *
+ * 本番で「`db:verify` は定義どおりと言うのに、書き込みが `Unknown attribute` で
+ * 落ちる」状態が実際に起きた。列の一覧・statusと、書き込み経路から見えるスキーマが
+ * 食い違うことがあるため、**本番と同じ経路（行の作成）で検査する**。
+ *
+ * 検査用の行はすぐ消す。誰にも読めないよう権限は空で作る。
+ */
+const PROBE_USER_ID = 'schemaprobe';
+
+export function sampleValue(column: ColumnDef): unknown {
+  switch (column.type) {
+    case 'string': {
+      const value = column.key === 'date' ? '1970-01-01' : PROBE_USER_ID;
+      const trimmed = value.slice(0, column.size);
+      return column.array ? [trimmed] : trimmed;
+    }
+    case 'integer':
+    case 'float':
+      return column.min ?? 0;
+    case 'boolean':
+      return false;
+    case 'enum':
+      return column.elements[0];
+    case 'datetime':
+      return new Date(0).toISOString();
+  }
+}
+
+export function unknownAttributeOf(error: unknown): string | null {
+  if (!(error instanceof AppwriteException)) return null;
+  const match = /Unknown attribute:\s*"?([^"\s]+)"?/.exec(error.message ?? '');
+  return match ? match[1] : null;
+}
+
+/** 書き込みから見えない列のキーを全部返す（空なら書き込みに使える） */
+export async function probeWritableColumns(db: TablesDB, table: TableDef): Promise<string[]> {
+  const rowId = `probe${table.id}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 36);
+  const data: Record<string, unknown> = {};
+  for (const column of table.columns) data[column.key] = sampleValue(column);
+
+  const unknown: string[] = [];
+  for (let attempt = 0; attempt <= table.columns.length; attempt++) {
+    try {
+      await db.createRow({ databaseId: DATABASE_ID, tableId: table.id, rowId, data, permissions: [] });
+      return unknown;
+    } catch (error) {
+      if (error instanceof AppwriteException && error.code === 409) return unknown; // 前回の残り
+      const key = unknownAttributeOf(error);
+      if (!key) throw error;
+      unknown.push(key);
+      delete data[key]; // 次の未知の列を見つけるために外して再試行
+    } finally {
+      try {
+        await db.deleteRow({ databaseId: DATABASE_ID, tableId: table.id, rowId });
+      } catch { /* 作れていなければ消すものも無い */ }
+    }
+  }
+  return unknown;
+}
+
+/** 書き込みから見えない列を作り直す */
+async function repairColumns(db: TablesDB, table: TableDef, keys: string[]): Promise<void> {
+  for (const key of keys) {
+    const column = table.columns.find(c => c.key === key);
+    if (!column) {
+      log(`! ${table.id}.${key} は定義に無い列です。Appwriteコンソールで確認してください`);
+      missing.push(`${table.id}.${key}（定義に無い）`);
+      continue;
+    }
+    log(`! ${table.id}.${key} は書き込みから見えません → 作り直します`);
+    try {
+      await db.deleteColumn({ databaseId: DATABASE_ID, tableId: table.id, key });
+      await waitForColumnGone(db, table.id, key);
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+    await createColumn(db, table.id, column);
+    created.push(`${table.id}.${key}（作り直し）`);
+  }
+  if (keys.length > 0) await waitForColumns(db, table, keys);
+}
+
+async function ensureWritable(db: TablesDB, table: TableDef): Promise<void> {
+  let unknown = await probeWritableColumns(db, table);
+  if (unknown.length === 0) {
+    log(`✓ ${table.id} は書き込みに使えます`);
+    return;
+  }
+
+  if (verifyOnly) {
+    for (const key of unknown) {
+      const detail = `${table.id}.${key} が書き込みから見えない`;
+      missing.push(detail);
+      log(`✗ ${detail}`);
+    }
+    return;
+  }
+
+  // 直しては再確認する。1回の作り直しで別の列が現れることがある
+  for (let round = 0; round < 5 && unknown.length > 0; round++) {
+    await repairColumns(db, table, unknown);
+    unknown = await probeWritableColumns(db, table);
+  }
+  if (unknown.length > 0) {
+    for (const key of unknown) {
+      missing.push(`${table.id}.${key} が直りません`);
+      log(`✗ ${table.id}.${key} が直りません`);
+    }
+  } else {
+    log(`✓ ${table.id} は書き込みに使えるようになりました`);
+  }
+}
+
 // ---------------------------------------------------------------- 実行
 
 const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || 'liftandlean';
@@ -338,6 +456,12 @@ async function ensureColumns(db: TablesDB, table: TableDef): Promise<void> {
         continue;
       }
       continue; // 待つのはindex作成前のwaitForColumnsに任せる
+    } else if (current) {
+      // status が想定外の値。verify で黙って作成へ落ちないよう明示的に扱う
+      const detail = `${table.id}.${column.key} の状態が不明（${current.status}）`;
+      missing.push(detail);
+      log(`✗ ${detail}`);
+      if (verifyOnly) continue;
     } else if (verifyOnly) {
       missing.push(`${table.id}.${column.key}`);
       log(`✗ ${table.id}.${column.key} がありません`);
@@ -424,6 +548,8 @@ async function main(): Promise<void> {
     if (!ready) continue;
     await ensureColumns(db, table);
     await ensureIndexes(db, table);
+    // 最後に「本番と同じ経路で本当に書けるか」を確かめる
+    await ensureWritable(db, table);
   }
 
   log('');
