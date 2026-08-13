@@ -254,15 +254,23 @@ test('401の案内が示すメタデータの場所が実在する', async () =>
   }
 });
 
-test('認可サーバーのメタデータがPKCEに対応している', async () => {
+test('認可サーバーのメタデータがPKCEに対応し、保護リソースと同じissuerを指す', async () => {
   const server = await startServer();
   try {
-    const response = await fetch(`${server.baseUrl}/.well-known/oauth-authorization-server`);
-    assert.equal(response.status, 200);
-    const body = await response.json() as any;
-    assert.deepEqual(body.code_challenge_methods_supported, ['S256'], 'PKCEはS256のみ');
-    assert.equal(typeof body.authorization_endpoint, 'string');
-    assert.equal(typeof body.token_endpoint, 'string');
+    const asResponse = await fetch(`${server.baseUrl}/.well-known/oauth-authorization-server`);
+    assert.equal(asResponse.status, 200);
+    const as = await asResponse.json() as any;
+    assert.deepEqual(as.code_challenge_methods_supported, ['S256'], 'PKCEはS256のみ');
+
+    const prm = await (await fetch(`${server.baseUrl}/.well-known/oauth-protected-resource/api/mcp`)).json() as any;
+    assert.deepEqual(prm.authorization_servers, [as.issuer], '表記が違うと認可サーバーを見つけられない');
+
+    // 広告しているエンドポイントが実際に届く場所にあること
+    for (const endpoint of [as.authorization_endpoint, as.token_endpoint]) {
+      const path = new URL(endpoint).pathname;
+      const probe = await fetch(`${server.baseUrl}${path}`, { method: 'POST' });
+      assert.notEqual(probe.status, 404, `${path} が存在する`);
+    }
   } finally {
     await server.close();
   }

@@ -171,23 +171,6 @@ export function protectedResourceMetadata(): Record<string, unknown> {
   };
 }
 
-export function authorizationServerMetadata(): Record<string, unknown> {
-  const issuer = issuerUrl();
-  const at = (path: string): string => new URL(path, issuer).href;
-  return {
-    issuer,
-    authorization_endpoint: at('/oauth/authorize'),
-    token_endpoint: at('/oauth/token'),
-    revocation_endpoint: at('/oauth/revoke'),
-    response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code'],
-    code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: [...MCP_SCOPES],
-    service_documentation: at('/privacy'),
-  };
-}
-
 /** 401のときに返す challenge（どこで認可を受ければよいか示す） */
 export function wwwAuthenticateHeader(error?: string, description?: string): string {
   const parts = [`Bearer resource_metadata="${publicAppUrl()}/.well-known/oauth-protected-resource"`];

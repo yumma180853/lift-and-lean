@@ -21,6 +21,22 @@
       "destination": "/api/server.ts"
     },
     {
+      "source": "/authorize",
+      "destination": "/api/server.ts"
+    },
+    {
+      "source": "/token",
+      "destination": "/api/server.ts"
+    },
+    {
+      "source": "/register",
+      "destination": "/api/server.ts"
+    },
+    {
+      "source": "/revoke",
+      "destination": "/api/server.ts"
+    },
+    {
       "source": "/privacy",
       "destination": "/privacy.html"
     },

@@ -69,16 +69,6 @@ test('保護リソースのメタデータがMCPの要求を満たす', () => {
   assert.deepEqual(metadata.scopes_supported, ['data:read', 'log:write']);
 });
 
-test('認可サーバーのメタデータがPKCE必須・公開クライアントであることを示す', () => {
-  const metadata = oauth.authorizationServerMetadata();
-  assert.deepEqual(metadata.code_challenge_methods_supported, ['S256']);
-  assert.deepEqual(metadata.grant_types_supported, ['authorization_code']);
-  assert.deepEqual(metadata.token_endpoint_auth_methods_supported, ['none']);
-  assert.equal(metadata.issuer, 'https://lift-and-lean.example/');
-  assert.equal(metadata.authorization_endpoint, 'https://lift-and-lean.example/oauth/authorize');
-  assert.equal(metadata.token_endpoint, 'https://lift-and-lean.example/oauth/token');
-});
-
 test('401の案内はどこで認可を受ければよいか示す', () => {
   const header = oauth.wwwAuthenticateHeader();
   assert.match(header, /^Bearer /);
@@ -119,15 +109,4 @@ test('必要な値が無ければ同意画面はフォームを出さない', ()
   const html = renderConsentPage({ error: 'リクエストの内容が正しくありません。' });
   assert.equal(html.includes('type="password"'), false);
   assert.match(html, /リクエストの内容が正しくありません/);
-});
-
-test('保護リソースと認可サーバーで issuer の表記が一致する', () => {
-  const resource = oauth.protectedResourceMetadata();
-  const server = oauth.authorizationServerMetadata();
-
-  assert.deepEqual(
-    resource.authorization_servers,
-    [server.issuer],
-    '表記が違うとクライアントが認可サーバーを見つけられない',
-  );
 });

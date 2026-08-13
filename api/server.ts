@@ -426,9 +426,12 @@ C. AIの推測 → 「〜に見えます」「〜かもしれません」と必�
 
 /** MCP・OAuth・その発見用メタデータのパス */
 function isMcpPath(url: string): boolean {
-  return url.startsWith('/api/mcp')
-    || url.startsWith('/oauth/')
-    || url.startsWith('/.well-known/oauth-');
+  const path = url.split('?')[0];
+  return path.startsWith('/api/mcp')
+    || path.startsWith('/oauth/')
+    || path.startsWith('/.well-known/oauth-')
+    // MCP SDKが広告する認可エンドポイントはドメイン直下に置かれる
+    || ['/authorize', '/token', '/register', '/revoke'].includes(path);
 }
 
 // Vercelのサーバーレス環境（API Routes）として動くようにエクスポート
