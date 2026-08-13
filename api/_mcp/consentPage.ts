@@ -85,8 +85,9 @@ export function renderConsentPage(params: ConsentPageParams): string {
     </ul>
     ${form}
     <p class="note">
-      パスワードを入力するのはこの画面だけです。ChatGPT の会話には保存されません。<br>
-      連携はアプリの設定画面からいつでも解除できます。
+      パスワードを入力するのはこの画面だけです。ChatGPT の会話には残りません。<br>
+      連携をやめるときは ChatGPT 側で接続を削除してください。この連携専用のログインが
+      無効になり、アプリのログインには影響しません。
     </p>
   </div>
 </body>

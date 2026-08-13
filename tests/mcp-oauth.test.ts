@@ -90,6 +90,8 @@ test('同意画面は許可する操作と、しない操作の両方を書く',
   assert.match(html, /アカウント操作・支払いはできません/);
   assert.match(html, /type="password"/, 'パスワードはこの画面だけで入力する');
   assert.match(html, /noindex/);
+  assert.match(html, /ChatGPT 側で接続を削除/, '解除の方法を実際にできる形で書く');
+  assert.match(html, /アプリのログインには影響しません/);
 });
 
 test('同意画面は入力値をそのままHTMLに埋めない', () => {
