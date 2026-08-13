@@ -20,6 +20,8 @@ process.env.APPWRITE_ENDPOINT = 'https://example.invalid/v1';
 process.env.APP_PUBLIC_URL = 'https://lift-and-lean.example';
 
 const oauth = await import('../api/_mcp/oauth.ts');
+const tokens = await import('../api/_mcp/tokens.ts');
+const { createMemoryRecordStore } = await import('../api/_mcp/store.ts');
 const { renderConsentPage } = await import('../api/_mcp/consentPage.ts');
 
 // ---------------------------------------------------------------- 戻り先
@@ -58,6 +60,66 @@ test('PKCEはS256で検証する', () => {
   assert.equal(oauth.verifyPkce(challenge, 'wrong-verifier'), false);
   // plain（無変換）は通さない
   assert.equal(oauth.verifyPkce(verifier, verifier), false);
+});
+
+// ---------------------------------------------------------------- 相手の固定
+
+test('資源の識別子は綴りの揺れを吸収して比べる', () => {
+  const canonical = 'https://lift-and-lean.example/api/mcp';
+  assert.equal(oauth.canonicalResource(canonical), canonical);
+  assert.equal(oauth.canonicalResource('HTTPS://LIFT-AND-LEAN.EXAMPLE/api/mcp'), canonical);
+  assert.equal(oauth.canonicalResource('https://lift-and-lean.example/api/mcp/'), canonical);
+  assert.equal(oauth.canonicalResource('https://lift-and-lean.example/api/mcp#x'), canonical);
+
+  assert.equal(oauth.isMcpResource(canonical), true);
+  assert.equal(oauth.isMcpResource('https://lift-and-lean.example/api/mcp/'), true);
+  // 別の相手・別のパスは受け付けない
+  assert.equal(oauth.isMcpResource('https://lift-and-lean.example/api/v1'), false);
+  assert.equal(oauth.isMcpResource('https://evil.example/api/mcp'), false);
+  assert.equal(oauth.isMcpResource('http://lift-and-lean.example/api/mcp'), false);
+  assert.equal(oauth.isMcpResource(undefined), false);
+  assert.equal(oauth.isMcpResource('not a url'), false);
+});
+
+// ---------------------------------------------------------------- 封をする
+
+test('Appwriteのセッションはトークンを持っている側だけが開けられる', () => {
+  const token = randomBytes(32).toString('base64url');
+  const session = 'appwrite-session-value';
+
+  const sealed = tokens.seal(token, session);
+  assert.equal(sealed.includes(session), false, '封の中身がそのまま見えない');
+  assert.equal(sealed.includes(token), false, '鍵の材料も入っていない');
+  assert.equal(tokens.unseal(token, sealed), session);
+
+  // 別のトークンでは開かない
+  assert.throws(() => tokens.unseal(randomBytes(32).toString('base64url'), sealed));
+  // 中身を書き換えても開かない
+  const parts = sealed.split('.');
+  const tampered = [parts[0], parts[1], Buffer.from('tampered').toString('base64url')].join('.');
+  assert.throws(() => tokens.unseal(token, tampered));
+  assert.throws(() => tokens.unseal(token, 'not-sealed'));
+});
+
+test('同じ値を封じても毎回違う結果になる', () => {
+  const token = randomBytes(32).toString('base64url');
+  assert.notEqual(tokens.seal(token, 'same'), tokens.seal(token, 'same'));
+});
+
+test('取り消しは何度呼んでも安全で、知らないトークンでは何も起きない', async () => {
+  const store = createMemoryRecordStore();
+  const deleted: string[] = [];
+  const issued = await tokens.issueGrant({
+    userId: 'alice', resource: 'https://lift-and-lean.example/api/mcp',
+    scopes: ['data:read'], appwriteSession: 'session-alice',
+  }, store);
+
+  await tokens.revokeByToken(issued.accessToken, store, async s => { deleted.push(s); });
+  await tokens.revokeByToken(issued.accessToken, store, async s => { deleted.push(s); });
+  await tokens.revokeByToken('unknown-token', store, async s => { deleted.push(s); });
+
+  assert.deepEqual(deleted, ['session-alice'], 'セッションの削除は1回だけ');
+  await assert.rejects(() => tokens.resolveAccessToken(issued.accessToken, store));
 });
 
 // ---------------------------------------------------------------- メタデータ

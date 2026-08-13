@@ -11,7 +11,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
-import { InvalidGrantError, InvalidTokenError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { InvalidGrantError, InvalidTargetError, InvalidTokenError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
@@ -30,6 +30,7 @@ import {
   issuerUrl,
   mcpResourceUrl,
   protectedResourceMetadata,
+  refreshTokens,
   revokeAccessToken,
   verifyAccessToken,
 } from './oauth.js';
@@ -37,6 +38,7 @@ import { buildMcpServer, createServiceForSession } from './server.js';
 import type { McpSession } from './server.js';
 import type { LiftAndLeanService } from '../_core/service.js';
 import type { OAuthDeps, VerifiedToken } from './oauth.js';
+import type { IssuedTokens } from './tokens.js';
 import { renderConsentPage } from './consentPage.js';
 
 // ---------------------------------------------------------------- クライアント
@@ -67,7 +69,7 @@ const clientsStore: OAuthRegisteredClientsStore = {
     return {
       client_id: clientId,
       redirect_uris: [redirectUri],
-      grant_types: ['authorization_code'],
+      grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
       scope: MCP_SCOPES.join(' '),
@@ -79,20 +81,20 @@ const clientsStore: OAuthRegisteredClientsStore = {
     if (!redirectUri || !isAllowedRedirectUri(redirectUri)) {
       throw new AppError('invalid_redirect_uri', 400, '戻り先のURLが許可されていません。');
     }
+    // 公開クライアントなので**秘密は持たせない**。
+    // SDKが用意した client_secret はここで落とす（持たせると誤って使われる）
+    const { client_secret: _secret, client_secret_expires_at: _expiry, ...metadata } = client;
     return {
-      ...client,
+      ...metadata,
       client_id: encodeClientId(redirectUri),
       client_id_issued_at: Math.floor(Date.now() / 1000),
       token_endpoint_auth_method: 'none',
-      grant_types: ['authorization_code'],
+      grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       scope: MCP_SCOPES.join(' '),
     };
   },
 };
-
-/** 検証結果の有効期間。実際には毎回問い合わせ直すので、長く持たせる意味は無い */
-const VERIFICATION_TTL_SECONDS = 60;
 
 // ---------------------------------------------------------------- provider
 
@@ -101,10 +103,28 @@ const VERIFICATION_TTL_SECONDS = 60;
  * 「トークンの確かめ方」と「サービスの作り方」だけを入れ替える。
  */
 export interface McpAppDeps {
-  verifyToken?: (token: string) => Promise<VerifiedToken>;
   createService?: (session: McpSession) => LiftAndLeanService;
-  /** 認可コードの保管庫と本人確認。テストではAppwrite/KVに繋がずに差し替える */
+  /** 保管庫と本人確認。テストではAppwrite/KVに繋がずに差し替える */
   oauth?: OAuthDeps;
+}
+
+/** トークン応答。**ここに載るのは自分が発行した値だけ** */
+const tokenResponse = (issued: IssuedTokens): OAuthTokens => ({
+  access_token: issued.accessToken,
+  token_type: 'Bearer',
+  expires_in: issued.expiresIn,
+  refresh_token: issued.refreshToken,
+  scope: issued.scopes.join(' '),
+});
+
+/** 認可のエラーをOAuthの形へ。そのまま投げるとSDKが500にしてしまう */
+function asOAuthError(error: unknown, fallback: string): never {
+  if (error instanceof AppError) {
+    if (error.code === 'invalid_target') throw new InvalidTargetError('token is not valid for the requested resource');
+    if (error.status === 400 || error.status === 401) throw new InvalidGrantError(fallback);
+  }
+  console.error('mcp token endpoint failed:', error);
+  throw new ServerError('token exchange failed');
 }
 
 const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
@@ -136,27 +156,29 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
     authorizationCode: string,
     codeVerifier?: string,
     redirectUri?: string,
+    resource?: URL,
   ): Promise<OAuthTokens> {
-    let result: Awaited<ReturnType<typeof exchangeCode>>;
     try {
-      result = await exchangeCode(authorizationCode, codeVerifier, client.client_id, redirectUri, deps.oauth);
+      return tokenResponse(
+        await exchangeCode(authorizationCode, codeVerifier, client.client_id, redirectUri, resource, deps.oauth),
+      );
     } catch (error) {
-      if (error instanceof AppError && error.status === 400) {
-        throw new InvalidGrantError('authorization code is invalid or expired');
-      }
-      console.error('mcp token exchange failed:', error);
-      throw new ServerError('token exchange failed');
+      asOAuthError(error, 'authorization code is invalid or expired');
     }
-    return {
-      access_token: result.accessToken,
-      token_type: 'Bearer',
-      scope: result.scopes.join(' '),
-    };
   },
 
-  async exchangeRefreshToken(): Promise<OAuthTokens> {
-    // 更新トークンは発行しない。失効したら本人がもう一度つなぎ直す
-    throw new InvalidGrantError('refresh tokens are not issued');
+  /** 公開クライアント向けに**毎回入れ替える**。使い回しは連携ごと取り消す */
+  async exchangeRefreshToken(
+    _client: OAuthClientInformationFull,
+    refreshToken: string,
+    _scopes?: string[],
+    resource?: URL,
+  ): Promise<OAuthTokens> {
+    try {
+      return tokenResponse(await refreshTokens(refreshToken, resource, deps.oauth));
+    } catch (error) {
+      asOAuthError(error, 'refresh token is invalid or expired');
+    }
   },
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -164,7 +186,7 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
     // そのまま投げると 500 になり、クライアントが再認可へ進めない
     let verified: VerifiedToken;
     try {
-      verified = await (deps.verifyToken ?? verifyAccessToken)(token);
+      verified = await verifyAccessToken(token, deps.oauth);
     } catch (error) {
       // **この文言はHTTPヘッダ（WWW-Authenticate）に載るのでASCIIだけにする。**
       // 日本語を入れるとヘッダを組み立てられずサーバーが落ちる
@@ -179,15 +201,17 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
       token,
       clientId: 'lift-and-lean',
       scopes: verified.scopes,
-      // **毎回Appwriteに問い合わせて確かめている**ので、この値はこのリクエストの間だけ有効。
-      // 連携を解除すれば次の呼び出しで弾かれる（期限切れを待つ必要はない）
-      expiresAt: Math.floor(Date.now() / 1000) + VERIFICATION_TTL_SECONDS,
-      extra: { userId: verified.userId },
+      // 発行したときに決めた相手。SDKの型どおり、MCPの資源識別子と一致していること
+      resource: new URL(verified.resource),
+      expiresAt: Math.floor(verified.expiresAt / 1000),
+      // **appwriteSession はサーバー側だけで使う**。
+      // 応答にもログにも出さない（req.auth はレスポンスに載らない）
+      extra: { userId: verified.userId, appwriteSession: verified.sessionSecret },
     };
   },
 
   async revokeToken(_client, request): Promise<void> {
-    await revokeAccessToken(request.token);
+    await revokeAccessToken(request.token, deps.oauth);
   },
 });
 
@@ -278,7 +302,13 @@ export function createMcpApp(deps: McpAppDeps = {}) {
     const auth = req.auth;
     if (!auth) { res.status(401).end(); return; }
 
-    const session = { userId: String(auth.extra?.userId ?? ''), sessionSecret: auth.token };
+    // **Appwriteのセッションはトークンからサーバー側で解決する**。
+    // 受け取ったBearer値をそのまま下流へ渡すこと（素通し）はしない
+    const session = {
+      userId: String(auth.extra?.userId ?? ''),
+      sessionSecret: String(auth.extra?.appwriteSession ?? ''),
+    };
+    if (!session.userId || !session.sessionSecret) { res.status(401).end(); return; }
     const server = buildMcpServer(() => ({
       service: makeService(session),
       userId: session.userId,
