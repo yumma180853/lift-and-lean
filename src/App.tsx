@@ -306,7 +306,7 @@ export default function App() {
   return (
     <div className="min-h-dvh bg-black text-zinc-100 font-sans selection:bg-lime-400 selection:text-black">
       <div className="max-w-md mx-auto min-h-dvh flex flex-col relative px-5 bg-[#0a0a0a]" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
-        {store.state === 'loading' && (
+        {store.state === 'loading' && store.mode === 'cloud' && (
           <div className="fixed inset-x-0 top-0 z-[60] bg-zinc-900/95 border-b border-zinc-800 px-5 py-2 text-center text-[11px] font-bold text-zinc-400">
             クラウドから読み込んでいます…
           </div>

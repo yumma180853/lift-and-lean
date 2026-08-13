@@ -408,3 +408,32 @@ test('壊れた確認リンクは400で案内する', async () => {
   assert.equal(result.status, 400);
   assert.equal(result.body.code, 'verification_invalid');
 });
+
+// ---------------------------------------------------------------- HTTPキャッシュ方針
+
+test('利用者ごとの応答は共有キャッシュに載せない（全応答 no-store）', async () => {
+  const { call, markVerified } = setup();
+  const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'yuma@example.jp', password: 'correct-horse' } });
+  const secret = signup.res.cookieSet;
+
+  // 成功・認証エラー・権限エラー・入力エラー・不明な経路 のどれも同じ方針にする
+  const cases: { label: string; result: any }[] = [
+    { label: 'signup(201)', result: signup },
+    { label: 'me(200)', result: await call('GET', '/api/v1/auth/me', { secret }) },
+    { label: 'snapshot(403 未確認)', result: await call('GET', '/api/v1/snapshot', { secret }) },
+    { label: 'snapshot(401 未ログイン)', result: await call('GET', '/api/v1/snapshot') },
+    { label: 'login(401 資格情報違い)', result: await call('POST', '/api/v1/auth/login', { body: { email: 'a@example.jp', password: 'wrong-password' } }) },
+    { label: 'login(400 入力不正)', result: await call('POST', '/api/v1/auth/login', { body: { email: 'bad', password: 'short' } }) },
+    { label: 'unknown(404)', result: await call('GET', '/api/v1/unknown', { secret }) },
+    { label: 'method(405)', result: await call('DELETE', '/api/v1/summary', { secret }) },
+  ];
+
+  for (const { label, result } of cases) {
+    assert.equal(result.res.headers['Cache-Control'], 'no-store', label);
+  }
+
+  markVerified(signup.body.userId);
+  const snapshot = await call('GET', '/api/v1/snapshot', { secret });
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.res.headers['Cache-Control'], 'no-store', 'snapshot(200 確認済み)');
+});

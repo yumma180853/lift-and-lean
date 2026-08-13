@@ -5,6 +5,15 @@ import type { AccountInfo } from '../utils/api';
 import { cloudStore } from './cloudStore';
 import { loadLocalData, localStore } from './localStore';
 import { emptyAppData } from './types';
+import {
+  LoadCoordinator,
+  initialStatus,
+  loadFailed,
+  loadSucceeded,
+  localReadyStatus,
+  startLoad,
+} from './loadState';
+import type { LoadPhase, LoadStatus } from './loadState';
 import type { AppData, DataStore, NewMeal, ProfilePatch } from './types';
 
 /**
@@ -19,7 +28,7 @@ import type { AppData, DataStore, NewMeal, ProfilePatch } from './types';
  */
 
 export type DataMode = 'local' | 'cloud';
-export type LoadState = 'loading' | 'ready' | 'error';
+export type LoadState = LoadPhase;
 
 const CACHE_KEY = 'cache:cloud-snapshot:v1';
 
@@ -81,8 +90,10 @@ export interface AppDataActions {
 export interface UseAppData {
   mode: DataMode;
   state: LoadState;
-  /** クラウドが正本なのに最新を取れていない（控えを表示している）状態 */
+  /** **最新の取得に失敗して**控えを表示している状態（取得中は含まない） */
   stale: boolean;
+  /** 取得が進行中。控えを見せながらでも起こりうる */
+  refreshing: boolean;
   data: AppData;
   account: AccountInfo | null;
   /** 直近の保存失敗。画面に出して「保存できていない」ことを伝える */
@@ -98,17 +109,17 @@ export interface UseAppData {
 export function useAppData(): UseAppData {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [mode, setMode] = useState<DataMode>('local');
-  const [state, setState] = useState<LoadState>('loading');
-  const [stale, setStale] = useState(false);
+  const [status, setStatus] = useState<LoadStatus>(initialStatus);
   const [data, setData] = useState<AppData>(emptyAppData);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   // 書き込みは常に「今の状態」から始める。二重クリックや連打で
   // 古い状態を元に上書きしてしまわないよう、refで最新を持ち、順番に流す
   const latest = useRef<AppData>(data);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const storeRef = useRef<DataStore>(localStore);
+  // 遅れて返ってきた古い読み込みが、新しい結果を上書きしないようにする
+  const loads = useRef(new LoadCoordinator());
 
   const apply = useCallback((next: AppData, forMode: DataMode, userId?: string) => {
     latest.current = next;
@@ -117,39 +128,32 @@ export function useAppData(): UseAppData {
   }, []);
 
   const loadFor = useCallback(async (info: AccountInfo | null) => {
+    const token = loads.current.begin();
     const useCloud = Boolean(info && info.emailVerified);
     const store = useCloud ? cloudStore : localStore;
     storeRef.current = store;
     setMode(store.mode);
-    setLoadError(null);
 
     if (!useCloud) {
       const local = loadLocalData();
       apply(local, 'local');
-      setStale(false);
-      setState('ready');
+      setStatus(localReadyStatus());
       return;
     }
 
     const cached = readCache(info!.userId);
-    if (cached) {
-      apply(cached, 'cloud', info!.userId);
-      setStale(true);
-      setState('ready'); // 控えでも先に見せる（白画面にしない）
-    } else {
-      setState('loading');
-    }
+    if (cached) apply(cached, 'cloud', info!.userId);
+    // 取得を始めただけ。ここで失敗扱いにはしない
+    setStatus(startLoad(Boolean(cached)));
 
     try {
       const fresh = await store.load();
+      if (!loads.current.isCurrent(token)) return; // 新しい読み込みが始まっている
       apply(fresh, 'cloud', info!.userId);
-      setStale(false);
-      setState('ready');
+      setStatus(loadSucceeded());
     } catch (error) {
-      setLoadError(messageOf(error));
-      // 控えがあるなら見せ続ける。無ければ読み込み失敗として扱う
-      setState(cached ? 'ready' : 'error');
-      setStale(true);
+      if (!loads.current.isCurrent(token)) return;
+      setStatus(loadFailed(Boolean(cached), messageOf(error)));
     }
   }, [apply]);
 
@@ -208,8 +212,13 @@ export function useAppData(): UseAppData {
   };
 
   return {
-    mode, state, stale, data, account, saveError,
+    mode,
+    state: status.phase,
+    stale: status.stale,
+    refreshing: status.refreshing,
+    data, account, saveError,
     clearSaveError: () => setSaveError(null),
-    loadError, reload, refreshAccount, actions,
+    loadError: status.error,
+    reload, refreshAccount, actions,
   };
 }

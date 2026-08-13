@@ -46,7 +46,21 @@ interface RequestContext {
   body: Record<string, unknown>;
 }
 
+/**
+ * 応答は**必ず**ここを通る。
+ *
+ * `Cache-Control: no-store` を全応答に付ける理由:
+ *   - 中身は利用者ごとに違う。既定では `public, max-age=0, must-revalidate` が
+ *     付くため、利用者別の内容が共有キャッシュに載りうる形になっていた
+ *   - キャッシュされると再検証で304が返り、本文の無い応答を扱う経路が増える
+ * 成功応答だけでなく、401/403/エラー応答にも同じ方針を適用する。
+ */
 function send(res: any, status: number, body: unknown): void {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+  } catch {
+    // ヘッダを付けられない実装でも応答自体は返す
+  }
   if (typeof res.status === 'function' && typeof res.json === 'function') {
     res.status(status).json(body);
     return;
