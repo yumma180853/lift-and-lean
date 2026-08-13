@@ -424,6 +424,13 @@ C. AIの推測 → 「〜に見えます」「〜かもしれません」と必�
   return { text, exercises: [] };
 }
 
+/** MCP・OAuth・その発見用メタデータのパス */
+function isMcpPath(url: string): boolean {
+  return url.startsWith('/api/mcp')
+    || url.startsWith('/oauth/')
+    || url.startsWith('/.well-known/oauth-');
+}
+
 // Vercelのサーバーレス環境（API Routes）として動くようにエクスポート
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -435,6 +442,12 @@ export default async function handler(req: any, res: any) {
   if (typeof req.url === 'string' && req.url.startsWith('/api/v1')) {
     const { handleV1 } = await import("./_v1/index.js");
     if (await handleV1(req, res)) return;
+  }
+
+  // ChatGPT(MCP)とOAuth。ここも独立していて、読み込みに失敗しても既存機能は動く
+  if (typeof req.url === 'string' && isMcpPath(req.url)) {
+    const { handleMcp } = await import("./_mcp/index.js");
+    return handleMcp(req, res);
   }
 
   // VAPIDキー取得（GET）

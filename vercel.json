@@ -3,12 +3,31 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "functions": {
-    "api/server.ts": { "maxDuration": 60 }
+    "api/server.ts": {
+      "maxDuration": 60
+    }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/server.ts" },
-    { "source": "/privacy", "destination": "/privacy.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/server.ts"
+    },
+    {
+      "source": "/.well-known/oauth-(.*)",
+      "destination": "/api/server.ts"
+    },
+    {
+      "source": "/oauth/(.*)",
+      "destination": "/api/server.ts"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
     {

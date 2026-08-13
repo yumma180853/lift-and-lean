@@ -315,6 +315,12 @@ export class LiftAndLeanService {
     const clientRequestId = this.clientKey(input.clientRequestId);
     const rowId = deriveRowId(userId, 'meal', clientRequestId);
 
+    // ChatGPT経由で来た数値は、出どころが確かめられていなければ推定として扱い、
+    // あとで本人が見直せるよう印を付ける（会話で出た値をそのまま正本にしない）
+    const fromChatGpt = options.channel === 'chatgpt';
+    const sourceType = fromChatGpt ? (input.sourceType ?? 'ai_estimate') : input.sourceType;
+    const needsReview = fromChatGpt && sourceType !== 'official' && sourceType !== 'web';
+
     const result = await this.repository.putOwnedRows('meals', userId, [{
       rowId,
       data: compact({
@@ -328,12 +334,12 @@ export class LiftAndLeanService {
         carbs: input.carbs,
         mealType: input.mealType,
         servingLabel: input.servingLabel,
-        sourceType: input.sourceType,
+        sourceType,
         sourceLabel: input.sourceLabel,
         sourceUrl: input.sourceUrl,
         note: input.note,
-        origin: 'app',
-        needsReview: false,
+        origin: fromChatGpt ? 'chatgpt' : 'app',
+        needsReview,
       }),
     }], 'create');
 
@@ -393,7 +399,7 @@ export class LiftAndLeanService {
         clientRequestId: this.clientKey(input.clientRequestId),
         date,
         weight: input.weight,
-        origin: 'app',
+        origin: options.channel === 'chatgpt' ? 'chatgpt' : 'app',
         needsReview: false,
       },
     }], 'upsert');
@@ -424,11 +430,12 @@ export class LiftAndLeanService {
     const date = resolveWriteDate(input.date, this.today(), options.channel === 'app');
     const clientRequestId = this.clientKey(input.clientRequestId);
     const workoutRowId = deriveRowId(userId, 'workout', date);
+    const workoutOrigin = options.channel === 'chatgpt' ? 'chatgpt' : 'app';
 
     // 日単位の行は upsert（1日1件）。種目・セットは追記
     const workoutResult = await this.repository.putOwnedRows('workouts', userId, [{
       rowId: workoutRowId,
-      data: { userId, clientRequestId, date, origin: 'app', needsReview: false },
+      data: { userId, clientRequestId, date, origin: workoutOrigin, needsReview: false },
     }], 'upsert');
 
     const exerciseRows: WriteRow[] = [];
@@ -440,7 +447,7 @@ export class LiftAndLeanService {
         rowId: exerciseRowId,
         data: {
           userId, clientRequestId: exerciseKey, workoutId: workoutRowId,
-          name: exercise.name, position: i, origin: 'app', needsReview: false,
+          name: exercise.name, position: i, origin: workoutOrigin, needsReview: false,
         },
       });
       exercise.sets.forEach((set, j) => {
@@ -449,7 +456,7 @@ export class LiftAndLeanService {
           rowId: deriveRowId(userId, 'set', setKey),
           data: {
             userId, clientRequestId: setKey, workoutId: workoutRowId, exerciseId: exerciseRowId,
-            reps: set.reps, weight: set.weight, position: j, origin: 'app', needsReview: false,
+            reps: set.reps, weight: set.weight, position: j, origin: workoutOrigin, needsReview: false,
           },
         });
       });
