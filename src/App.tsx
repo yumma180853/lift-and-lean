@@ -278,6 +278,31 @@ export default function App() {
     return workouts.find(w => w.date === selDate) ?? { id: `draft:${selDate}`, date: selDate, exercises: [] };
   }, [workouts, selDate]);
 
+  // クラウドが正本なのに読み込めず、控えも無い状態。
+  // ここで空っぽの画面を出すと「記録が消えた」ように見えるので、画面ごと差し替える
+  if (store.state === 'error') {
+    return (
+      <div className="min-h-dvh bg-black text-zinc-100 font-sans flex items-center justify-center px-6">
+        <div className="w-full max-w-sm ll-card p-6 space-y-4 text-center">
+          <div className="text-lime-400 font-black italic text-lg uppercase tracking-wider">LIFT &amp; LEAN</div>
+          <p className="text-sm font-bold text-white">データを読み込めませんでした</p>
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            {store.loadError ?? '通信に失敗しました。'}<br />
+            <span className="text-zinc-400">記録が消えたわけではありません。</span>
+            電波の良い場所で、もう一度お試しください。
+          </p>
+          <button
+            type="button"
+            onClick={() => void store.reload()}
+            className="w-full bg-lime-400 text-black py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-all"
+          >
+            もう一度読み込む
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh bg-black text-zinc-100 font-sans selection:bg-lime-400 selection:text-black">
       <div className="max-w-md mx-auto min-h-dvh flex flex-col relative px-5 bg-[#0a0a0a]" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
@@ -289,12 +314,6 @@ export default function App() {
         {store.state === 'ready' && store.stale && (
           <div className="fixed inset-x-0 top-0 z-[60] bg-amber-500/15 border-b border-amber-500/30 px-5 py-2 text-center text-[11px] font-bold text-amber-300">
             最新のデータを取得できていません（表示は前回の内容）
-            <button type="button" onClick={() => void store.reload()} className="ml-2 underline">再試行</button>
-          </div>
-        )}
-        {store.state === 'error' && (
-          <div className="fixed inset-x-0 top-0 z-[60] bg-rose-500/15 border-b border-rose-500/30 px-5 py-2 text-center text-[11px] font-bold text-rose-300">
-            データを読み込めませんでした
             <button type="button" onClick={() => void store.reload()} className="ml-2 underline">再試行</button>
           </div>
         )}
