@@ -11,7 +11,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
-import { InvalidTokenError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { InvalidGrantError, InvalidTokenError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
@@ -36,7 +36,7 @@ import {
 import { buildMcpServer, createServiceForSession } from './server.js';
 import type { McpSession } from './server.js';
 import type { LiftAndLeanService } from '../_core/service.js';
-import type { VerifiedToken } from './oauth.js';
+import type { OAuthDeps, VerifiedToken } from './oauth.js';
 import { renderConsentPage } from './consentPage.js';
 
 // ---------------------------------------------------------------- クライアント
@@ -103,6 +103,8 @@ const VERIFICATION_TTL_SECONDS = 60;
 export interface McpAppDeps {
   verifyToken?: (token: string) => Promise<VerifiedToken>;
   createService?: (session: McpSession) => LiftAndLeanService;
+  /** 認可コードの保管庫と本人確認。テストではAppwrite/KVに繋がずに差し替える */
+  oauth?: OAuthDeps;
 }
 
 const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
@@ -122,8 +124,10 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
   },
 
   async challengeForAuthorizationCode(_client, authorizationCode: string): Promise<string> {
-    const record = await authorizationCodeStore.peek(authorizationCode);
-    if (!record) throw new AppError('invalid_grant', 400, '認可コードが無効か期限切れです。');
+    // 失敗はOAuthのエラー形式で返す。そのまま投げるとSDKが500にしてしまい、
+    // クライアントは「サーバー障害」と受け取って再認可へ進めない
+    const record = await (deps.oauth?.store ?? authorizationCodeStore).peek(authorizationCode);
+    if (!record) throw new InvalidGrantError('authorization code is invalid or expired');
     return record.codeChallenge;
   },
 
@@ -133,8 +137,16 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
     codeVerifier?: string,
     redirectUri?: string,
   ): Promise<OAuthTokens> {
-    if (!codeVerifier) throw new AppError('invalid_request', 400, 'code_verifier がありません。');
-    const result = await exchangeCode(authorizationCode, codeVerifier, client.client_id, redirectUri);
+    let result: Awaited<ReturnType<typeof exchangeCode>>;
+    try {
+      result = await exchangeCode(authorizationCode, codeVerifier, client.client_id, redirectUri, deps.oauth);
+    } catch (error) {
+      if (error instanceof AppError && error.status === 400) {
+        throw new InvalidGrantError('authorization code is invalid or expired');
+      }
+      console.error('mcp token exchange failed:', error);
+      throw new ServerError('token exchange failed');
+    }
     return {
       access_token: result.accessToken,
       token_type: 'Bearer',
@@ -144,7 +156,7 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
 
   async exchangeRefreshToken(): Promise<OAuthTokens> {
     // 更新トークンは発行しない。失効したら本人がもう一度つなぎ直す
-    throw new AppError('unsupported_grant_type', 400, 'この連携では更新トークンを使いません。');
+    throw new InvalidGrantError('refresh tokens are not issued');
   },
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -186,6 +198,9 @@ export function createMcpApp(deps: McpAppDeps = {}) {
   const makeService = deps.createService ?? createServiceForSession;
   const app = express();
   app.disable('x-powered-by');
+  // Vercelのプロキシ配下で動く。これが無いと、SDKのレート制限が
+  // X-Forwarded-For を見つけて設定不備として例外を投げ、認可エンドポイントが500になる
+  app.set('trust proxy', 1);
 
   // OAuthのメタデータ・authorize・token・register・revoke
   app.use(mcpAuthRouter({
@@ -235,7 +250,7 @@ export function createMcpApp(deps: McpAppDeps = {}) {
         resource: body.resource,
         email: body.email ?? '',
         password: body.password ?? '',
-      });
+      }, deps.oauth);
       const target = new URL(body.redirect_uri!);
       target.searchParams.set('code', code);
       if (body.state) target.searchParams.set('state', body.state);

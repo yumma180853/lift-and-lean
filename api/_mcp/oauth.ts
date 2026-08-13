@@ -19,7 +19,19 @@ import { AppError, AuthError } from '../_core/errors.js';
 import { logIn, logOut, resolveUser } from '../_appwrite/auth.js';
 import { publicAppUrl } from '../_appwrite/client.js';
 import { authorizationCodeStore } from './store.js';
-import type { AuthorizationCodeRecord } from './store.js';
+import type { AuthorizationCodeRecord, AuthorizationCodeStore } from './store.js';
+
+/** 差し替え口。テストではAppwriteにもKVにも繋がずに一連の流れを確かめる */
+export interface OAuthDeps {
+  store?: AuthorizationCodeStore;
+  authenticate?: (email: string, password: string) => Promise<{ sessionSecret: string; userId: string; emailVerified: boolean }>;
+}
+
+const defaultAuthenticate = async (email: string, password: string) => {
+  const session = await logIn(email, password);
+  const user = await resolveUser(session.secret);
+  return { sessionSecret: session.secret, userId: user.userId, emailVerified: user.emailVerified };
+};
 
 export const MCP_SCOPES = ['data:read', 'log:write'] as const;
 
@@ -73,16 +85,15 @@ export interface ConsentInput {
  * ここで**この連携専用のセッションを新しく作る**ので、
  * あとで連携を解除しても本人のアプリのログインは切れない。
  */
-export async function grantAuthorization(input: ConsentInput): Promise<string> {
+export async function grantAuthorization(input: ConsentInput, deps: OAuthDeps = {}): Promise<string> {
   if (!isAllowedRedirectUri(input.redirectUri)) {
     throw new AppError('invalid_redirect', 400, '戻り先のURLが許可されていません。');
   }
 
-  const session = await logIn(input.email, input.password);
-  const user = await resolveUser(session.secret);
+  const user = await (deps.authenticate ?? defaultAuthenticate)(input.email, input.password);
   if (!user.emailVerified) {
     // 連携専用に作ったセッションは、使えないと分かった時点で片付ける
-    await logOut(session.secret).catch(() => undefined);
+    await logOut(user.sessionSecret).catch(() => undefined);
     throw new AppError(
       'email_not_verified',
       403,
@@ -97,11 +108,11 @@ export async function grantAuthorization(input: ConsentInput): Promise<string> {
     codeChallenge: input.codeChallenge,
     scopes: input.scopes.length > 0 ? input.scopes : [...MCP_SCOPES],
     resource: input.resource,
-    sessionSecret: session.secret,
+    sessionSecret: user.sessionSecret,
     userId: user.userId,
     expiresAt: Date.now() + 120_000,
   };
-  await authorizationCodeStore.save(code, record);
+  await (deps.store ?? authorizationCodeStore).save(code, record);
   return code;
 }
 
@@ -111,20 +122,27 @@ export interface ExchangeResult {
   userId: string;
 }
 
-/** 認可コードをアクセストークンに交換する（1回だけ使える） */
+/**
+ * 認可コードをアクセストークンに交換する（1回だけ使える）。
+ *
+ * PKCEの照合は呼び出し元（MCP SDKのtokenハンドラ）が
+ * `challengeForAuthorizationCode` の値を使って済ませている。
+ * 検証子が渡された場合だけ、ここでも念のため照合する。
+ */
 export async function exchangeCode(
   code: string,
-  codeVerifier: string,
+  codeVerifier: string | undefined,
   clientId: string,
   redirectUri?: string,
+  deps: OAuthDeps = {},
 ): Promise<ExchangeResult> {
-  const record = await authorizationCodeStore.take(code);
+  const record = await (deps.store ?? authorizationCodeStore).take(code);
   if (!record) throw new AppError('invalid_grant', 400, '認可コードが無効か期限切れです。');
   if (record.clientId !== clientId) throw new AppError('invalid_grant', 400, '認可コードが無効です。');
   if (redirectUri && record.redirectUri !== redirectUri) {
     throw new AppError('invalid_grant', 400, '認可コードが無効です。');
   }
-  if (!verifyPkce(record.codeChallenge, codeVerifier)) {
+  if (codeVerifier !== undefined && !verifyPkce(record.codeChallenge, codeVerifier)) {
     throw new AppError('invalid_grant', 400, '認可コードが無効です。');
   }
 

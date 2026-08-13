@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 
 process.env.APPWRITE_PROJECT_ID = 'test-project';
@@ -39,7 +40,27 @@ async function startServer() {
   const repository = new MemoryRepository();
   const services = new Map<string, InstanceType<typeof LiftAndLeanService>>();
 
+  // 認可コードの保管庫（本番はVercel KV）
+  const codes = new Map<string, any>();
+  const store = {
+    async save(code: string, record: any) { codes.set(code, record); },
+    async take(code: string) { const r = codes.get(code); codes.delete(code); return r ?? null; },
+    async peek(code: string) { return codes.get(code) ?? null; },
+  };
+
   const app = createMcpApp({
+    oauth: {
+      store: store as any,
+      async authenticate(email: string, password: string) {
+        if (password !== 'correct-horse') {
+          const error: any = new Error('メールアドレスかパスワードが違います。');
+          error.status = 401;
+          throw error;
+        }
+        const verified = email !== 'unverified@example.jp';
+        return { sessionSecret: verified ? 'token-alice' : 'token-unverified', userId: verified ? 'alice' : 'carol', emailVerified: verified };
+      },
+    },
     async verifyToken(token: string) {
       const userId = TOKENS[token];
       if (!userId) {
@@ -75,6 +96,7 @@ async function startServer() {
 
   return {
     repository,
+    codes,
     baseUrl: `http://127.0.0.1:${port}`,
     async close() { await new Promise<void>(resolve => { server.close(() => resolve()); }); },
   };
@@ -463,6 +485,215 @@ test('公開していない道具は呼べない', async () => {
       assert.equal(result.isError, true, `${name} は呼べない`);
     }
     await close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('プロキシ配下でも認可エンドポイントが落ちない', async () => {
+  const server = await startServer();
+  try {
+    // Vercelが付ける転送ヘッダを再現する
+    const response = await fetch(`${server.baseUrl}/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Forwarded-For': '203.0.113.10',
+        Forwarded: 'for=203.0.113.10;proto=https',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: 'does-not-exist',
+        client_id: 'll-aHR0cHM6Ly9jaGF0Z3B0LmNvbS9jb25uZWN0b3Ivb2F1dGgvcHJvYmU',
+        code_verifier: 'abcdefghijklmnopqrstuvwxyz1234567890abcd',
+        redirect_uri: 'https://chatgpt.com/connector/oauth/probe',
+      }).toString(),
+    });
+
+    assert.notEqual(response.status, 500, '設定不備で500になっていない');
+    const body = await response.json() as any;
+    assert.equal(typeof body.error, 'string', 'OAuthのエラー形式で返る');
+  } finally {
+    await server.close();
+  }
+});
+
+// ---------------------------------------------------------------- 認可の一連
+
+const pkce = () => {
+  const verifier = Buffer.from(randomBytes(32)).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+};
+
+const CLIENT_ID = `ll-${Buffer.from('https://chatgpt.com/connector/oauth/probe').toString('base64url')}`;
+const REDIRECT = 'https://chatgpt.com/connector/oauth/probe';
+
+test('同意 → コード発行 → トークン交換 → MCP接続 が通る', async () => {
+  const server = await startServer();
+  try {
+    const { verifier, challenge } = pkce();
+
+    // 同意画面から許可する（パスワードを入れるのはここだけ）
+    const consent = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+        state: 'xyz', scope: 'data:read log:write',
+        email: 'yuma@example.jp', password: 'correct-horse',
+      }).toString(),
+    });
+
+    assert.equal(consent.status, 302);
+    const location = new URL(consent.headers.get('location')!);
+    assert.equal(location.origin + location.pathname, REDIRECT);
+    assert.equal(location.searchParams.get('state'), 'xyz');
+    const code = location.searchParams.get('code');
+    assert.equal(typeof code, 'string');
+
+    // コードをトークンに交換する
+    const tokenResponse = await fetch(`${server.baseUrl}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', code: code!, client_id: CLIENT_ID,
+        code_verifier: verifier, redirect_uri: REDIRECT,
+      }).toString(),
+    });
+    assert.equal(tokenResponse.status, 200);
+    const tokens = await tokenResponse.json() as any;
+    assert.equal(tokens.token_type, 'Bearer');
+    assert.equal(typeof tokens.access_token, 'string');
+
+    // もらったトークンでMCPが使える
+    const { client, close } = await connect(server.baseUrl, tokens.access_token);
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 6);
+    await close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('PKCEの検証子が違えばトークンを出さない', async () => {
+  const server = await startServer();
+  try {
+    const { challenge } = pkce();
+    const consent = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+        email: 'yuma@example.jp', password: 'correct-horse',
+      }).toString(),
+    });
+    const code = new URL(consent.headers.get('location')!).searchParams.get('code')!;
+
+    const response = await fetch(`${server.baseUrl}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', code, client_id: CLIENT_ID,
+        code_verifier: 'a-completely-different-verifier-0123456789', redirect_uri: REDIRECT,
+      }).toString(),
+    });
+    assert.notEqual(response.status, 200);
+  } finally {
+    await server.close();
+  }
+});
+
+test('認可コードは1回しか使えない', async () => {
+  const server = await startServer();
+  try {
+    const { verifier, challenge } = pkce();
+    const consent = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+        email: 'yuma@example.jp', password: 'correct-horse',
+      }).toString(),
+    });
+    const code = new URL(consent.headers.get('location')!).searchParams.get('code')!;
+    const exchange = () => fetch(`${server.baseUrl}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', code, client_id: CLIENT_ID,
+        code_verifier: verifier, redirect_uri: REDIRECT,
+      }).toString(),
+    });
+
+    assert.equal((await exchange()).status, 200);
+    assert.notEqual((await exchange()).status, 200, '2回目は通らない');
+  } finally {
+    await server.close();
+  }
+});
+
+test('パスワードが違えば同意画面から先へ進めない', async () => {
+  const server = await startServer();
+  try {
+    const { challenge } = pkce();
+    const response = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+        email: 'yuma@example.jp', password: 'wrong-password',
+      }).toString(),
+    });
+
+    assert.notEqual(response.status, 302, 'リダイレクトしない');
+    assert.equal(server.codes.size, 0, 'コードを発行しない');
+  } finally {
+    await server.close();
+  }
+});
+
+test('メール未確認では連携できない', async () => {
+  const server = await startServer();
+  try {
+    const { challenge } = pkce();
+    const response = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+        email: 'unverified@example.jp', password: 'correct-horse',
+      }).toString(),
+    });
+
+    assert.notEqual(response.status, 302);
+    assert.equal(server.codes.size, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('許可していない戻り先にはコードを渡さない', async () => {
+  const server = await startServer();
+  try {
+    const { challenge } = pkce();
+    const response = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: 'https://evil.example/steal',
+        code_challenge: challenge, email: 'yuma@example.jp', password: 'correct-horse',
+      }).toString(),
+    });
+
+    assert.notEqual(response.status, 302);
+    assert.equal(server.codes.size, 0);
   } finally {
     await server.close();
   }
