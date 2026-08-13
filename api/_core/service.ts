@@ -42,6 +42,22 @@ export const RATE_LIMITS = {
 
 export type RateBucket = keyof typeof RATE_LIMITS;
 
+/**
+ * 誰からの書き込みか。
+ *
+ * `app` はアプリ本人の操作なので、**過去の日付を自由に編集できる**
+ * （食事ログは何日前でも遡って直せるのが元からの挙動）。
+ * `chatgpt` は自然文から解決した日付を鵜呑みにできないため、31日より前を拒否する。
+ *
+ * **指定が無ければ厳しい側（31日制限あり）で扱う。** 新しい入口を足したときに
+ * 指定を忘れても、緩い方へ倒れないようにするため。
+ */
+export type WriteChannel = 'app' | 'chatgpt';
+
+export interface WriteOptions {
+  channel?: WriteChannel;
+}
+
 const MAX_LIST_LIMIT = 500;
 
 export interface ServiceOptions {
@@ -94,6 +110,134 @@ const compact = (data: Record<string, unknown>): Record<string, unknown> => {
   }
   return out;
 };
+
+
+// ---------------------------------------------------------------- 外向きの形
+
+/**
+ * 入口へ返す形。**Appwrite固有の項目（$id など）はここで落とす。**
+ * PWAも将来のMCPも、この形だけを見ればよい。
+ */
+export interface MealDto {
+  id: string;
+  date: string;
+  name: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  mealType?: string;
+  servingLabel?: string;
+  sourceType?: string;
+  sourceLabel?: string;
+  sourceUrl?: string;
+  note?: string;
+}
+
+export interface WeightDto { id: string; date: string; weight: number }
+export interface SetDto { id: string; reps: number; weight: number }
+export interface ExerciseDto { id: string; name: string; sets: SetDto[] }
+export interface WorkoutDto { id: string; date: string; exercises: ExerciseDto[] }
+export interface GoalsDto {
+  calories: number; protein: number; fat: number; carbs: number; targetWeight: number; trainerStyle?: string;
+}
+export interface ProfileDto {
+  hiddenWorkoutDates: string[];
+  freezeUsedDates: string[];
+  customExerciseCategories: Record<string, string>;
+  longestStreak: number;
+}
+
+export interface Snapshot {
+  meals: MealDto[];
+  weights: WeightDto[];
+  workouts: WorkoutDto[];
+  goals: GoalsDto | null;
+  profile: ProfileDto | null;
+  /** サーバーが見ている「今日」（JST）。端末の時計とずれても表示を合わせられるように */
+  today: string;
+}
+
+const text = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined;
+
+const toMealDto = (row: StoredRow): MealDto => ({
+  id: row.$id,
+  date: row.date,
+  name: row.name ?? '',
+  calories: num(row.calories),
+  protein: num(row.protein),
+  fat: num(row.fat),
+  carbs: num(row.carbs),
+  mealType: text(row.mealType),
+  servingLabel: text(row.servingLabel),
+  sourceType: text(row.sourceType),
+  sourceLabel: text(row.sourceLabel),
+  sourceUrl: text(row.sourceUrl),
+  note: text(row.note),
+});
+
+const toWeightDto = (row: StoredRow): WeightDto => ({
+  id: row.$id,
+  date: row.date,
+  weight: num(row.weight),
+});
+
+/** 種目・セットを筋トレ行へ組み立てる（表示順は position） */
+function buildWorkoutDtos(workouts: StoredRow[], exercises: StoredRow[], sets: StoredRow[]): WorkoutDto[] {
+  const setsByExercise = new Map<string, StoredRow[]>();
+  for (const set of sets) {
+    const list = setsByExercise.get(set.exerciseId) ?? [];
+    list.push(set);
+    setsByExercise.set(set.exerciseId, list);
+  }
+  const exercisesByWorkout = new Map<string, StoredRow[]>();
+  for (const exercise of exercises) {
+    const list = exercisesByWorkout.get(exercise.workoutId) ?? [];
+    list.push(exercise);
+    exercisesByWorkout.set(exercise.workoutId, list);
+  }
+
+  return workouts.map(workout => ({
+    id: workout.$id,
+    date: workout.date,
+    exercises: (exercisesByWorkout.get(workout.$id) ?? [])
+      .sort((a, b) => num(a.position) - num(b.position))
+      .map(exercise => ({
+        id: exercise.$id,
+        name: exercise.name ?? '',
+        sets: (setsByExercise.get(exercise.$id) ?? [])
+          .sort((a, b) => num(a.position) - num(b.position))
+          .map(set => ({ id: set.$id, reps: num(set.reps), weight: num(set.weight) })),
+      })),
+  }));
+}
+
+const toGoalsDto = (row: StoredRow | null): GoalsDto | null => row === null ? null : ({
+  calories: num(row.calories),
+  protein: num(row.protein),
+  fat: num(row.fat),
+  carbs: num(row.carbs),
+  targetWeight: num(row.targetWeight),
+  trainerStyle: text(row.trainerStyle),
+});
+
+function toProfileDto(row: StoredRow | null): ProfileDto | null {
+  if (row === null) return null;
+  let categories: Record<string, string> = {};
+  try {
+    const parsed = JSON.parse(row.customExerciseCategories ?? '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) categories = parsed;
+  } catch {
+    // 壊れていても他の設定は返す
+  }
+  return {
+    hiddenWorkoutDates: Array.isArray(row.hiddenWorkoutDates) ? row.hiddenWorkoutDates : [],
+    freezeUsedDates: Array.isArray(row.freezeUsedDates) ? row.freezeUsedDates : [],
+    customExerciseCategories: categories,
+    longestStreak: num(row.longestStreak),
+  };
+}
 
 export class LiftAndLeanService {
   repository: Repository;
@@ -163,11 +307,11 @@ export class LiftAndLeanService {
 
   // -------------------------------------------------------------- 食事
 
-  async logMeal(userId: string, rawInput: unknown): Promise<SaveOutcome> {
+  async logMeal(userId: string, rawInput: unknown, options: WriteOptions = {}): Promise<SaveOutcome> {
     const input = parseInput<MealInput>(mealInputSchema, rawInput);
     await this.consumeRateLimit(userId, 'write');
 
-    const date = resolveWriteDate(input.date, this.today());
+    const date = resolveWriteDate(input.date, this.today(), options.channel === 'app');
     const clientRequestId = this.clientKey(input.clientRequestId);
     const rowId = deriveRowId(userId, 'meal', clientRequestId);
 
@@ -197,18 +341,19 @@ export class LiftAndLeanService {
     return { rowId, duplicated: result.existed > 0 };
   }
 
-  async listMeals(userId: string, date?: unknown): Promise<StoredRow[]> {
+  async listMeals(userId: string, date?: unknown): Promise<MealDto[]> {
     const target = resolveReadDate(date, this.today());
-    return this.repository.listRows('meals', userId, {
+    const rows = await this.repository.listRows('meals', userId, {
       equals: { userId, date: target },
       orderAsc: '$createdAt',
       limit: MAX_LIST_LIMIT,
     });
+    return rows.map(toMealDto);
   }
 
-  async updateMeal(userId: string, rowId: string, rawInput: unknown): Promise<void> {
+  async updateMeal(userId: string, rowId: string, rawInput: unknown, options: WriteOptions = {}): Promise<void> {
     const input = parseInput<MealInput>(mealInputSchema, rawInput);
-    const date = resolveWriteDate(input.date, this.today());
+    const date = resolveWriteDate(input.date, this.today(), options.channel === 'app');
     await this.repository.patchOwnedRow('meals', userId, rowId, compact({
       date,
       name: input.name,
@@ -235,11 +380,11 @@ export class LiftAndLeanService {
   // -------------------------------------------------------------- 体重
 
   /** 同じ日に2回記録したら上書きする（既存アプリの addWeight と同じ挙動） */
-  async logWeight(userId: string, rawInput: unknown): Promise<SaveOutcome> {
+  async logWeight(userId: string, rawInput: unknown, options: WriteOptions = {}): Promise<SaveOutcome> {
     const input = parseInput<WeightInput>(weightInputSchema, rawInput);
     await this.consumeRateLimit(userId, 'write');
 
-    const date = resolveWriteDate(input.date, this.today());
+    const date = resolveWriteDate(input.date, this.today(), options.channel === 'app');
     const rowId = deriveRowId(userId, 'weight', date);
     const result = await this.repository.putOwnedRows('weights', userId, [{
       rowId,
@@ -257,25 +402,26 @@ export class LiftAndLeanService {
     return { rowId, duplicated: result.existed > 0 };
   }
 
-  async listWeights(userId: string, from?: unknown, to?: unknown): Promise<StoredRow[]> {
+  async listWeights(userId: string, from?: unknown, to?: unknown): Promise<WeightDto[]> {
     const today = this.today();
     const end = resolveReadDate(to, today);
     const start = from === undefined || from === null || from === '' ? shiftDate(end, -180) : resolveReadDate(from, today);
-    return this.repository.listRows('weights', userId, {
+    const rows = await this.repository.listRows('weights', userId, {
       equals: { userId },
       between: { column: 'date', from: start, to: end },
       orderAsc: 'date',
       limit: MAX_LIST_LIMIT,
     });
+    return rows.map(toWeightDto);
   }
 
   // -------------------------------------------------------------- 筋トレ
 
-  async logWorkout(userId: string, rawInput: unknown): Promise<SaveOutcome & { exercises: number; sets: number }> {
+  async logWorkout(userId: string, rawInput: unknown, options: WriteOptions = {}): Promise<SaveOutcome & { exercises: number; sets: number }> {
     const input = parseInput<WorkoutInput>(workoutInputSchema, rawInput);
     await this.consumeRateLimit(userId, 'write');
 
-    const date = resolveWriteDate(input.date, this.today());
+    const date = resolveWriteDate(input.date, this.today(), options.channel === 'app');
     const clientRequestId = this.clientKey(input.clientRequestId);
     const workoutRowId = deriveRowId(userId, 'workout', date);
 
@@ -321,10 +467,10 @@ export class LiftAndLeanService {
     };
   }
 
-  async addExercise(userId: string, rawInput: unknown): Promise<SaveOutcome> {
+  async addExercise(userId: string, rawInput: unknown, options: WriteOptions = {}): Promise<SaveOutcome> {
     const body = (rawInput ?? {}) as Record<string, unknown>;
     const exercise = parseInput(exerciseInputSchema, { name: body.name, sets: body.sets ?? [] });
-    const date = resolveWriteDate(body.date, this.today());
+    const date = resolveWriteDate(body.date, this.today(), options.channel === 'app');
     const workoutRowId = deriveRowId(userId, 'workout', date);
     const clientRequestId = this.clientKey(typeof body.clientRequestId === 'string' ? body.clientRequestId : undefined);
     const rowId = deriveRowId(userId, 'exercise', clientRequestId);
@@ -402,7 +548,7 @@ export class LiftAndLeanService {
     await this.audit(userId, 'exercise.delete', rowId, `sets=${sets.length}`);
   }
 
-  async getWorkout(userId: string, date: string): Promise<{ date: string; rowId: string; exercises: any[] } | null> {
+  async getWorkout(userId: string, date: string): Promise<WorkoutDto | null> {
     const rows = await this.repository.listRows('workouts', userId, {
       equals: { userId, date }, limit: 1,
     });
@@ -411,7 +557,7 @@ export class LiftAndLeanService {
     return detailed[0];
   }
 
-  async getRecentWorkouts(userId: string, limit = 5): Promise<any[]> {
+  async getRecentWorkouts(userId: string, limit = 5): Promise<WorkoutDto[]> {
     const safeLimit = Math.min(Math.max(Math.trunc(num(limit)) || 5, 1), 50);
     const workouts = await this.repository.listRows('workouts', userId, {
       equals: { userId }, orderDesc: 'date', limit: safeLimit,
@@ -420,7 +566,7 @@ export class LiftAndLeanService {
   }
 
   /** 筋トレ・種目・セットを3クエリで組み立てる（1日ずつ引かない） */
-  private async attachExercises(userId: string, workouts: StoredRow[]): Promise<any[]> {
+  private async attachExercises(userId: string, workouts: StoredRow[]): Promise<WorkoutDto[]> {
     if (workouts.length === 0) return [];
     const workoutIds = workouts.map(w => w.$id);
     const exercises = await this.repository.listRows('workout_exercises', userId, {
@@ -431,34 +577,45 @@ export class LiftAndLeanService {
       equals: { userId }, anyOf: { column: 'exerciseId', values: exerciseIds }, limit: MAX_LIST_LIMIT,
     });
 
-    const setsByExercise = new Map<string, StoredRow[]>();
-    for (const set of sets) {
-      const list = setsByExercise.get(set.exerciseId) ?? [];
-      list.push(set);
-      setsByExercise.set(set.exerciseId, list);
-    }
+    return buildWorkoutDtos(workouts, exercises, sets);
+  }
 
-    return workouts.map(workout => ({
-      rowId: workout.$id,
-      date: workout.date,
-      exercises: exercises
-        .filter(e => e.workoutId === workout.$id)
-        .sort((a, b) => num(a.position) - num(b.position))
-        .map(exercise => ({
-          rowId: exercise.$id,
-          name: exercise.name,
-          sets: (setsByExercise.get(exercise.$id) ?? [])
-            .sort((a, b) => num(a.position) - num(b.position))
-            .map(set => ({ rowId: set.$id, reps: num(set.reps), weight: num(set.weight) })),
-        })),
-    }));
+  /**
+   * アプリの起動に必要なデータを一度に返す。
+   *
+   * 画面ごとに何度も往復すると、初回表示が遅くなり中途半端な状態も見せてしまう。
+   * 全件を取るので、一覧の上限で黙って切れないようページングして集める。
+   */
+  async getSnapshot(userId: string): Promise<Snapshot> {
+    const [meals, weights, workouts, exercises, sets, goals, profile] = await Promise.all([
+      this.repository.listAllRows('meals', userId, { equals: { userId } }),
+      this.repository.listAllRows('weights', userId, { equals: { userId } }),
+      this.repository.listAllRows('workouts', userId, { equals: { userId } }),
+      this.repository.listAllRows('workout_exercises', userId, { equals: { userId } }),
+      this.repository.listAllRows('workout_sets', userId, { equals: { userId } }),
+      this.getGoalsRow(userId),
+      this.getProfileRow(userId),
+    ]);
+
+    return {
+      meals: meals.map(toMealDto).sort((a, b) => a.date.localeCompare(b.date)),
+      weights: weights.map(toWeightDto).sort((a, b) => a.date.localeCompare(b.date)),
+      workouts: buildWorkoutDtos(workouts, exercises, sets).sort((a, b) => a.date.localeCompare(b.date)),
+      goals: toGoalsDto(goals),
+      profile: toProfileDto(profile),
+      today: this.today(),
+    };
   }
 
   // -------------------------------------------------------------- 目標・プロフィール
 
-  async getGoals(userId: string): Promise<StoredRow | null> {
+  private async getGoalsRow(userId: string): Promise<StoredRow | null> {
     const rows = await this.repository.listRows('goals', userId, { equals: { userId }, limit: 1 });
     return rows[0] ?? null;
+  }
+
+  async getGoals(userId: string): Promise<GoalsDto | null> {
+    return toGoalsDto(await this.getGoalsRow(userId));
   }
 
   async saveGoals(userId: string, rawInput: unknown): Promise<void> {
@@ -470,9 +627,13 @@ export class LiftAndLeanService {
     await this.audit(userId, 'goals.update', 'goals');
   }
 
-  async getProfile(userId: string): Promise<StoredRow | null> {
+  private async getProfileRow(userId: string): Promise<StoredRow | null> {
     const rows = await this.repository.listRows('profiles', userId, { equals: { userId }, limit: 1 });
     return rows[0] ?? null;
+  }
+
+  async getProfile(userId: string): Promise<ProfileDto | null> {
+    return toProfileDto(await this.getProfileRow(userId));
   }
 
   async saveProfile(userId: string, rawInput: unknown): Promise<void> {
@@ -511,10 +672,7 @@ export class LiftAndLeanService {
     return {
       date: target,
       totals,
-      goals: goals ? {
-        calories: num(goals.calories), protein: num(goals.protein), fat: num(goals.fat),
-        carbs: num(goals.carbs), targetWeight: num(goals.targetWeight), trainerStyle: goals.trainerStyle,
-      } : null,
+      goals,
       mealCount: meals.length,
       weight: weights.length > 0 ? num(weights[0].weight) : null,
       workout: workout ? {

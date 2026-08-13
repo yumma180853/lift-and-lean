@@ -273,7 +273,7 @@ test('目標とプロフィールを保存して読み戻せる', async () => {
 
   assert.equal(goals.body.goals.trainerStyle, 'stoic');
   assert.equal(profile.body.profile.longestStreak, 12);
-  assert.equal(profile.body.profile.customExerciseCategories, '{"ヒップスラスト":"脚"}');
+  assert.deepEqual(profile.body.profile.customExerciseCategories, { 'ヒップスラスト': '脚' });
 });
 
 // ---------------------------------------------------------------- パスワード再設定

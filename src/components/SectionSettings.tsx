@@ -4,12 +4,18 @@ import { UserGoals } from '../types';
 import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
 import { downloadBackup } from '../utils/backup';
 import { CloudSync } from './CloudSync';
+import type { AccountInfo } from '../utils/api';
 
 interface SectionSettingsProps {
   goals: UserGoals;
   setGoals: (goals: UserGoals) => void;
   remind: boolean;
   toggleNotification: () => void;
+  /** ログイン状態。データの保存先を決めるのはアプリ側なので、ここでは受け取るだけ */
+  account: AccountInfo | null;
+  dataMode: 'local' | 'cloud';
+  /** ログイン・ログアウト・メール確認のあとにアプリへ知らせる */
+  onAccountChanged: () => Promise<void>;
 }
 
 interface GoalSuggestion {
@@ -32,7 +38,7 @@ const GOAL_OPTIONS = ['筋肉を増やしたい', '体を大きくしたい', '�
 const INTENSITY_OPTIONS = ['ゆるく', '標準', 'しっかり'];
 const STRUGGLE_OPTIONS = ['自炊が苦手', '外食が多い', '間食がやめられない', '量を食べられない'];
 
-export function SectionSettings({ goals, setGoals, remind, toggleNotification }: SectionSettingsProps) {
+export function SectionSettings({ goals, setGoals, remind, toggleNotification, account, dataMode, onAccountChanged }: SectionSettingsProps) {
   const handleChange = (key: keyof UserGoals, value: number) => {
     setGoals({ ...goals, [key]: value });
   };
@@ -286,7 +292,7 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification }:
       </div>
 
       {/* クラウド同期（移行の第2工程） */}
-      <CloudSync />
+      <CloudSync account={account} dataMode={dataMode} onAccountChanged={onAccountChanged} />
 
       {/* プライバシーポリシー */}
       <div className="ll-card p-5">

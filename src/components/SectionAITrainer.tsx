@@ -10,7 +10,6 @@ export interface SectionAITrainerProps {
   goals: UserGoals;
   today: string;
   todayWorkout: Workout | undefined;
-  setWorkouts: React.Dispatch<React.SetStateAction<Workout[]>>;
   setActiveTab: (tab: Tab) => void;
   isSending: boolean;
   handleSendMessage: (text: string, images: string[]) => void;
@@ -24,7 +23,6 @@ export function SectionAITrainer({
   goals,
   today,
   todayWorkout,
-  setWorkouts,
   setActiveTab,
   isSending,
   handleSendMessage,

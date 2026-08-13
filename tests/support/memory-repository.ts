@@ -117,6 +117,10 @@ export class MemoryRepository implements Repository {
     return records.slice(0, limit).map(record => this.toStoredRow(record));
   }
 
+  async listAllRows(table: TableName, viewerId: string, options: Omit<ListOptions, 'limit'> = {}): Promise<StoredRow[]> {
+    return this.listRows(table, viewerId, { ...options, limit: Number.MAX_SAFE_INTEGER });
+  }
+
   private assertOwned(table: TableName, ownerId: string, rowId: string, permission: (id: string) => string): StoredRecord {
     const record = this.rows.get(this.key(table, rowId));
     // 「存在しない」と「他人のもの」を区別しない（存在の有無も漏らさない）

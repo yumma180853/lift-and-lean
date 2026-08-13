@@ -62,6 +62,13 @@ export interface Repository {
   listRows(table: TableName, viewerId: string, options?: ListOptions): Promise<StoredRow[]>;
 
   /**
+   * 条件に合う行を**全部**返す（内部でページングする）。
+   * 一覧の上限で黙って打ち切ると「移行したのに一部だけ見えない」になるため、
+   * 全件が要る用途ではこちらを使う。
+   */
+  listAllRows(table: TableName, viewerId: string, options?: Omit<ListOptions, 'limit'>): Promise<StoredRow[]>;
+
+  /**
    * 既存の行を部分更新する。
    * 実装は「その行の所有者が ownerId であること」を必ず確かめること
    * （rowIdは決定的で推測可能なため、IDを知っているだけでは触れてはいけない）。

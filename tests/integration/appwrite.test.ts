@@ -73,7 +73,7 @@ test('実Appwriteで他人のデータが読めない・消せない', options, 
 
     // 本人は読める
     const own = await aliceService.listMeals(alice.userId);
-    assert.equal(own.some(row => row.$id === meal.rowId), true, 'アリス自身が自分の記録を読めること');
+    assert.equal(own.some(row => row.id === meal.rowId), true, 'アリス自身が自分の記録を読めること');
 
     // 同じ内容の再送は重複しない（Appwriteの409を冪等として扱えているか）
     const again = await aliceService.logMeal(alice.userId, {
@@ -88,7 +88,7 @@ test('実Appwriteで他人のデータが読めない・消せない', options, 
     const bobRepository = new AppwriteRepository({ sessionSecret: bob.secret });
 
     const bobList = await bobService.listMeals(bob.userId);
-    assert.equal(bobList.some(row => row.$id === meal.rowId), false, 'ボブの一覧にアリスの行が出ないこと');
+    assert.equal(bobList.some(row => row.id === meal.rowId), false, 'ボブの一覧にアリスの行が出ないこと');
 
     const leakedByUserId = await bobRepository.listRows('meals', bob.userId, { equals: { userId: alice.userId } });
     assert.deepEqual(leakedByUserId, [], 'アリスのuserIdを指定してもボブには返らないこと');
@@ -104,7 +104,7 @@ test('実Appwriteで他人のデータが読めない・消せない', options, 
     );
 
     const stillThere = await aliceService.listMeals(alice.userId);
-    assert.equal(stillThere.some(row => row.$id === meal.rowId), true, '削除の試行後もアリスの記録が残っていること');
+    assert.equal(stillThere.some(row => row.id === meal.rowId), true, '削除の試行後もアリスの記録が残っていること');
   } finally {
     // 後始末。所有者本人のサービス経由で消す（ここもAPIキーの読み取りを使わない）
     for (const row of written) {
@@ -177,7 +177,7 @@ test('本番APIキーは rows.write だけで全ての書き込み経路が動�
 
     // 読み取りはセッション側で成立していること
     const meals = await service.listMeals(userId, today);
-    assert.equal(meals.some(row => row.$id === meal.rowId), true);
+    assert.equal(meals.some(row => row.id === meal.rowId), true);
   } finally {
     for (const remove of cleanup) {
       try { await remove(); } catch { /* 残っても手で消せる */ }

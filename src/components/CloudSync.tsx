@@ -3,6 +3,7 @@ import { Cloud, CloudOff, LogOut, MailWarning, ShieldCheck } from 'lucide-react'
 import { ApiError, authApi, migrationApi } from '../utils/api';
 import type { AccountInfo, MigrationReport } from '../utils/api';
 import { buildMigrationPayload } from '../utils/backup';
+import { clearCache } from '../data/useAppData';
 
 /**
  * クラウド同期（移行の第2工程）。
@@ -14,12 +15,20 @@ import { buildMigrationPayload } from '../utils/backup';
 
 type Phase = 'checking' | 'unavailable' | 'signedOut' | 'unverified' | 'signedIn';
 
+interface CloudSyncProps {
+  /** アプリが解決したログイン状態。ここでは取り直さない（保存先の判断を二重に持たない） */
+  account: AccountInfo | null;
+  dataMode: 'local' | 'cloud';
+  /** ログイン・ログアウト・メール確認のあとにアプリへ知らせる */
+  onAccountChanged: () => Promise<void>;
+}
+
 const messageOf = (error: unknown): string =>
   error instanceof ApiError ? error.message : '処理に失敗しました。時間をおいて試してください。';
 
-export function CloudSync() {
+export function CloudSync({ account, dataMode, onAccountChanged }: CloudSyncProps) {
   const [phase, setPhase] = useState<Phase>('checking');
-  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [available, setAvailable] = useState(true);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,16 +41,21 @@ export function CloudSync() {
   const [verified, setVerified] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!available) { setPhase('unavailable'); return; }
+    if (!account) { setPhase('signedOut'); return; }
+    setPhase(account.emailVerified ? 'signedIn' : 'unverified');
+  }, [account, available]);
+
+  // サーバー側が未設定なら、ログイン画面を出しても必ず失敗するのでカードごと隠す
+  useEffect(() => {
     let cancelled = false;
-    authApi.me()
-      .then(info => { if (!cancelled) { setAccount(info); setPhase(info.emailVerified ? 'signedIn' : 'unverified'); } })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        // 401 = 未ログイン。それ以外（未設定・障害）はカードごと隠す
-        setPhase(e instanceof ApiError && e.status === 401 ? 'signedOut' : 'unavailable');
-      });
+    if (account) return;
+    authApi.me().catch((e: unknown) => {
+      if (cancelled) return;
+      if (e instanceof ApiError && e.status !== 401) setAvailable(false);
+    });
     return () => { cancelled = true; };
-  }, []);
+  }, [account]);
 
   const submitCredentials = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -51,13 +65,8 @@ export function CloudSync() {
     try {
       const call = mode === 'signup' ? authApi.signUp : authApi.logIn;
       await call(email.trim(), password);
-      const info = await authApi.me();
-      setAccount(info);
-      setPhase(info.emailVerified ? 'signedIn' : 'unverified');
       setPassword('');
-      if (!info.emailVerified) {
-        setNotice('確認メールを送りました。メール内のリンクを開くとクラウド同期が使えます。');
-      }
+      await onAccountChanged();
     } catch (e) {
       setError(messageOf(e));
       // すでに登録済みなら、ログインタブへ寄せて袋小路にしない
@@ -109,8 +118,7 @@ export function CloudSync() {
     setError(null);
     try {
       const info = await authApi.me();
-      setAccount(info);
-      setPhase(info.emailVerified ? 'signedIn' : 'unverified');
+      await onAccountChanged();
       setNotice(info.emailVerified ? null : 'まだ確認が済んでいません。メール内のリンクを開いてください。');
     } catch (e) {
       setError(messageOf(e));
@@ -126,14 +134,14 @@ export function CloudSync() {
     } catch {
       // ログアウトはローカル状態を戻せれば十分
     } finally {
-      setAccount(null);
-      setPhase('signedOut');
+      clearCache();
       setMode('login');
       setPreview(null);
       setResult(null);
       setVerified(null);
       setNotice(null);
       setBusy(false);
+      await onAccountChanged();
     }
   };
 
@@ -163,6 +171,7 @@ export function CloudSync() {
       }
       const check = await migrationApi.verify(backup);
       setVerified(check.ok);
+      await onAccountChanged();
       setResult(check.ok
         ? 'クラウドへコピーし、件数の一致も確認できました。'
         : `コピーしましたが検証で差分が出ました：${check.issues.join(' / ')}　もう一度実行すると不足分だけ補われます。`);
@@ -199,7 +208,9 @@ export function CloudSync() {
           <h3 className="ll-label text-zinc-400 text-xs">クラウド同期（ベータ）</h3>
         </div>
         <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
-          端末の記録をクラウドへコピーします。<span className="text-zinc-400">端末のデータは消えません。</span>
+          {dataMode === 'cloud'
+            ? <>いまの保存先は<span className="text-lime-400 font-bold">クラウド</span>です。端末に残っている以前のデータは消していません。</>
+            : <>いまの保存先は<span className="text-zinc-400 font-bold">この端末</span>です。ログインするとクラウドへ切り替わります。</>}
         </p>
       </div>
 

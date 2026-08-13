@@ -20,6 +20,10 @@ const NOT_FOUND = 404;
  */
 export const WRITE_CONCURRENCY = 8;
 
+/** 全件取得の1ページあたり件数と、最大ページ数（暴走よけ） */
+const PAGE_SIZE = 100;
+const MAX_PAGES = 50;
+
 /** 上限つきの並行実行。1件でも失敗したらその例外を投げる（成否を握りつぶさない） */
 export async function runWithConcurrency<T>(
   items: T[],
@@ -172,6 +176,33 @@ export class AppwriteRepository implements Repository {
     } catch (error) {
       wrap(error, `${table}.list`);
     }
+  }
+
+  /**
+   * 全件取得。Appwriteの1回の上限に収まらない量でも取りこぼさないよう、
+   * カーソルで最後まで辿る。無限ループを避けるため総件数に上限を置く。
+   */
+  async listAllRows(table: TableName, viewerId: string, options: Omit<ListOptions, 'limit'> = {}): Promise<StoredRow[]> {
+    const all: StoredRow[] = [];
+    let cursor: string | undefined;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const queries = buildQueries({ ...options, limit: PAGE_SIZE });
+      if (cursor) queries.push(Query.cursorAfter(cursor));
+      let rows: StoredRow[];
+      try {
+        const result = await this.reader().listRows({ databaseId: databaseId(), tableId: table, queries });
+        rows = result.rows as StoredRow[];
+      } catch (error) {
+        wrap(error, `${table}.listAll`);
+      }
+      all.push(...rows);
+      if (rows.length < PAGE_SIZE) return all;
+      cursor = rows[rows.length - 1].$id;
+    }
+
+    console.error(`listAllRows hit the page cap on ${table} (${all.length} rows)`);
+    return all;
   }
 
   /**

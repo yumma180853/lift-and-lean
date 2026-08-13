@@ -2,16 +2,16 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserGoals, WeightRecord, Workout, Meal, ChatMessage, Tab, StreakData } from './types';
+import { Meal, ChatMessage, Tab, StreakData } from './types';
 import { SectionDashboard } from './components/SectionDashboard';
 import { SectionWorkout } from './components/SectionWorkout';
 import { SectionDiet } from './components/SectionDiet';
 import { SectionAnalysis } from './components/SectionAnalysis';
 import { SectionAITrainer } from './components/SectionAITrainer';
 import { SectionSettings } from './components/SectionSettings';
+import { useAppData } from './data/useAppData';
 
 const safeUUID = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-const DF_G: UserGoals = { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 70 };
 
 // --- Streak helpers ---
 function addDays(dateStr: string, n: number): string {
@@ -98,13 +98,13 @@ export default function App() {
   useEffect(() => {
     if (tab !== 'diet') setDietDate(format(new Date(), 'yyyy-MM-dd'));
   }, [tab]);
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [weights, setWeights] = useState<WeightRecord[]>([]);
-  const [goals, setGoals] = useState<UserGoals>(DF_G);
+  // 永続データの保存先はここが決める（ログイン＋メール確認済みならクラウドが正本）
+  const store = useAppData();
+  const { meals, workouts, weights, goals, hiddenWorkoutDates: hiddenDates, customExerciseCategories: customCats,
+    freezeUsedDates, longestStreak } = store.data;
+
   const [remind, setRemind] = useState(false);
   const [chats, setChats] = useState<ChatMessage[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [openW, setOpenW] = useState(false);
   const [wVal, setWVal] = useState('');
   const [sending, setSending] = useState(false);
@@ -113,59 +113,35 @@ export default function App() {
 
   const [cYear, setCYear] = useState(new Date().getFullYear());
   const [cMonth, setCMonth] = useState(new Date().getMonth());
-  const [hiddenDates, setHiddenDates] = useState<string[]>([]);
   const [selFilter, setSelFilter] = useState<string>('すべて');
-  const [customCats, setCustomCats] = useState<Record<string, string>>({});
-  const [freezeUsedDates, setFreezeUsedDates] = useState<string[]>([]);
-  const [longestStreak, setLongestStreak] = useState<number>(0);
+  // 筋トレ画面で開いているだけの日（まだ種目が無い）。保存対象ではない
+  const [draftWorkoutDates, setDraftWorkoutDates] = useState<string[]>([]);
 
+  // 端末に紐づくものだけ（通知設定・AIチャット）はこれまでどおりこの端末に置く。
+  // 記録データの保存先は useAppData が決める
   useEffect(() => {
     try {
-      const w = localStorage.getItem('workouts'), m = localStorage.getItem('meals'), wg = localStorage.getItem('weight_history'), g = localStorage.getItem('user_goals'), r = localStorage.getItem('reminders_enabled'), c = localStorage.getItem('chat_messages');
-      if (w) setWorkouts(JSON.parse(w));
-      if (m) setMeals(JSON.parse(m));
-      if (wg) setWeights(JSON.parse(wg));
-      if (g) setGoals({ ...DF_G, ...JSON.parse(g) });
+      const r = localStorage.getItem('reminders_enabled');
+      const c = localStorage.getItem('chat_messages');
       if (r) setRemind(JSON.parse(r));
       if (c) setChats(JSON.parse(c));
-
-      const hd = localStorage.getItem('hidden_workout_dates');
-      if (hd) setHiddenDates(JSON.parse(hd));
-
-      const cc = localStorage.getItem('custom_exercise_categories');
-      if (cc) setCustomCats(JSON.parse(cc));
-
-      const fd = localStorage.getItem('freeze_used_dates');
-      if (fd) setFreezeUsedDates(JSON.parse(fd));
-      const ls = localStorage.getItem('longest_streak');
-      if (ls) setLongestStreak(JSON.parse(ls));
     } catch (e) { console.error(e); }
-    setLoaded(true);
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(e => console.error(e));
     }
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
     try {
-      localStorage.setItem('workouts', JSON.stringify(workouts));
-      localStorage.setItem('meals', JSON.stringify(meals));
-      localStorage.setItem('weight_history', JSON.stringify(weights));
-      localStorage.setItem('user_goals', JSON.stringify(goals));
       localStorage.setItem('reminders_enabled', JSON.stringify(remind));
       // チャット画像（Base64）はlocalStorage容量を圧迫するため保存しない
       const chatsForStorage = chats.map(({ images: _images, ...rest }) => rest);
       localStorage.setItem('chat_messages', JSON.stringify(chatsForStorage));
-      localStorage.setItem('hidden_workout_dates', JSON.stringify(hiddenDates));
-      localStorage.setItem('custom_exercise_categories', JSON.stringify(customCats));
-      localStorage.setItem('freeze_used_dates', JSON.stringify(freezeUsedDates));
-      localStorage.setItem('longest_streak', JSON.stringify(longestStreak));
     } catch (e) { console.warn(e); }
-  }, [workouts, meals, weights, goals, remind, chats, loaded, hiddenDates, customCats, freezeUsedDates, longestStreak]);
+  }, [remind, chats]);
 
   useEffect(() => {
-    setWorkouts(p => p.filter(w => w.exercises.length > 0));
+    setDraftWorkoutDates([]);
     setSelDate(null);
     setSelFilter('すべて');
   }, [tab]);
@@ -203,7 +179,7 @@ export default function App() {
   };
 
   const handleCloseWorkoutDetail = () => {
-    setWorkouts(p => p.filter(w => w.exercises.length > 0));
+    setDraftWorkoutDates([]);
     setSelDate(null);
   };
 
@@ -270,30 +246,65 @@ export default function App() {
     [meals, today, freezeUsedDates, longestStreak]
   );
   useEffect(() => {
-    if (!loaded) return;
-    if (streakData.freezeUsedDates.length !== freezeUsedDates.length) {
-      setFreezeUsedDates(streakData.freezeUsedDates);
-    }
-    if (streakData.currentStreak > longestStreak) {
-      setLongestStreak(streakData.currentStreak);
-    }
-  }, [streakData.currentStreak, streakData.freezeUsedDates.length, loaded]);
+    if (store.state !== 'ready') return;
+    const patch: { freezeUsedDates?: string[]; longestStreak?: number } = {};
+    if (streakData.freezeUsedDates.length !== freezeUsedDates.length) patch.freezeUsedDates = streakData.freezeUsedDates;
+    if (streakData.currentStreak > longestStreak) patch.longestStreak = streakData.currentStreak;
+    if (Object.keys(patch).length > 0) void store.actions.saveProfile(patch);
+  }, [streakData.currentStreak, streakData.freezeUsedDates.length, store.state]);
   const tStats = useMemo(() => tMeals.reduce((acc, m) => ({ calories: acc.calories + (Number(m.calories) || 0), protein: acc.protein + (Number(m.protein) || 0), fat: acc.fat + (Number(m.fat) || 0), carbs: acc.carbs + (Number(m.carbs) || 0) }), { calories: 0, protein: 0, fat: 0, carbs: 0 }), [tMeals]);
   const tWorkout = useMemo(() => workouts.find(w => w.date === today), [workouts, today]);
   const cWeight = useMemo(() => weights.length ? weights[weights.length - 1].weight : null, [weights]);
 
+  // 「記録開始」は画面を開くだけ。種目を足した時点で保存される
   const addWorkout = () => {
-    if (tWorkout) return alert("記録済です"); setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); setTab('workout');
+    if (tWorkout) return alert("記録済です");
+    openWorkoutDay(today);
+    setTab('workout');
+  };
+  const openWorkoutDay = (date: string) => {
+    setDraftWorkoutDates(p => p.includes(date) ? p : [...p, date]);
+    setSelDate(date);
   };
   const addWeight = (w: number) => {
-    const r = { id: safeUUID(), date: today, weight: w }, i = weights.findIndex(x => x.date === today);
-    if (i > -1) { const u = [...weights]; u[i] = r; setWeights(u); } else { setWeights([...weights, r]); }
+    void store.actions.saveWeight(today, w);
+    // 朝の通知が「今日はもう記録済み」を判断するための日付だけ送る（数値は送らない）
     fetch('/api/save-weight-date', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: today }) }).catch(() => {});
   };
+
+  /** 選択中の日の筋トレ。まだ種目が無い日は保存せず、同じ形の器だけ用意する */
+  const selectedWorkout = useMemo(() => {
+    if (!selDate) return undefined;
+    return workouts.find(w => w.date === selDate) ?? { id: `draft:${selDate}`, date: selDate, exercises: [] };
+  }, [workouts, selDate]);
 
   return (
     <div className="min-h-dvh bg-black text-zinc-100 font-sans selection:bg-lime-400 selection:text-black">
       <div className="max-w-md mx-auto min-h-dvh flex flex-col relative px-5 bg-[#0a0a0a]" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
+        {store.state === 'loading' && (
+          <div className="fixed inset-x-0 top-0 z-[60] bg-zinc-900/95 border-b border-zinc-800 px-5 py-2 text-center text-[11px] font-bold text-zinc-400">
+            クラウドから読み込んでいます…
+          </div>
+        )}
+        {store.state === 'ready' && store.stale && (
+          <div className="fixed inset-x-0 top-0 z-[60] bg-amber-500/15 border-b border-amber-500/30 px-5 py-2 text-center text-[11px] font-bold text-amber-300">
+            最新のデータを取得できていません（表示は前回の内容）
+            <button type="button" onClick={() => void store.reload()} className="ml-2 underline">再試行</button>
+          </div>
+        )}
+        {store.state === 'error' && (
+          <div className="fixed inset-x-0 top-0 z-[60] bg-rose-500/15 border-b border-rose-500/30 px-5 py-2 text-center text-[11px] font-bold text-rose-300">
+            データを読み込めませんでした
+            <button type="button" onClick={() => void store.reload()} className="ml-2 underline">再試行</button>
+          </div>
+        )}
+        {store.saveError && (
+          <div className="fixed inset-x-0 bottom-20 z-[60] mx-5 rounded-2xl bg-rose-500/15 border border-rose-500/40 px-4 py-3 text-[11px] font-bold text-rose-300 leading-relaxed">
+            保存できませんでした：{store.saveError}
+            <button type="button" onClick={store.clearSaveError} className="ml-2 underline">閉じる</button>
+          </div>
+        )}
+
         <main className="flex-1">
           <AnimatePresence mode="wait">
             <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }} >
@@ -317,12 +328,12 @@ export default function App() {
                         const dateStr = `${cYear}-${String(cMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                         const targetWorkout = workouts.find(w => w.date === dateStr); const hasWorkout = targetWorkout && targetWorkout.exercises.length > 0; const isToday = dateStr === today;
                         return (
-                          <button key={`day-${day}`} onClick={() => { const hasData = workouts.some(w => w.date === dateStr); if (!hasData) { setWorkouts([...workouts, { id: safeUUID(), date: dateStr, exercises: [] }]); } setHiddenDates(p => p.filter(d => d !== dateStr)); setSelDate(dateStr); }} className={`h-8 rounded-xl flex flex-col items-center justify-center relative text-xs font-mono font-bold transition-all active:scale-90 ${hasWorkout ? 'bg-lime-400 text-black font-black shadow-[0_0_15px_rgba(163,230,53,0.3)] border border-lime-400' : isToday ? 'border-2 border-lime-400 text-lime-400 font-black bg-lime-400/5 animate-pulse' : 'bg-zinc-950 border border-zinc-900 text-zinc-450 hover:border-zinc-700 hover:text-white'}`} type="button"><span>{day}</span></button>
+                          <button key={`day-${day}`} onClick={() => { if (hiddenDates.includes(dateStr)) { void store.actions.saveProfile({ hiddenWorkoutDates: hiddenDates.filter(d => d !== dateStr) }); } openWorkoutDay(dateStr); }} className={`h-8 rounded-xl flex flex-col items-center justify-center relative text-xs font-mono font-bold transition-all active:scale-90 ${hasWorkout ? 'bg-lime-400 text-black font-black shadow-[0_0_15px_rgba(163,230,53,0.3)] border border-lime-400' : isToday ? 'border-2 border-lime-400 text-lime-400 font-black bg-lime-400/5 animate-pulse' : 'bg-zinc-950 border border-zinc-900 text-zinc-450 hover:border-zinc-700 hover:text-white'}`} type="button"><span>{day}</span></button>
                         );
                       })}
                     </div>
                   </div>
-                  <button onClick={() => { const hasToday = workouts.some(w => w.date === today); if (!hasToday) { setWorkouts([...workouts, { id: safeUUID(), date: today, exercises: [] }]); } setSelDate(today); }} className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]" ><Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}</button>
+                  <button onClick={() => openWorkoutDay(today)} className="w-full bg-lime-400 text-black p-4 rounded-2xl font-black text-sm uppercase italic tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.15)]" ><Sparkles size={18} /> {workouts.some(w => w.date === today) ? "今日のトレーニングを表示・編集" : "今日のトレーニング記録を開始する"}</button>
                   <div className="pt-2">
                     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                       {['すべて', '胸', '背中', '肩', '腕', '脚', '腹筋'].map(cat => (
@@ -338,7 +349,7 @@ export default function App() {
                         return (
                           <div key={w.id} onClick={() => setSelDate(w.date)} className="ll-card p-4 flex items-center justify-between hover:border-zinc-700 active:bg-zinc-900/50 transition-all cursor-pointer group" >
                             <div className="space-y-1 max-w-[65%]"><div className="text-sm font-mono font-bold text-white flex items-center gap-2">{w.date.replace(/-/g, '/')} {w.date === today && <span className="inline-flex items-center leading-none whitespace-nowrap text-[10px] bg-lime-400 text-black px-1.5 py-0.5 rounded font-sans font-black">TODAY</span>}</div><div className="text-xs text-zinc-400 truncate">{w.exercises.map(e => e.name).join(', ')}</div></div>
-                            <div className="flex items-center gap-3 shrink-0"><div className="text-right"><span className="inline-flex items-center leading-none whitespace-nowrap text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg">{w.exercises.length}種目 / {totalSets}SET</span></div><button type="button" onClick={(e) => { e.stopPropagation(); if (confirm(`${w.date.replace(/-/g, '/')} の履歴を一覧から非表示にしますか？\n（カレンダーや分析グラフの記録はそのまま残ります）`)) { setHiddenDates(p => [...p, w.date]); } }} className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-900 rounded-xl transition-colors" ><Trash2 size={15} /></button></div>
+                            <div className="flex items-center gap-3 shrink-0"><div className="text-right"><span className="inline-flex items-center leading-none whitespace-nowrap text-[10px] font-mono font-bold text-lime-400 bg-lime-400/10 border border-lime-400/20 px-2 py-1 rounded-lg">{w.exercises.length}種目 / {totalSets}SET</span></div><button type="button" onClick={(e) => { e.stopPropagation(); if (confirm(`${w.date.replace(/-/g, '/')} の履歴を一覧から非表示にしますか？\n（カレンダーや分析グラフの記録はそのまま残ります）`)) { void store.actions.saveProfile({ hiddenWorkoutDates: [...hiddenDates, w.date] }); } }} className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-900 rounded-xl transition-colors" ><Trash2 size={15} /></button></div>
                           </div>
                         );
                       })}
@@ -348,18 +359,18 @@ export default function App() {
               ) : (
                 <div className="space-y-4">
                   <SectionWorkout
-                    todayWorkout={workouts.find(w => w.date === selDate)} workouts={workouts} today={selDate} setActiveTab={handleCloseWorkoutDetail} addWorkout={addWorkout} currentWeight={cWeight}
-                    addExercise={(wid, n, cat) => {
-                      if (cat) { setCustomCats(p => ({ ...p, [n]: cat })); }
-                      setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: [...w.exercises, { id: safeUUID(), name: n, sets: [] }] }));
-                    }} 
-                    addSet={(wid, eid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: [...e.sets, { id: safeUUID(), weight: w, reps: r }] }) }))} deleteExercise={(wid, eid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.filter(e => e.id !== eid) }))} deleteSet={(wid, eid, sid) => setWorkouts(p => p.map(w => w.id !== wid ? w : { ...w, exercises: w.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.filter(s => s.id !== sid) }) }))} updateSet={(wid, eid, sid, w: any, r: any) => setWorkouts(p => p.map(x => x.id !== wid ? x : { ...x, exercises: x.exercises.map(e => e.id !== eid ? e : { ...e, sets: e.sets.map(s => s.id !== sid ? s : { ...s, weight: w, reps: r }) }) }))} />
+                    todayWorkout={selectedWorkout} workouts={workouts} today={selDate} setActiveTab={handleCloseWorkoutDetail} addWorkout={addWorkout} currentWeight={cWeight}
+                    addExercise={(_wid, n, cat) => { void store.actions.addExercise(selDate, n, cat); }}
+                    addSet={(_wid, eid, w: any, r: any) => { void store.actions.addSet(eid, w, r); }}
+                    deleteExercise={(_wid, eid) => { void store.actions.deleteExercise(eid); }}
+                    deleteSet={(_wid, _eid, sid) => { void store.actions.deleteSet(sid); }}
+                    updateSet={(_wid, _eid, sid, w: any, r: any) => { void store.actions.updateSet(sid, w, r); }} />
                 </div>
               ))}
-              {tab === 'diet' && <SectionDiet dayMeals={dietMeals} allMeals={meals} selectedDate={dietDate} today={today} onSelectDate={setDietDate} addMeal={(m) => setMeals([...meals, { ...m, id: safeUUID(), date: dietDate }])} updateMeal={(id, patch) => setMeals(p => p.map(x => x.id === id ? { ...x, ...patch } : x))} deleteMeal={(id) => setMeals(p => p.filter(x => x.id !== id))} goals={goals} onEditingChange={setDietEditOpen} />}
+              {tab === 'diet' && <SectionDiet dayMeals={dietMeals} allMeals={meals} selectedDate={dietDate} today={today} onSelectDate={setDietDate} addMeal={(m) => { void store.actions.addMeal(dietDate, m); }} updateMeal={(id, patch) => { void store.actions.updateMeal(id, patch); }} deleteMeal={(id) => { void store.actions.deleteMeal(id); }} goals={goals} onEditingChange={setDietEditOpen} />}
               {tab === 'analysis' && <SectionAnalysis weightHistory={weights} meals={meals} workouts={workouts} addWeight={addWeight} today={today} openWeightModal={() => setOpenW(true)} goals={goals} />}
-              {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setWorkouts={setWorkouts} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
-              {tab === 'settings' && <SectionSettings goals={goals} setGoals={setGoals} remind={remind} toggleNotification={toggleNotify} />}
+              {tab === 'aitrainer' && <SectionAITrainer chatMessages={chats} setChatMessages={setChats} currentWeight={cWeight} goals={goals} today={today} todayWorkout={tWorkout} setActiveTab={setTab} isSending={sending} handleSendMessage={handleSendMessage} handleCancelMessage={() => abortRef.current?.abort()} />}
+              {tab === 'settings' && <SectionSettings goals={goals} setGoals={(g) => { void store.actions.saveGoals(g); }} remind={remind} toggleNotification={toggleNotify} account={store.account} dataMode={store.mode} onAccountChanged={store.refreshAccount} />}
             </motion.div>
           </AnimatePresence>
         </main>

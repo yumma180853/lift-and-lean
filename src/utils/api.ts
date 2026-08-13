@@ -92,6 +92,52 @@ export interface MigrationReport {
   written: { table: string; created: number; existed: number }[];
 }
 
+// ---------------------------------------------------------------- データ
+
+export interface SnapshotResponse {
+  meals: any[];
+  weights: any[];
+  workouts: any[];
+  goals: any | null;
+  profile: {
+    hiddenWorkoutDates: string[];
+    freezeUsedDates: string[];
+    customExerciseCategories: Record<string, string>;
+    longestStreak: number;
+  } | null;
+  today: string;
+}
+
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+
+const patch = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+
+const remove = <T>(path: string) => request<T>(path, { method: 'DELETE' });
+
+export const dataApi = {
+  /** 起動時にまとめて読む（画面ごとの往復を増やさない） */
+  snapshot: () => request<SnapshotResponse>('/snapshot'),
+
+  addMeal: (meal: Record<string, unknown>) => post<{ rowId: string }>('/meals', meal),
+  updateMeal: (id: string, meal: Record<string, unknown>) => patch<{ ok: boolean }>(`/meals/${encodeURIComponent(id)}`, meal),
+  deleteMeal: (id: string) => remove<{ ok: boolean }>(`/meals/${encodeURIComponent(id)}`),
+
+  saveWeight: (weight: number, date?: string) => post<{ rowId: string }>('/weights', { weight, date }),
+
+  addExercise: (date: string, name: string) => post<{ rowId: string }>('/exercises', { date, name }),
+  deleteExercise: (id: string) => remove<{ ok: boolean }>(`/exercises/${encodeURIComponent(id)}`),
+  addSet: (exerciseId: string, reps: number, weight: number) =>
+    post<{ rowId: string }>(`/exercises/${encodeURIComponent(exerciseId)}/sets`, { reps, weight }),
+  updateSet: (setId: string, reps: number, weight: number) =>
+    patch<{ ok: boolean }>(`/sets/${encodeURIComponent(setId)}`, { reps, weight }),
+  deleteSet: (setId: string) => remove<{ ok: boolean }>(`/sets/${encodeURIComponent(setId)}`),
+
+  saveGoals: (goals: Record<string, unknown>) => put<{ ok: boolean }>('/goals', goals),
+  saveProfile: (profile: Record<string, unknown>) => put<{ ok: boolean }>('/profile', profile),
+};
+
 export const migrationApi = {
   preview: (backup: unknown) => post<MigrationReport>('/migrate/preview', backup),
   apply: (backup: unknown) => post<MigrationReport>('/migrate', backup),

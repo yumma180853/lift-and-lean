@@ -37,7 +37,7 @@ export function daysBetween(from: string, to: string): number {
  * 書き込み用の日付を確定する。
  * ChatGPTが解決した相対日付をそのまま信じず、サーバー側でもう一度検証する。
  */
-export function resolveWriteDate(input: unknown, today: string): string {
+export function resolveWriteDate(input: unknown, today: string, allowOldDates = false): string {
   if (input === undefined || input === null || input === '') return today;
   if (!isDateString(input)) {
     throw new ValidationError('日付は YYYY-MM-DD の形式で指定してください。');
@@ -45,7 +45,9 @@ export function resolveWriteDate(input: unknown, today: string): string {
   if (input > today) {
     throw new ValidationError('未来の日付には記録できません。');
   }
-  if (daysBetween(input, today) > MAX_BACKDATE_DAYS) {
+  // アプリ本人の操作は何日前でも直せる（元からの挙動）。
+  // ChatGPT経由は自然文から解決した日付なので、遡れる範囲を絞る
+  if (!allowOldDates && daysBetween(input, today) > MAX_BACKDATE_DAYS) {
     throw new ValidationError(`${MAX_BACKDATE_DAYS}日より前の日付には記録できません。アプリから直接編集してください。`);
   }
   return input;

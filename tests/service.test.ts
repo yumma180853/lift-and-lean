@@ -129,11 +129,36 @@ test('未来の日付は拒否する', async () => {
   );
 });
 
-test('31日より前の日付は拒否する', async () => {
+test('ChatGPT経由では31日より前の日付を拒否する', async () => {
+  const { service } = setup();
+  await assert.rejects(
+    () => service.logMeal(ALICE, meal({ date: '2026-06-01' }), { channel: 'chatgpt' }),
+    (error: any) => error.status === 400,
+  );
+});
+
+test('入口の指定が無ければ厳しい側で扱う（緩い方へ倒れない）', async () => {
   const { service } = setup();
   await assert.rejects(
     () => service.logMeal(ALICE, meal({ date: '2026-06-01' })),
     (error: any) => error.status === 400,
+  );
+});
+
+test('アプリ本人の操作なら何日前でも記録できる（元からの挙動を保つ）', async () => {
+  const { repository, service } = setup();
+  await service.logMeal(ALICE, meal({ date: '2024-01-05' }), { channel: 'app' });
+
+  const rows = repository.rawRows('meals');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].date, '2024-01-05');
+});
+
+test('アプリ本人でも未来の日付は拒否する', async () => {
+  const { service } = setup();
+  await assert.rejects(
+    () => service.logMeal(ALICE, meal({ date: '2026-08-13' }), { channel: 'app' }),
+    (error: any) => error.status === 400 && /未来/.test(error.message),
   );
 });
 
@@ -275,4 +300,74 @@ test('サマリは他人の記録を混ぜない', async () => {
 
   const summary = await service.getDaySummary(ALICE);
   assert.equal(summary.totals.calories, 300);
+});
+
+// ---------------------------------------------------------------- snapshot（正本の読み出し）
+
+test('起動時のスナップショットが全データをアプリの形で返す', async () => {
+  const { service } = setup();
+  await service.logMeal(ALICE, meal({ date: '2026-08-10', name: '鶏むね' }), { channel: 'app' });
+  await service.logMeal(ALICE, meal({ date: TODAY, name: '白米' }), { channel: 'app' });
+  await service.logWeight(ALICE, { weight: 70.5 });
+  await service.saveGoals(ALICE, { calories: 2200, protein: 150, fat: 60, carbs: 250, targetWeight: 68, trainerStyle: 'coach' });
+  await service.saveProfile(ALICE, { hiddenWorkoutDates: ['2026-07-01'], longestStreak: 12, customExerciseCategories: { 'ヒップスラスト': '脚' } });
+  await service.logWorkout(ALICE, {
+    clientRequestId: 'w-1',
+    exercises: [{ name: 'ベンチプレス', sets: [{ reps: 10, weight: 60 }, { reps: 8, weight: 65 }] }],
+  });
+
+  const snapshot = await service.getSnapshot(ALICE);
+
+  assert.equal(snapshot.today, TODAY);
+  assert.equal(snapshot.meals.length, 2);
+  assert.deepEqual(snapshot.meals.map(m => m.date), ['2026-08-10', TODAY], '日付順に並ぶ');
+  assert.equal(snapshot.weights[0].weight, 70.5);
+  assert.equal(snapshot.goals?.trainerStyle, 'coach');
+  assert.deepEqual(snapshot.profile?.customExerciseCategories, { 'ヒップスラスト': '脚' });
+  assert.equal(snapshot.profile?.longestStreak, 12);
+
+  assert.equal(snapshot.workouts.length, 1);
+  assert.equal(snapshot.workouts[0].exercises[0].name, 'ベンチプレス');
+  assert.deepEqual(snapshot.workouts[0].exercises[0].sets.map(s => s.reps), [10, 8], 'セットの順序を保つ');
+});
+
+test('スナップショットにAppwrite固有の項目を出さない', async () => {
+  const { service } = setup();
+  await service.logMeal(ALICE, meal(), { channel: 'app' });
+  await service.logWeight(ALICE, { weight: 70 });
+  await service.logWorkout(ALICE, { clientRequestId: 'w-1', exercises: [{ name: 'ベンチ', sets: [{ reps: 5, weight: 50 }] }] });
+
+  const snapshot = await service.getSnapshot(ALICE);
+  const json = JSON.stringify(snapshot);
+
+  for (const leaked of ['$id', '$permissions', '$createdAt', 'clientRequestId', 'userId', 'needsReview', 'origin', 'workoutId', 'exerciseId']) {
+    assert.equal(json.includes(leaked), false, `${leaked} が外に出ている`);
+  }
+  // 代わりにアプリが使う id が入っている
+  assert.equal(typeof snapshot.meals[0].id, 'string');
+  assert.equal(typeof snapshot.workouts[0].exercises[0].sets[0].id, 'string');
+});
+
+test('スナップショットは他人のデータを含まない', async () => {
+  const { repository, service } = setup();
+  await service.logMeal(ALICE, meal({ name: 'アリスの食事' }), { channel: 'app' });
+  const bob = asUser(repository, BOB);
+  await bob.logMeal(BOB, meal({ name: 'ボブの食事' }), { channel: 'app' });
+
+  const forAlice = await service.getSnapshot(ALICE);
+  const forBob = await bob.getSnapshot(BOB);
+
+  assert.deepEqual(forAlice.meals.map(m => m.name), ['アリスの食事']);
+  assert.deepEqual(forBob.meals.map(m => m.name), ['ボブの食事']);
+});
+
+test('データが無いユーザーでも空のスナップショットを返す', async () => {
+  const { service } = setup();
+  const snapshot = await service.getSnapshot(ALICE);
+
+  assert.deepEqual(snapshot.meals, []);
+  assert.deepEqual(snapshot.weights, []);
+  assert.deepEqual(snapshot.workouts, []);
+  assert.equal(snapshot.goals, null);
+  assert.equal(snapshot.profile, null);
 });

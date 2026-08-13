@@ -185,7 +185,14 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
   const service = deps.createService(secret);
   const userId = user.userId; // bodyのuserIdは読まない
 
+  // アプリ本人の操作。過去日の編集を許す（ChatGPT経由とは扱いを変える）
+  const asApp = { channel: 'app' as const };
+
   switch (resource) {
+    case 'snapshot':
+      requireMethod(ctx, 'GET');
+      return send(res, 200, await service.getSnapshot(userId));
+
     case 'summary':
       requireMethod(ctx, 'GET');
       return send(res, 200, await service.getDaySummary(userId, ctx.query.get('date') ?? undefined));
@@ -199,10 +206,10 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
         return send(res, 200, { meals: await service.listMeals(userId, ctx.query.get('date') ?? undefined) });
       }
       if (ctx.method === 'POST') {
-        return send(res, 201, await service.logMeal(userId, ctx.body));
+        return send(res, 201, await service.logMeal(userId, ctx.body, asApp));
       }
       if (ctx.method === 'PATCH' && second) {
-        await service.updateMeal(userId, second, ctx.body);
+        await service.updateMeal(userId, second, ctx.body, asApp);
         return send(res, 200, { ok: true });
       }
       if (ctx.method === 'DELETE' && second) {
@@ -218,7 +225,7 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
         });
       }
       if (ctx.method === 'POST') {
-        return send(res, 201, await service.logWeight(userId, ctx.body));
+        return send(res, 201, await service.logWeight(userId, ctx.body, asApp));
       }
       break;
 
@@ -231,7 +238,7 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
         return send(res, 200, { workouts: await service.getRecentWorkouts(userId, Number(ctx.query.get('limit') ?? 5)) });
       }
       if (ctx.method === 'POST') {
-        return send(res, 201, await service.logWorkout(userId, ctx.body));
+        return send(res, 201, await service.logWorkout(userId, ctx.body, asApp));
       }
       break;
 
@@ -240,7 +247,7 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
         return send(res, 201, await service.addSet(userId, second, ctx.body));
       }
       if (ctx.method === 'POST' && !second) {
-        return send(res, 201, await service.addExercise(userId, ctx.body));
+        return send(res, 201, await service.addExercise(userId, ctx.body, asApp));
       }
       if (ctx.method === 'DELETE' && second) {
         await service.deleteExercise(userId, second);
