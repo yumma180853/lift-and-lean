@@ -170,26 +170,86 @@ base はサーバーから取り直せるので、多少古くても実害が無
   （「60キロ10回」だけなら種目を尋ねる）
 - 聞き取った文字列を必ず画面に出す。食事はその場で取り消せる
 
-### 音声の取り方（2026年8月時点の iPhone の実情）
+### 音声の取り方（2026-08-17 改訂：キーボードを開かない）
 
-`webkitSpeechRecognition` は **Safari のタブでは動くが、
-ホーム画面に追加した PWA では動かない**（Apple 未対応）。
-Lift & Lean の主戦場は後者なので、これに頼り切ると
-「iPhone だけ喋れない」ことになる。
+当初は「文字入力欄に focus → iOS キーボードのマイクキー」を本命にしていた。
+`webkitSpeechRecognition` が **Safari のタブでは動くが、ホーム画面に追加した
+PWA では動かない**（Apple 未対応）ためで、これ自体は今も正しい。
 
-そこで入口を2つ用意した。
+しかし実機で使うと、**緑のマイクを押すとキーボードが開く**。
+求めていたのは「押したらそのまま喋れる」ことなので、作りを変えた。
 
-1. **文字入力欄（本命）** … 開くと同時にキーボードが出る。
-   iOS のキーボードにあるマイクキーでそのまま声で入力できる。
-   permission も課金も要らず、PWA でも確実に動く
-2. 音声認識ボタン … 使える環境（Safari のタブ等）でだけ出る
+    緑のマイクを1タップ（＝許可を求めてよい合図）
+      → getUserMedia + MediaRecorder で PWA 自身が録音（キーボードは開かない）
+      → 無音で自動停止（効かない端末は停止ボタン）
+      → POST /api/v1/transcribe（音は base64、鍵はサーバーだけ）
+      → gpt-4o-mini-transcribe（language: ja ＋ 筋トレ語彙の手がかり）
+      → 文字 → 同じ振り分け（/api/v1/command）
 
-どちらも最後は同じ文字列になり、同じ入口へ送る。
-サーバー側の文字起こしは使っていない（費用・遅延・プライバシーの観点で不要）。
+端末差は**決め打ちせず feature detection で吸収する**。
+
+- 録音形式は `MediaRecorder.isTypeSupported` に聞いてから決める
+  （iOS は `audio/mp4`、Android/PC は `audio/webm;codecs=opus` が多い）。
+  どれも通らなければ**指定せずブラウザに選ばせる**
+- `getUserMedia` / `MediaRecorder` が無い端末では録音ボタンを出さず、
+  文字入力（キーボードのマイクキー）へ落ちる
+- 停止・失敗・画面を閉じる、のどの経路でも `MediaStreamTrack.stop()` を通す
+  （呼ばないと iOS は録音インジケータが出たままになる）
+
+音声そのものは Appwrite にも localStorage にも通常のログにも**残さない**。
+変換のあいだメモリを通り過ぎるだけ。
+
+文字入力欄は「聞き取りを直す」ために残すが、**開いた時点では focus しない**。
+
+実装: `src/utils/recorder.ts`（録音）/ `api/_v1/transcribe.ts`（文字起こし）/
+`src/components/VoiceCommand.tsx`（画面）。
 
 出典:
 - <https://whatpwacando.today/speech-recognition/>
 - <https://www.magicbell.com/blog/pwa-ios-limitations-safari-support-complete-guide>
+
+### 話しことばの揺れを吸収する（実機で出た失敗の修正）
+
+実機で複数種目を自然に話すと、画面に
+`Invalid input: expected number, received undefined` が出ていた。原因は2つ。
+
+1. **内部の検証文言をそのまま画面へ出していた**（`command.ts` が zod の
+   `issue.message` を本文に埋めていた）
+2. `log_workout` の schema は全セットに `weight` を必須にしているが、
+   言語モデルは自重種目の重量を書かない（「懸垂8回と7回」）。
+   セットごとに違う値を言うと後半の `reps` も落ちる
+
+そこで**検証の手前に正規化層**を置いた（`api/_v1/normalize.ts`）。
+
+直すもの（言い方の揺れ）:
+
+- `sets: 3` のような省略形、`"70kg"` のような文字列、全角数字
+- **自重種目の重量を 0 にする**（schema 側の「自重なら0」と同じ意味。
+  対象は懸垂・腕立て・腹筋など、名前で判定できるものだけ）
+- 同じ種目で重量が省かれた続きのセットは、直前のセットの重量を引き継ぐ
+
+直さないもの（**推測せずに聞き返す**）:
+
+- 回数が無い → 「ラットプルダウン65kgは何回ですか？」
+- 種目名が無い → 「60kgはどの種目ですか？」
+- 加重種目の重量が最初から無い → 「ラットプルダウンは何kgですか？」
+
+正規化を通ってもなお schema を外れた場合は、`explainIssue` が
+**日本語の短い聞き返しへ言い換える**。zod の文言が画面へ出る経路は無い。
+指示文（プロンプト）にも、複数種目・セットごとの違い・自重の書き方を明記した。
+
+### 音声の記録も local-first を通る
+
+`/api/v1/command` に `apply: 'client'` を付けると、**サーバーは保存せず**
+「何を保存するか（plan）」だけを返す。画面はそれを既存の操作
+（`addExercise` / `addSet` / `addMeal` / `saveWeight`）に変換して積む
+（`src/data/voiceOps.ts`）。つまり音声の記録も
+
+    その場で画面へ反映 → outbox に積む → 裏で送る
+
+という同じ道を通る。音声のときだけ通信を待つ、ということが起きない。
+`apply` を付けない呼び出し（ChatGPT 経由・古い画面）は**今までどおり
+サーバーが保存する**ので、MCP は凍結したまま影響を受けない。
 
 ---
 
@@ -200,4 +260,6 @@ Appwrite が正本 / `LiftAndLeanService` / repository 境界 / 認証・メー�
 AI食事推定 / AI目標提案 / MUSCLE STATUS / 通知・cron・KV / プライバシー /
 PWA / JST / 冪等性 / 既存データ。
 
-単体テスト 278件（追加ぶん: `tests/data-ops.test.ts` 19件、`tests/command.test.ts` 16件）。
+単体テスト 338件（音声ぶん: `tests/voice-command.test.ts` 20件、
+`tests/voice-recorder.test.ts` 19件、`tests/voice-transcribe.test.ts` 9件、
+`tests/voice-outbox.test.ts` 6件、`tests/v1-router.test.ts` に5件追加）。

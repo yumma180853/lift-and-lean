@@ -14,6 +14,7 @@ import {
 } from './loadState';
 import type { LoadPhase, LoadStatus } from './loadState';
 import { applyOp, enqueue, remapData, remapOp, replay } from './ops';
+import { workoutOps } from './voiceOps';
 import type { IdMap, Op } from './ops';
 import {
   readBase, readOutbox, writeBaseSoon, flushBase, writeOutbox, clearStored,
@@ -104,11 +105,14 @@ const messageOf = (error: unknown): string => {
 };
 
 export interface AppDataActions {
-  addMeal(date: string, meal: NewMeal): Promise<void>;
+  /** @returns 追加した食事の id（音声入力の「取り消す」に使う） */
+  addMeal(date: string, meal: NewMeal): Promise<string>;
   updateMeal(id: string, patch: Partial<Meal>): Promise<void>;
   deleteMeal(id: string): Promise<void>;
   saveWeight(date: string, weight: number): Promise<void>;
   addExercise(date: string, name: string, category?: string): Promise<void>;
+  /** 種目とセットをまとめて記録する（音声で複数種目を一度に言われたとき用） */
+  logWorkout(date: string, exercises: { name: string; sets: { weight: number; reps: number }[] }[]): Promise<void>;
   deleteExercise(exerciseId: string): Promise<void>;
   addSet(exerciseId: string, weight: number, reps: number): Promise<void>;
   updateSet(setId: string, weight: number, reps: number): Promise<void>;
@@ -544,7 +548,10 @@ export function useAppData(): UseAppData {
   }, [commit, drain, scheduleWrite]);
 
   const actions: AppDataActions = useMemo(() => ({
-    addMeal: (date, meal) => submit({ kind: 'addMeal', mealId: safeUUID(), date, meal }),
+    addMeal: (date, meal) => {
+      const mealId = safeUUID();
+      return submit({ kind: 'addMeal', mealId, date, meal }).then(() => mealId);
+    },
 
     updateMeal: (id, patch) => {
       if (!replay(baseRef.current, pendingRef.current).meals.some(m => m.id === id)) {
@@ -568,6 +575,18 @@ export function useAppData(): UseAppData {
         void submit({ kind: 'saveProfile', patch: { customExerciseCategories: categories } });
       }
       return result;
+    },
+
+    /**
+     * 音声からの筋トレ記録。**通常の操作と同じ経路**（その場で画面へ、送信は裏で）。
+     *
+     * 同じ日に同じ種目が既にあるなら、そこへセットを足す。
+     * 「ベンチ追加で2セット」と言い直したときに種目が二重に並ばないようにする。
+     */
+    logWorkout: (date, exercises) => {
+      const current = replay(baseRef.current, pendingRef.current);
+      for (const op of workoutOps(current, date, exercises, safeUUID)) void submit(op);
+      return Promise.resolve();
     },
 
     deleteExercise: exerciseId => submit({ kind: 'deleteExercise', exerciseId }),

@@ -138,12 +138,19 @@ export const dataApi = {
   saveProfile: (profile: Record<string, unknown>) => put<{ ok: boolean }>('/profile', profile),
 };
 
+/** 画面側が local-first で保存する内容。**サーバーはまだ書いていない** */
+export type CommandPlan =
+  | { kind: 'meal'; date: string; meal: Record<string, any> }
+  | { kind: 'weight'; date: string; weight: number }
+  | { kind: 'workout'; date: string; exercises: { name: string; sets: { weight: number; reps: number }[] }[] };
+
 export interface CommandResponse {
-  /** done=実行した / clarify=聞き返す / unsupported=対象外 */
-  status: 'done' | 'clarify' | 'unsupported';
+  /** done=サーバーが実行した / plan=画面側で保存する / clarify=聞き返す / unsupported=対象外 */
+  status: 'done' | 'plan' | 'clarify' | 'unsupported';
   message: string;
   intent?: string;
   data?: Record<string, unknown>;
+  plan?: CommandPlan;
   /** 取り消しに使う情報（食事のみ） */
   undo?: { kind: 'meal'; rowId: string };
   /** 何と聞き取ったか */
@@ -152,10 +159,23 @@ export interface CommandResponse {
 
 /**
  * 話しことば・打ちことばの入口。
- * **判断はサーバー側**（鍵を画面に置かないため）。ここは投げて受け取るだけ。
+ * **振り分けの判断はサーバー側**（鍵を画面に置かないため）。
+ *
+ * 書き込みは `apply: 'client'` で頼む。サーバーは保存せず内容だけ返し、
+ * 実際の保存は画面の既存経路（local-first → outbox → 裏で同期）が行う。
+ * こうしないと、音声のときだけ通信を待つ作りに逆戻りする。
  */
 export const commandApi = {
-  run: (text: string) => post<CommandResponse>('/command', { text }),
+  run: (text: string) => post<CommandResponse>('/command', { text, apply: 'client' }),
+};
+
+/**
+ * 録音を文字にする。**鍵はサーバーにしか無い**ので、必ずここを通す。
+ * 音そのものは送るだけで、どこにも保存しない。
+ */
+export const voiceApi = {
+  transcribe: (audioBase64: string, mimeType: string) =>
+    post<{ text: string }>('/transcribe', { audio: audioBase64, mimeType }),
 };
 
 export const migrationApi = {

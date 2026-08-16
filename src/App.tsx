@@ -438,6 +438,8 @@ export default function App() {
       <VoiceCommand
         open={voiceOpen}
         onClose={() => setVoiceOpen(false)}
+        /* 記録は他の操作と同じ経路（その場で反映 → 送信は裏）で行う */
+        actions={store.actions}
         onRecorded={() => { void store.reload(); }}
       />
 

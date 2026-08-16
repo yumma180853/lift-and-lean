@@ -21,6 +21,7 @@ import {
 import { LiftAndLeanService } from '../_core/service.js';
 import { createV1Router } from './router.js';
 import { parseCommandWithLLM } from './commandParser.js';
+import { openAiTranscriber } from './transcribe.js';
 
 function appendHeader(res: any, name: string, value: string): void {
   const existing = typeof res.getHeader === 'function' ? res.getHeader(name) : undefined;
@@ -45,6 +46,7 @@ export const handleV1 = createV1Router({
     appendHeader(res, 'Set-Cookie', buildClearedSessionCookie());
   },
   parseCommand: parseCommandWithLLM,
+  transcribe: openAiTranscriber,
 });
 
 export { SESSION_COOKIE };

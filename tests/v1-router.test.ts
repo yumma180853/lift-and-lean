@@ -56,7 +56,7 @@ function fakeAuth(
   };
 }
 
-function setup() {
+function setup(extra: Record<string, any> = {}) {
   const repository = new MemoryRepository();
   const sessions = new Map<string, string>();
   const cookies = new Map<string, string>();
@@ -73,6 +73,7 @@ function setup() {
     readCookie: (req: any) => req.sessionSecret,
     setSessionCookie: (res: any, secret: string) => { cookies.set('ll_session', secret); res.cookieSet = secret; },
     clearSessionCookie: (res: any) => { cookies.delete('ll_session'); res.cookieCleared = true; },
+    ...extra,
   });
 
     /** メール確認を済ませた状態にする（実機ではメールのリンクで行われる） */
@@ -436,4 +437,77 @@ test('利用者ごとの応答は共有キャッシュに載せない（全応�
   const snapshot = await call('GET', '/api/v1/snapshot', { secret });
   assert.equal(snapshot.status, 200);
   assert.equal(snapshot.res.headers['Cache-Control'], 'no-store', 'snapshot(200 確認済み)');
+});
+
+// ---------------------------------------------------------------- 音声の入口
+
+/** ログイン済み・メール確認済みの状態を作る */
+async function signedIn(call: any, markVerified: any) {
+  const signup = await call('POST', '/api/v1/auth/signup', { body: { email: 'a@example.jp', password: 'correct-horse' } });
+  markVerified(signup.body.userId);
+  return signup.res.cookieSet as string;
+}
+
+test('音声の文字起こしはログインしていないと使えない', async () => {
+  const { call } = setup({ transcribe: { transcribe: async () => 'ベンチプレス' } });
+  const result = await call('POST', '/api/v1/transcribe', { body: { audio: 'AAA=' } });
+  assert.equal(result.status, 401);
+});
+
+test('文字起こしを差し込んでいなければ 503（鍵が無い環境）', async () => {
+  const { call, markVerified } = setup();
+  const secret = await signedIn(call, markVerified);
+  const result = await call('POST', '/api/v1/transcribe', { body: { audio: 'AAA=' }, secret });
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, '音声入力は今は使えません。');
+});
+
+test('録音を送ると文字だけが返る（音声は返さない・保存しない）', async () => {
+  const seen: any[] = [];
+  const { call, markVerified } = setup({
+    transcribe: {
+      transcribe: async (audio: Buffer, extension: string, mimeType: string) => {
+        seen.push({ size: audio.length, extension, mimeType });
+        return 'ベンチプレス60キロ10回3セット';
+      },
+    },
+  });
+  const secret = await signedIn(call, markVerified);
+
+  const audio = Buffer.from('fake-audio-bytes').toString('base64');
+  const result = await call('POST', '/api/v1/transcribe', { body: { audio, mimeType: 'audio/mp4' }, secret });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { text: 'ベンチプレス60キロ10回3セット' });
+  assert.equal(seen[0].extension, 'mp4', 'iPhone の形式が通っていない');
+});
+
+test('文字起こしの失敗は決まった一文で返る（内部理由を出さない）', async () => {
+  const { call, markVerified } = setup({
+    transcribe: { transcribe: async () => { throw new Error('OpenAI 500 internal'); } },
+  });
+  const secret = await signedIn(call, markVerified);
+
+  const audio = Buffer.from('fake').toString('base64');
+  const result = await call('POST', '/api/v1/transcribe', { body: { audio, mimeType: 'audio/webm' }, secret });
+
+  assert.equal(result.status, 502);
+  assert.equal(result.body.error, '聞き取れませんでした。もう一度お願いします。');
+});
+
+test('話して記録は、サーバーで保存せず画面へ内容を返せる', async () => {
+  const { call, markVerified } = setup({
+    parseCommand: async () => ({ intent: 'log_weight', args: { weight: 72.4 } }),
+  });
+  const secret = await signedIn(call, markVerified);
+
+  const result = await call('POST', '/api/v1/command', { body: { text: '体重72.4キロ', apply: 'client' }, secret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'plan');
+  assert.equal(result.body.plan.weight, 72.4);
+
+  // サーバーはまだ書いていない（画面側の local-first が書く）
+  const weights = await call('GET', '/api/v1/weights', { secret });
+  assert.equal(weights.body.weights.length, 0);
 });

@@ -25,21 +25,36 @@ import { TOOLS } from '../_mcp/tools.js';
 import type { ToolContext, ToolDefinition } from '../_mcp/tools.js';
 import { jstToday } from '../_core/dates.js';
 import { AppError } from '../_core/errors.js';
+import { explainIssue, normalizeArgs } from './normalize.js';
 
 /** 言い直してもらうときの上限。長文＝雑談化を防ぐ */
 const MAX_TEXT_LENGTH = 300;
 
 export const commandInputSchema = z.object({
   text: z.string().min(1).max(MAX_TEXT_LENGTH),
+  /**
+   * 'client' なら**サーバーは書き込まず**、書く内容（plan）だけを返す。
+   * 画面はそれを既存の local-first / outbox 経路へ流す（＝通信を待たない）。
+   * 省略時は今までどおりサーバーが書く（ChatGPT経由・古い画面のため）。
+   */
+  apply: z.enum(['server', 'client']).optional(),
 });
 
+/** 画面が local-first で書くための指示。**サーバーはまだ保存していない** */
+export type CommandPlan =
+  | { kind: 'meal'; date: string; meal: Record<string, unknown> }
+  | { kind: 'weight'; date: string; weight: number }
+  | { kind: 'workout'; date: string; exercises: { name: string; sets: { weight: number; reps: number }[] }[] };
+
 export interface CommandResult {
-  /** done=実行した / clarify=聞き返す / unsupported=対象外 */
-  status: 'done' | 'clarify' | 'unsupported';
+  /** done=実行した / plan=画面側で保存する / clarify=聞き返す / unsupported=対象外 */
+  status: 'done' | 'plan' | 'clarify' | 'unsupported';
   /** 画面に出す短い文 */
   message: string;
   intent?: string;
   data?: Record<string, unknown>;
+  /** 画面側で保存する内容（status='plan' のときだけ） */
+  plan?: CommandPlan;
   /** 取り消しに使う情報（作られた行が1つに決まるときだけ） */
   undo?: { kind: 'meal'; rowId: string };
   /** 何と聞き取ったか。取り違えの確認用に必ず返す */
@@ -107,7 +122,15 @@ export function buildPrompt(today: string, tools: ToolDefinition[]): string {
     '- 日付は「昨日」「一昨日」など明示されたときだけ args.date に入れる。指定が無ければ入れない。',
     '- 重量・回数・セット数は log_workout の exercises[].sets に展開する。',
     '  例:「ベンチ60キロ10回3セット」→ exercises:[{name:"ベンチプレス", sets:[{weight:60,reps:10},{weight:60,reps:10},{weight:60,reps:10}]}]',
-    '- 種目名は正式名称に直す（ベンチ→ベンチプレス、スクワット→スクワット）。',
+    '- **複数の種目を1回の発話で言われたら、exercises に全て並べる**（1種目しか記録しない、はしない）。',
+    '  例:「ベンチ60キロ10回3セットとラットプル70キロ7回2セット」→ exercises に2件。',
+    '- **セットごとに重量や回数が違うときは、1セットずつ別の要素にする。**',
+    '  例:「ラットプル70キロ7回2セット、65キロ7回2セット」',
+    '  → sets:[{weight:70,reps:7},{weight:70,reps:7},{weight:65,reps:7},{weight:65,reps:7}]',
+    '- **自重の種目（懸垂・腕立て・腹筋など）は weight を 0 にする。**省略しない。',
+    '  例:「懸垂8回と7回」→ exercises:[{name:"懸垂", sets:[{weight:0,reps:8},{weight:0,reps:7}]}]',
+    '- sets の各要素には weight と reps を必ず両方入れる。片方だけにしない。',
+    '- 種目名は正式名称に直す（ベンチ→ベンチプレス、ラットプル→ラットプルダウン）。',
     '- log_meal では calories/protein/fat/carbs を必ず埋める。分からなければ一般的な値を推定し、',
     '  sourceType は "ai_estimate" にする。分量が言われていれば servingLabel に入れる。',
     '- 記録を消す・目標を変える・アカウントを操作する指示は受け付けない。',
@@ -171,15 +194,35 @@ export async function runCommand(
     };
   }
 
+  /**
+   * 言い方の揺れ（自重で重量を言わない・セット数の省略形・文字列の数値）を先に吸収する。
+   * **足りない値を作り出すことはしない。** 足りなければここで聞き返す。
+   */
+  const normalized = normalizeArgs(tool.name, parsed.args);
+  if (normalized.outcome === 'ask') {
+    return { status: 'clarify', message: normalized.clarify, transcript: text };
+  }
+
   // **入力の検証は MCP と同じ schema で行う。** ここを緩めない
-  const validated = z.object(tool.inputShape).safeParse(parsed.args);
+  const validated = z.object(tool.inputShape).safeParse(normalized.args);
   if (!validated.success) {
+    // zod の英語文言は**絶対に画面へ出さない**。日本語の短い聞き返しに置き換える
     const first = validated.error.issues[0];
     return {
       status: 'clarify',
-      message: `${first?.message ?? '内容が足りません'}。もう一度お願いします。`,
+      message: first
+        ? explainIssue(tool.name, first)
+        : 'うまく聞き取れませんでした。もう一度お願いします。',
       transcript: text,
     };
+  }
+
+  // 画面が local-first で書く場合、サーバーはここで**保存せずに**内容だけ返す
+  if (input.data.apply === 'client') {
+    const plan = toPlan(tool.name, validated.data as Record<string, unknown>, today);
+    if (plan) {
+      return { status: 'plan', message: describePlan(plan), intent: tool.name, plan, transcript: text };
+    }
   }
 
   const result = await tool.run(ctx, validated.data);
@@ -194,4 +237,63 @@ export async function runCommand(
     undo: tool.name === 'log_meal' && rowId ? { kind: 'meal', rowId } : undefined,
     transcript: text,
   };
+}
+
+// ---------------------------------------------------------------- 画面側で保存する形
+
+const round1 = (value: number): number => Math.round(value * 10) / 10;
+
+/**
+ * 検証済みの引数を、画面の既存操作（addMeal / saveWeight / 種目とセット）へ
+ * そのまま渡せる形に直す。**ここで値を作らない**（検証を通ったものだけを詰め替える）。
+ */
+export function toPlan(
+  intent: string,
+  args: Record<string, unknown>,
+  today: string,
+): CommandPlan | null {
+  const date = typeof args.date === 'string' ? args.date : today;
+
+  if (intent === 'log_weight') {
+    return { kind: 'weight', date, weight: args.weight as number };
+  }
+
+  if (intent === 'log_meal') {
+    const meal: Record<string, unknown> = {
+      name: args.name,
+      calories: round1(args.calories as number),
+      protein: round1(args.protein as number),
+      fat: round1(args.fat as number),
+      carbs: round1(args.carbs as number),
+    };
+    for (const key of ['mealType', 'servingLabel', 'sourceType', 'sourceLabel', 'sourceUrl', 'note']) {
+      if (args[key] !== undefined) meal[key] = args[key];
+    }
+    return { kind: 'meal', date, meal };
+  }
+
+  if (intent === 'log_workout') {
+    return {
+      kind: 'workout',
+      date,
+      exercises: args.exercises as { name: string; sets: { weight: number; reps: number }[] }[],
+    };
+  }
+
+  // 読み取り系はサーバーで実行する（画面に無い集計もあるため）
+  return null;
+}
+
+/** 画面に出す一文。サーバーが書いたときと同じ言い方にそろえる */
+export function describePlan(plan: CommandPlan): string {
+  if (plan.kind === 'weight') {
+    return `体重 ${plan.weight}kg を記録しました。同じ日に再度記録すると上書きされます。`;
+  }
+  if (plan.kind === 'meal') {
+    const meal = plan.meal as Record<string, number | string>;
+    return `${meal.name} を記録しました（${meal.calories}kcal / P${meal.protein}g F${meal.fat}g C${meal.carbs}g）。`;
+  }
+  const names = plan.exercises.map(exercise => exercise.name).join('、');
+  const sets = plan.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
+  return `${names} を記録しました（${plan.exercises.length}種目 / ${sets}セット）。`;
 }

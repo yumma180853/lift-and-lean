@@ -17,6 +17,8 @@ import type { Credentials, RecoveryConfirm, RecoveryRequest, VerificationConfirm
 import type { AuthenticatedUser } from '../_core/ports.js';
 import type { LiftAndLeanService } from '../_core/service.js';
 import { runCommand } from './command.js';
+import { runTranscription } from './transcribe.js';
+import type { TranscribeDeps } from './transcribe.js';
 
 export const V1_PREFIX = '/api/v1';
 
@@ -43,6 +45,11 @@ export interface RouterDeps {
    * 差し込み式にしてあるのは、試験で言語モデルを呼ばずに済ませるため。
    */
   parseCommand?(text: string, prompt: string): Promise<unknown>;
+  /**
+   * 録音を文字にする。**鍵はサーバーにしか無い**ので画面からは呼べない。
+   * ここも差し込み式（試験で外部を呼ばない）。
+   */
+  transcribe?: TranscribeDeps;
 }
 
 interface RequestContext {
@@ -228,6 +235,18 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
         ctx.body,
       );
       return send(res, 200, result);
+    }
+
+    /**
+     * 録音（base64）を文字にして返すだけ。**保存はしない。**
+     * 音声そのものはここを通り過ぎるだけで、どこにも残さない。
+     */
+    case 'transcribe': {
+      requireMethod(ctx, 'POST');
+      if (!deps.transcribe) {
+        throw new AppError('unavailable', 503, '音声入力は今は使えません。');
+      }
+      return send(res, 200, await runTranscription(deps.transcribe, ctx.body));
     }
 
     case 'summary':
