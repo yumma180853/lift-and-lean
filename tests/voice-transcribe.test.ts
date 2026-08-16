@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AppError } from '../api/_core/errors.ts';
-import { MAX_AUDIO_BYTES, decodeAudio, extensionFor, runTranscription } from '../api/_v1/transcribe.ts';
+import { MAX_AUDIO_BYTES, createTranscriber, decodeAudio, extensionFor, runTranscription } from '../api/_v1/transcribe.ts';
 
 const base64 = (text: string) => Buffer.from(text).toString('base64');
 
@@ -117,4 +117,48 @@ test('返すのは文字だけ（音声を持ち回らない）', async () => {
   const deps = fakeTranscriber('体重72キロ');
   const result = await runTranscription(deps, { audio: base64('audio'), mimeType: 'audio/webm' });
   assert.deepEqual(Object.keys(result), ['text']);
+});
+
+// ---------------------------------------------------------------- 呼び出しの再試行
+
+test('まず日本語と語彙の手がかりを付けて呼ぶ', async () => {
+  const seen: any[] = [];
+  const deps = createTranscriber(async params => { seen.push(params); return { text: 'ベンチプレス' }; });
+
+  const result = await deps.transcribe(Buffer.from('audio'), 'mp4', 'audio/mp4');
+
+  assert.equal(result, 'ベンチプレス');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].language, 'ja');
+  assert.match(String(seen[0].prompt), /ラットプルダウン/, '筋トレ語彙の手がかりが無い');
+  assert.equal(seen[0].response_format, 'json');
+});
+
+test('付加的な指定で断られたら、最小の形でもう一度だけ試す', async () => {
+  const seen: any[] = [];
+  const deps = createTranscriber(async params => {
+    seen.push(params);
+    if (seen.length === 1) throw new Error('400 Unrecognized request argument supplied: prompt');
+    return { text: '体重72.4キロ' };
+  });
+
+  const result = await deps.transcribe(Buffer.from('audio'), 'mp4', 'audio/mp4');
+
+  assert.equal(result, '体重72.4キロ', '再試行できていない');
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1].language, undefined, '最小の形になっていない');
+  assert.equal(seen[1].prompt, undefined);
+  assert.ok(seen[1].model, 'モデル指定まで落ちている');
+});
+
+test('再試行しても駄目なら、決まった一文で断る', async () => {
+  const deps = createTranscriber(async () => { throw new Error('503 upstream'); });
+
+  await assert.rejects(
+    () => runTranscription(deps, { audio: base64('audio'), mimeType: 'audio/mp4' }),
+    (error: unknown) => {
+      assert.equal((error as AppError).message, '聞き取れませんでした。もう一度お願いします。');
+      return true;
+    },
+  );
 });

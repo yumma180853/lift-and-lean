@@ -282,6 +282,6 @@ Appwrite が正本 / `LiftAndLeanService` / repository 境界 / 認証・メー�
 AI食事推定 / AI目標提案 / MUSCLE STATUS / 通知・cron・KV / プライバシー /
 PWA / JST / 冪等性 / 既存データ。
 
-単体テスト 344件（音声ぶん: `tests/voice-command.test.ts` 20件、
+単体テスト 347件（音声ぶん: `tests/voice-command.test.ts` 20件、
 `tests/voice-recorder.test.ts` 19件、`tests/voice-transcribe.test.ts` 9件、
 `tests/voice-outbox.test.ts` 6件、`tests/v1-router.test.ts` に5件追加）。

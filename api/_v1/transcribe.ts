@@ -111,21 +111,52 @@ export interface TranscribeDeps {
   transcribe(audio: Buffer, extension: string, mimeType: string): Promise<string>;
 }
 
-export const openAiTranscriber: TranscribeDeps = {
-  async transcribe(audio, extension, mimeType) {
-    const file = await toFile(audio, `speech.${extension}`, { type: mimeType });
-    const result = await openai().audio.transcriptions.create({
-      file,
-      model: TRANSCRIBE_MODEL,
-      language: 'ja',
-      prompt: VOCABULARY_HINT,
-      // gpt-4o-mini-transcribe は json / text のみ。既定の json を使う
-      response_format: 'json',
-      temperature: 0,
-    });
-    return typeof result.text === 'string' ? result.text : '';
-  },
-};
+/**
+ * 実際に呼ぶところ。
+ *
+ * **付加的な指定で断られたら、最小の形でもう一度だけ試す。**
+ * モデル側の仕様変更（language / prompt / response_format の扱い）で
+ * 音声入力が丸ごと使えなくなるのを避けるため。
+ * 聞き取りの精度は少し落ちるが、「何も記録できない」よりはよい。
+ */
+/** OpenAI の呼び出しだけを外から差し替えられるようにする（再試行の作りを試験するため） */
+export type TranscriptionCall = (params: Record<string, unknown>) => Promise<{ text?: unknown }>;
+
+export function createTranscriber(call: TranscriptionCall): TranscribeDeps {
+  return {
+    async transcribe(audio, extension, mimeType) {
+      const name = `speech.${extension}`;
+
+      const run = async (minimal: boolean): Promise<string> => {
+        const file = await toFile(audio, name, { type: mimeType });
+        const result = await call(
+          minimal
+            ? { file, model: TRANSCRIBE_MODEL }
+            : {
+                file,
+                model: TRANSCRIBE_MODEL,
+                language: 'ja',
+                // 筋トレ語彙の手がかり。gpt-4o-mini-transcribe は json / text のみ
+                prompt: VOCABULARY_HINT,
+                response_format: 'json',
+              },
+        );
+        return typeof result.text === 'string' ? result.text : '';
+      };
+
+      try {
+        return await run(false);
+      } catch (error) {
+        console.error('transcription retry (minimal):', error instanceof Error ? error.message : 'unknown');
+        return await run(true);
+      }
+    },
+  };
+}
+
+export const openAiTranscriber: TranscribeDeps = createTranscriber(
+  params => openai().audio.transcriptions.create(params as any),
+);
 
 /**
  * 音声 → 文字。**内部の失敗理由は外へ出さない**（決まった一文だけ返す）。
