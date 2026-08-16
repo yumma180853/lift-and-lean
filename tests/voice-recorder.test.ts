@@ -127,7 +127,7 @@ test('大きな録音でも base64 にできる', () => {
 // ---------------------------------------------------------------- 実際の流れ（偽のブラウザ）
 
 /** 最低限の MediaRecorder / getUserMedia を持つ偽の window を用意する */
-function fakeBrowser(options: { deny?: boolean; noRecorder?: boolean } = {}) {
+function fakeBrowser(options: { deny?: boolean; noRecorder?: boolean; audio?: { state: string; level: number } } = {}) {
   const stopped: string[] = [];
   const tracks = [{ kind: 'audio', stop() { stopped.push('audio'); } }];
   const stream = { getTracks: () => tracks };
@@ -148,6 +148,25 @@ function fakeBrowser(options: { deny?: boolean; noRecorder?: boolean } = {}) {
     }
   }
 
+  /** 波形を返す偽の音声処理。level=0 は「拾えていない」状態を表す */
+  const frames: (() => void)[] = [];
+  const audio = options.audio;
+  const FakeAudioContext = audio ? class {
+    state = audio.state;
+    async resume() { /* iOS では効かないことがある */ }
+    async close() { /* 実害なし */ }
+    createMediaStreamSource() { return { connect() {} }; }
+    createAnalyser() {
+      return {
+        fftSize: 1024,
+        connect() {},
+        getByteTimeDomainData(target: Uint8Array) {
+          target.fill(128 + Math.round(audio.level * 128));
+        },
+      };
+    }
+  } : undefined;
+
   const scope: any = {
     navigator: {
       mediaDevices: {
@@ -159,12 +178,15 @@ function fakeBrowser(options: { deny?: boolean; noRecorder?: boolean } = {}) {
     },
     MediaRecorder: options.noRecorder ? undefined : FakeRecorder,
     Blob: class { size: number; type: string; constructor(parts: any[], opts: any) { this.size = parts.length * 12; this.type = opts?.type; } },
-    requestAnimationFrame: undefined,
+    AudioContext: FakeAudioContext,
+    requestAnimationFrame: audio ? (callback: () => void) => { frames.push(callback); return frames.length; } : undefined,
     cancelAnimationFrame: () => {},
     setTimeout,
     clearTimeout,
   };
-  return { scope, stopped };
+  /** 溜まっている描画待ちを1回進める */
+  const nextFrame = () => { const callback = frames.shift(); callback?.(); };
+  return { scope, stopped, nextFrame };
 }
 
 /** グローバルを差し替えて実行する（後片付けまで含める） */
@@ -241,5 +263,39 @@ test('画面を閉じたときも（結果を捨てても）マイクを解放�
     await recorder.start();
     recorder.cancel();
     assert.deepEqual(stopped, ['audio'], 'マイクが解放されていない');
+  });
+});
+
+test('音声処理が動かない端末（iOS）で、早合点して録音を切らない', async () => {
+  // 波形が「ぴったり無音」で返り、AudioContext も動いていない状態
+  const { scope, nextFrame } = fakeBrowser({ audio: { state: 'suspended', level: 0 } });
+  await withBrowser(scope, async () => {
+    let stopped = false;
+    const recorder = new VoiceRecorder(
+      { onStop: () => { stopped = true; }, onError: () => assert.fail('失敗になっている') },
+      // 「喋り出す前の待ち時間ゼロ」＝ふつうなら即座に打ち切る設定にしておく
+      new SilenceTracker({ noSpeechMs: 0, maxMs: 60_000 }),
+    );
+    await recorder.start();
+
+    for (let i = 0; i < 5; i++) nextFrame();
+    assert.equal(stopped, false, '拾えていないだけなのに録音を止めている');
+
+    recorder.cancel();
+  });
+});
+
+test('音声処理が動いていれば、無音の判定はそのまま効く', async () => {
+  const { scope, nextFrame } = fakeBrowser({ audio: { state: 'running', level: 0 } });
+  await withBrowser(scope, async () => {
+    let stopped = false;
+    const recorder = new VoiceRecorder(
+      { onStop: () => { stopped = true; }, onError: () => assert.fail('失敗になっている') },
+      new SilenceTracker({ noSpeechMs: 0, maxMs: 60_000 }),
+    );
+    await recorder.start();
+
+    nextFrame();
+    assert.equal(stopped, true, '無音でも止まらない');
   });
 });

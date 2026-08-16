@@ -308,7 +308,22 @@ export class VoiceRecorder {
         analyser.getByteTimeDomainData(samples);
         const level = levelOf(samples);
         this.callbacks.onLevel?.(level, this.tracker.hasSpoken);
-        if (this.tracker.push(level, Date.now() - this.startedAt)) { this.stop(); return; }
+        const elapsed = Date.now() - this.startedAt;
+
+        /**
+         * **解析が動いていないときに早合点しない。**
+         *
+         * iOS は音声処理を始める合図（タップ）から離れると `AudioContext` が
+         * 止まったままになることがあり、その間は波形がぴったり無音で返る。
+         * 生きたマイクなら必ず僅かに揺れるので、**完全な 0 は「拾えていない」**
+         * とみなし、時間切れだけで判断する（録音そのものは続いている）。
+         */
+        const silentBecauseIdle = level === 0 && context.state !== 'running';
+        const shouldStop = silentBecauseIdle
+          ? elapsed >= this.tracker.maxMs
+          : this.tracker.push(level, elapsed);
+
+        if (shouldStop) { this.stop(); return; }
         this.frame = requestAnimationFrame(tick);
       };
       this.frame = requestAnimationFrame(tick);
