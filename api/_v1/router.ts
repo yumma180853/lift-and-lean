@@ -16,6 +16,7 @@ import { credentialsSchema, parseInput, recoveryConfirmSchema, recoveryRequestSc
 import type { Credentials, RecoveryConfirm, RecoveryRequest, VerificationConfirm } from '../_core/validation.js';
 import type { AuthenticatedUser } from '../_core/ports.js';
 import type { LiftAndLeanService } from '../_core/service.js';
+import { runCommand } from './command.js';
 
 export const V1_PREFIX = '/api/v1';
 
@@ -37,6 +38,11 @@ export interface RouterDeps {
   readCookie(req: any): string | undefined;
   setSessionCookie(res: any, secret: string, expiresAt: string): void;
   clearSessionCookie(res: any): void;
+  /**
+   * 発話を操作へ振り分ける（音声・文字入力用）。
+   * 差し込み式にしてあるのは、試験で言語モデルを呼ばずに済ませるため。
+   */
+  parseCommand?(text: string, prompt: string): Promise<unknown>;
 }
 
 interface RequestContext {
@@ -206,6 +212,23 @@ async function route(deps: RouterDeps, req: any, res: any, ctx: RequestContext):
     case 'snapshot':
       requireMethod(ctx, 'GET');
       return send(res, 200, await service.getSnapshot(userId));
+
+    /**
+     * 話しことば・打ちことばの入口。
+     * 振り分け先は MCP と同じ道具なので、ここに業務の分岐は書かない。
+     */
+    case 'command': {
+      requireMethod(ctx, 'POST');
+      if (!deps.parseCommand) {
+        throw new AppError('unavailable', 503, '音声入力は今は使えません。');
+      }
+      const result = await runCommand(
+        { service, userId },
+        { parse: deps.parseCommand },
+        ctx.body,
+      );
+      return send(res, 200, result);
+    }
 
     case 'summary':
       requireMethod(ctx, 'GET');

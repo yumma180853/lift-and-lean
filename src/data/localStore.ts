@@ -62,7 +62,16 @@ export function loadLocalData(): AppData {
   };
 }
 
-/** 全キーを書き戻す（移行前と同じやり方） */
+/**
+ * 全キーを書き戻す（移行前と同じやり方）。
+ *
+ * 未ログイン時は書き込みが同期で終わるので、送信待ちの列は要らない。
+ * useAppData から直接使えるように公開している。
+ */
+export function persistLocalData(data: AppData): AppData {
+  return persist(data);
+}
+
 function persist(data: AppData): AppData {
   write(LOCAL_KEYS.meals, data.meals);
   write(LOCAL_KEYS.workouts, data.workouts);

@@ -135,7 +135,8 @@ export async function logMeal(ctx: ToolContext, args: any): Promise<ToolResult> 
     text: outcome.duplicated
       ? `${args.name} はすでに記録済みです（重複して登録していません）。`
       : `${args.name} を記録しました（${args.calories}kcal / P${args.protein}g F${args.fat}g C${args.carbs}g）。`,
-    data: { recorded: !outcome.duplicated, alreadyRecorded: outcome.duplicated },
+    // rowId は「いま記録したものを取り消す」ために画面側が使う
+    data: { recorded: !outcome.duplicated, alreadyRecorded: outcome.duplicated, rowId: outcome.rowId },
   };
 }
 

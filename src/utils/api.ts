@@ -138,6 +138,26 @@ export const dataApi = {
   saveProfile: (profile: Record<string, unknown>) => put<{ ok: boolean }>('/profile', profile),
 };
 
+export interface CommandResponse {
+  /** done=実行した / clarify=聞き返す / unsupported=対象外 */
+  status: 'done' | 'clarify' | 'unsupported';
+  message: string;
+  intent?: string;
+  data?: Record<string, unknown>;
+  /** 取り消しに使う情報（食事のみ） */
+  undo?: { kind: 'meal'; rowId: string };
+  /** 何と聞き取ったか */
+  transcript: string;
+}
+
+/**
+ * 話しことば・打ちことばの入口。
+ * **判断はサーバー側**（鍵を画面に置かないため）。ここは投げて受け取るだけ。
+ */
+export const commandApi = {
+  run: (text: string) => post<CommandResponse>('/command', { text }),
+};
+
 export const migrationApi = {
   preview: (backup: unknown) => post<MigrationReport>('/migrate/preview', backup),
   apply: (backup: unknown) => post<MigrationReport>('/migrate', backup),

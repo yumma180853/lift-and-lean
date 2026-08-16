@@ -20,6 +20,7 @@ import {
 } from '../_appwrite/auth.js';
 import { LiftAndLeanService } from '../_core/service.js';
 import { createV1Router } from './router.js';
+import { parseCommandWithLLM } from './commandParser.js';
 
 function appendHeader(res: any, name: string, value: string): void {
   const existing = typeof res.getHeader === 'function' ? res.getHeader(name) : undefined;
@@ -43,6 +44,7 @@ export const handleV1 = createV1Router({
   clearSessionCookie: (res: any) => {
     appendHeader(res, 'Set-Cookie', buildClearedSessionCookie());
   },
+  parseCommand: parseCommandWithLLM,
 });
 
 export { SESSION_COOKIE };

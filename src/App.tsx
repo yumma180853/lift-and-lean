@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2 } from 'lucide-react';
+import { Activity, Utensils, BarChart3, Settings, Dumbbell, Sparkles, Trash2, Mic } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { Meal, ChatMessage, Tab, StreakData } from './types';
@@ -9,6 +9,8 @@ import { SectionDiet } from './components/SectionDiet';
 import { SectionAnalysis } from './components/SectionAnalysis';
 import { SectionAITrainer } from './components/SectionAITrainer';
 import { SectionSettings } from './components/SectionSettings';
+import { SyncStatus } from './components/SyncStatus';
+import { VoiceCommand } from './components/VoiceCommand';
 import { useAppData } from './data/useAppData';
 
 const safeUUID = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -93,6 +95,8 @@ function urlBase64ToUint8Array(base64String: string) {
 export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [dietEditOpen, setDietEditOpen] = useState(false);
+  // 話して記録する入口。どの画面からでも1タップで開ける
+  const [voiceOpen, setVoiceOpen] = useState(false);
   // 食事ログで表示中の日付。タブを離れたら今日に戻し「昨日のつもりで今日に記録」の事故を防ぐ
   const [dietDate, setDietDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   useEffect(() => {
@@ -317,12 +321,15 @@ export default function App() {
             <button type="button" onClick={() => void store.reload()} className="ml-2 underline">再試行</button>
           </div>
         )}
-        {store.saveError && (
-          <div className="fixed inset-x-0 bottom-20 z-[60] mx-5 rounded-2xl bg-rose-500/15 border border-rose-500/40 px-4 py-3 text-[11px] font-bold text-rose-300 leading-relaxed">
-            保存できませんでした：{store.saveError}
-            <button type="button" onClick={store.clearSaveError} className="ml-2 underline">閉じる</button>
-          </div>
-        )}
+        <SyncStatus
+          pendingCount={store.pendingCount}
+          failedCount={store.failedCount}
+          syncing={store.syncing}
+          saveError={store.saveError}
+          onRetry={store.retryFailed}
+          onDismissFailed={store.dismissFailed}
+          onClearError={store.clearSaveError}
+        />
 
         <main className="flex-1">
           <AnimatePresence mode="wait">
@@ -393,11 +400,23 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
+        {/* 話して記録：どの画面からでも1タップ */}
+        {!dietEditOpen && !voiceOpen && (
+          <button
+            type="button"
+            onClick={() => setVoiceOpen(true)}
+            aria-label="話して記録"
+            className="fixed z-[58] right-5 bottom-24 w-14 h-14 rounded-full bg-lime-400 text-black flex items-center justify-center shadow-[0_6px_24px_rgba(163,230,53,0.35)] active:scale-90 transition-all"
+          >
+            <Mic size={24} />
+          </button>
+        )}
+
         <nav className={`fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 px-3 py-2 flex items-center justify-between z-50 ${dietEditOpen ? 'hidden' : ''}`} style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           {([
             { id: 'dashboard',  Icon: Activity,  label: 'ホーム' },
-            { id: 'diet',       Icon: Utensils,  label: '食事' },
             { id: 'workout',    Icon: Dumbbell,  label: 'トレーニング' },
+            { id: 'diet',       Icon: Utensils,  label: '食事' },
             { id: 'analysis',   Icon: BarChart3, label: '分析' },
             { id: 'settings',   Icon: Settings,  label: '設定' },
           ] as const).map(({ id, Icon, label }) => (
@@ -416,6 +435,12 @@ export default function App() {
           ))}
         </nav>
       </div>
+      <VoiceCommand
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        onRecorded={() => { void store.reload(); }}
+      />
+
       <AnimatePresence>
         {openW && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

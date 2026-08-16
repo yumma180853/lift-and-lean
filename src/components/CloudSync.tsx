@@ -3,7 +3,7 @@ import { Cloud, CloudOff, LogOut, MailWarning, ShieldCheck } from 'lucide-react'
 import { ApiError, authApi, migrationApi } from '../utils/api';
 import type { AccountInfo, MigrationReport } from '../utils/api';
 import { buildMigrationPayload } from '../utils/backup';
-import { clearCache } from '../data/useAppData';
+import { clearCache, storedPendingCount } from '../data/useAppData';
 
 /**
  * クラウド同期（移行の第2工程）。
@@ -128,6 +128,17 @@ export function CloudSync({ account, dataMode, onAccountChanged }: CloudSyncProp
   };
 
   const signOut = async () => {
+    // ログアウトは端末の控えを消す。まだ送れていない記録があるなら黙って捨てない
+    const unsent = storedPendingCount();
+    if (unsent > 0) {
+      const ok = window.confirm(
+        `まだサーバーへ保存できていない記録が ${unsent} 件あります。\n`
+        + 'いまログアウトすると、この記録はこの端末から消えます。\n\n'
+        + '電波の良い場所でしばらく待つと自動で保存されます。\nそれでもログアウトしますか？',
+      );
+      if (!ok) return;
+    }
+
     setBusy(true);
     try {
       await authApi.logOut();

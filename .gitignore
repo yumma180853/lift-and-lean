@@ -1,4 +1,6 @@
 .vercel
+# 性能計測で使う「改修前」の作業ツリー（git worktree）
+.perf-before
 job_hunting_story.md
 psychology_ux_strategy.md
 dist

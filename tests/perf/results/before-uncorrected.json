@@ -1,0 +1,352 @@
+{
+  "label": "before",
+  "cpuThrottle": 4,
+  "at": "2026-08-16T16:23:31.479Z",
+  "runs": [
+    {
+      "delayMs": 0,
+      "coldStart": {
+        "visibleMs": 804,
+        "requestCount": 3,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot",
+          "PUT /api/v1/profile"
+        ]
+      },
+      "warmStart": {
+        "visibleMs": 110,
+        "requestCount": 2,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot"
+        ]
+      },
+      "goalTyping": {
+        "samples": [
+          {
+            "want": "1",
+            "paintMs": 5,
+            "showsAfter120ms": "1"
+          },
+          {
+            "want": "18",
+            "paintMs": 9,
+            "showsAfter120ms": "18"
+          },
+          {
+            "want": "185",
+            "paintMs": 14,
+            "showsAfter120ms": "185"
+          },
+          {
+            "want": "1850",
+            "paintMs": 9,
+            "showsAfter120ms": "1850"
+          }
+        ],
+        "finalShown": "1850",
+        "revertedCount": 0,
+        "maxPaintMs": 14,
+        "writesDuringTyping": 4,
+        "writesTotal": 4,
+        "routes": [
+          "PUT /api/v1/goals",
+          "PUT /api/v1/goals",
+          "PUT /api/v1/goals",
+          "PUT /api/v1/goals"
+        ]
+      },
+      "setEdit": {
+        "paintMs": 29,
+        "sentMs": null,
+        "target": "52.5",
+        "finalShown": "52.5",
+        "kept": true,
+        "writes": 0,
+        "routes": []
+      },
+      "rapidSetEdits": {
+        "inputDoneMs": 767,
+        "observed": [
+          {
+            "wanted": "60",
+            "shows": "60"
+          },
+          {
+            "wanted": "62.5",
+            "shows": "62.5"
+          },
+          {
+            "wanted": "65",
+            "shows": "65"
+          },
+          {
+            "wanted": "67.5",
+            "shows": "67.5"
+          },
+          {
+            "wanted": "70",
+            "shows": "70"
+          }
+        ],
+        "revertedDuringInput": 0,
+        "expected": "70",
+        "finalShown": "70",
+        "correct": true,
+        "writes": 0
+      },
+      "addExercise": {
+        "error": "種目の候補が見つかりませんでした",
+        "buttons": [
+          "戻る",
+          "",
+          "+ セット",
+          "",
+          "",
+          "",
+          "",
+          "+ セット",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "+ セット",
+          "",
+          "",
+          "",
+          "胸",
+          "背中",
+          "肩",
+          "腕",
+          "脚",
+          "腹筋",
+          "+ ベンチプレス",
+          "+ インクラインダンベルプレス",
+          "+ チェストプレスマシン",
+          "+ ペックフライ",
+          "確定",
+          "キャンセル",
+          "ホーム",
+          "食事",
+          "トレーニング",
+          "分析",
+          "設定"
+        ]
+      },
+      "tabSwitch": {
+        "switches": [
+          {
+            "tab": "食事",
+            "ms": 259
+          },
+          {
+            "tab": "分析",
+            "ms": 261
+          },
+          {
+            "tab": "トレーニング",
+            "ms": 271
+          },
+          {
+            "tab": "ホーム",
+            "ms": 235
+          }
+        ],
+        "writes": 0
+      },
+      "mealAdd": {
+        "listedMs": 24,
+        "unique": "ベンチ飯1512",
+        "writes": 1,
+        "routes": [
+          "POST /api/v1/meals"
+        ]
+      },
+      "offlineWrite": {
+        "listedMs": 18,
+        "unique": "ベンチ飯1522",
+        "writes": 1,
+        "routes": [
+          "POST /api/v1/meals"
+        ],
+        "hasOutboxKey": false
+      },
+      "longTasks": [],
+      "snapshotBytes": 191778
+    },
+    {
+      "delayMs": 2000,
+      "coldStart": {
+        "visibleMs": 4419,
+        "requestCount": 3,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot",
+          "PUT /api/v1/profile"
+        ]
+      },
+      "warmStart": {
+        "visibleMs": 2145,
+        "requestCount": 3,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot",
+          "PUT /api/v1/profile"
+        ]
+      },
+      "goalTyping": {
+        "samples": [
+          {
+            "want": "1",
+            "paintMs": 10,
+            "showsAfter120ms": "2400"
+          },
+          {
+            "want": "18",
+            "paintMs": 10,
+            "showsAfter120ms": "2400"
+          },
+          {
+            "want": "185",
+            "paintMs": 10,
+            "showsAfter120ms": "2400"
+          },
+          {
+            "want": "1850",
+            "paintMs": 10,
+            "showsAfter120ms": "2400"
+          }
+        ],
+        "finalShown": "1",
+        "revertedCount": 4,
+        "maxPaintMs": 10,
+        "writesDuringTyping": 0,
+        "writesTotal": 2,
+        "routes": [
+          "PUT /api/v1/goals",
+          "PUT /api/v1/goals"
+        ]
+      },
+      "setEdit": {
+        "paintMs": 18,
+        "sentMs": null,
+        "target": "52.5",
+        "finalShown": "52.5",
+        "kept": true,
+        "writes": 0,
+        "routes": []
+      },
+      "rapidSetEdits": {
+        "inputDoneMs": 766,
+        "observed": [
+          {
+            "wanted": "60",
+            "shows": "60"
+          },
+          {
+            "wanted": "62.5",
+            "shows": "62.5"
+          },
+          {
+            "wanted": "65",
+            "shows": "65"
+          },
+          {
+            "wanted": "67.5",
+            "shows": "67.5"
+          },
+          {
+            "wanted": "70",
+            "shows": "70"
+          }
+        ],
+        "revertedDuringInput": 0,
+        "expected": "70",
+        "finalShown": "70",
+        "correct": true,
+        "writes": 0
+      },
+      "addExercise": {
+        "error": "種目の候補が見つかりませんでした",
+        "buttons": [
+          "戻る",
+          "",
+          "+ セット",
+          "",
+          "",
+          "",
+          "",
+          "+ セット",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "+ セット",
+          "",
+          "",
+          "",
+          "胸",
+          "背中",
+          "肩",
+          "腕",
+          "脚",
+          "腹筋",
+          "+ ベンチプレス",
+          "+ インクラインダンベルプレス",
+          "+ チェストプレスマシン",
+          "+ ペックフライ",
+          "確定",
+          "キャンセル",
+          "ホーム",
+          "食事",
+          "トレーニング",
+          "分析",
+          "設定"
+        ]
+      },
+      "tabSwitch": {
+        "switches": [
+          {
+            "tab": "食事",
+            "ms": 243
+          },
+          {
+            "tab": "分析",
+            "ms": 509
+          },
+          {
+            "tab": "トレーニング",
+            "ms": 264
+          },
+          {
+            "tab": "ホーム",
+            "ms": 243
+          }
+        ],
+        "writes": 0
+      },
+      "mealAdd": {
+        "listedMs": 12,
+        "unique": "ベンチ飯3522",
+        "writes": 1,
+        "routes": [
+          "POST /api/v1/meals"
+        ]
+      },
+      "offlineWrite": {
+        "listedMs": 15,
+        "unique": "ベンチ飯3470",
+        "writes": 1,
+        "routes": [
+          "POST /api/v1/meals"
+        ],
+        "hasOutboxKey": false
+      },
+      "longTasks": [],
+      "snapshotBytes": 191778
+    }
+  ]
+}

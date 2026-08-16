@@ -1,0 +1,349 @@
+{
+  "label": "after",
+  "cpuThrottle": 4,
+  "at": "2026-08-16T17:49:08.210Z",
+  "runs": [
+    {
+      "delayMs": 0,
+      "coldStart": {
+        "visibleMs": 738,
+        "requestCount": 2,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot"
+        ]
+      },
+      "warmStart": {
+        "visibleMs": 88,
+        "requestCount": 2,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot"
+        ]
+      },
+      "goalTyping": {
+        "samples": [
+          {
+            "want": "1",
+            "paintMs": 9,
+            "showsAfter120ms": "1"
+          },
+          {
+            "want": "18",
+            "paintMs": 29,
+            "showsAfter120ms": "18"
+          },
+          {
+            "want": "185",
+            "paintMs": 12,
+            "showsAfter120ms": "185"
+          },
+          {
+            "want": "1850",
+            "paintMs": 26,
+            "showsAfter120ms": "1850"
+          }
+        ],
+        "finalShown": "1850",
+        "revertedCount": 0,
+        "maxPaintMs": 29,
+        "writesDuringTyping": 0,
+        "writesTotal": 1,
+        "routes": [
+          "PUT /api/v1/goals"
+        ]
+      },
+      "setEdit": {
+        "paintMs": 23,
+        "sentMs": 535,
+        "target": "52.5",
+        "finalShown": "52.5",
+        "kept": true,
+        "writes": 1,
+        "routes": [
+          "PATCH /api/v1/sets/set-0-0-0"
+        ]
+      },
+      "rapidSetEdits": {
+        "inputDoneMs": 769,
+        "observed": [
+          {
+            "wanted": "60",
+            "shows": "60"
+          },
+          {
+            "wanted": "62.5",
+            "shows": "62.5"
+          },
+          {
+            "wanted": "65",
+            "shows": "65"
+          },
+          {
+            "wanted": "67.5",
+            "shows": "67.5"
+          },
+          {
+            "wanted": "70",
+            "shows": "70"
+          }
+        ],
+        "revertedDuringInput": 0,
+        "expected": "70",
+        "finalShown": "70",
+        "correct": true,
+        "writes": 1
+      },
+      "addExercise": {
+        "uiMs": 17,
+        "writes": 2,
+        "routes": [
+          "POST /api/v1/exercises",
+          "PUT /api/v1/profile"
+        ]
+      },
+      "tabSwitch": {
+        "switches": [
+          {
+            "tab": "食事",
+            "ms": 253
+          },
+          {
+            "tab": "分析",
+            "ms": 440
+          },
+          {
+            "tab": "トレーニング",
+            "ms": 271
+          },
+          {
+            "tab": "ホーム",
+            "ms": 243
+          }
+        ],
+        "writes": 0
+      },
+      "mealAdd": {
+        "listedMs": 22,
+        "toastMs": 22,
+        "unique": "ベンチ飯1475",
+        "stillListed": true,
+        "writes": 1,
+        "routes": [
+          "POST /api/v1/meals"
+        ]
+      },
+      "offlineWrite": {
+        "listedMs": 18,
+        "toastMs": 18,
+        "unique": "ベンチ飯1460",
+        "stillListed": true,
+        "writes": 0,
+        "routes": [],
+        "hasOutboxKey": true
+      },
+      "durability": {
+        "unique": "ベンチ飯1497",
+        "listedWhileDown": true,
+        "outbox": {
+          "ops": 1,
+          "keys": [
+            "outbox:v1"
+          ]
+        },
+        "survivedReload": true,
+        "outboxAfterReload": {
+          "ops": 2,
+          "keys": [
+            "outbox:v1"
+          ]
+        },
+        "syncedMs": 404,
+        "syncedAfterRecovery": true,
+        "outboxFinal": {
+          "ops": 0,
+          "keys": [
+            "outbox:v1"
+          ]
+        },
+        "attemptedPosts": 5,
+        "acceptedPosts": 1,
+        "duplicateAccepted": false
+      },
+      "longTasks": [],
+      "snapshotBytes": 191778
+    },
+    {
+      "delayMs": 2000,
+      "coldStart": {
+        "visibleMs": 4380,
+        "requestCount": 2,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot"
+        ]
+      },
+      "warmStart": {
+        "visibleMs": 105,
+        "requestCount": 2,
+        "requests": [
+          "GET /api/v1/auth/me",
+          "GET /api/v1/snapshot"
+        ]
+      },
+      "goalTyping": {
+        "samples": [
+          {
+            "want": "1",
+            "paintMs": 9,
+            "showsAfter120ms": "1"
+          },
+          {
+            "want": "18",
+            "paintMs": 28,
+            "showsAfter120ms": "18"
+          },
+          {
+            "want": "185",
+            "paintMs": 16,
+            "showsAfter120ms": "185"
+          },
+          {
+            "want": "1850",
+            "paintMs": 10,
+            "showsAfter120ms": "1850"
+          }
+        ],
+        "finalShown": "1850",
+        "revertedCount": 0,
+        "maxPaintMs": 28,
+        "writesDuringTyping": 0,
+        "writesTotal": 2,
+        "routes": [
+          "PUT /api/v1/profile",
+          "PUT /api/v1/goals"
+        ]
+      },
+      "setEdit": {
+        "paintMs": 31,
+        "sentMs": 554,
+        "target": "52.5",
+        "finalShown": "52.5",
+        "kept": true,
+        "writes": 1,
+        "routes": [
+          "PATCH /api/v1/sets/set-0-0-0"
+        ]
+      },
+      "rapidSetEdits": {
+        "inputDoneMs": 777,
+        "observed": [
+          {
+            "wanted": "60",
+            "shows": "60"
+          },
+          {
+            "wanted": "62.5",
+            "shows": "62.5"
+          },
+          {
+            "wanted": "65",
+            "shows": "65"
+          },
+          {
+            "wanted": "67.5",
+            "shows": "67.5"
+          },
+          {
+            "wanted": "70",
+            "shows": "70"
+          }
+        ],
+        "revertedDuringInput": 0,
+        "expected": "70",
+        "finalShown": "70",
+        "correct": true,
+        "writes": 1
+      },
+      "addExercise": {
+        "uiMs": 18,
+        "writes": 2,
+        "routes": [
+          "POST /api/v1/exercises",
+          "PUT /api/v1/profile"
+        ]
+      },
+      "tabSwitch": {
+        "switches": [
+          {
+            "tab": "食事",
+            "ms": 254
+          },
+          {
+            "tab": "分析",
+            "ms": 266
+          },
+          {
+            "tab": "トレーニング",
+            "ms": 272
+          },
+          {
+            "tab": "ホーム",
+            "ms": 239
+          }
+        ],
+        "writes": 0
+      },
+      "mealAdd": {
+        "listedMs": 21,
+        "toastMs": 21,
+        "unique": "ベンチ飯1524",
+        "stillListed": true,
+        "writes": 1,
+        "routes": [
+          "POST /api/v1/meals"
+        ]
+      },
+      "offlineWrite": {
+        "listedMs": 15,
+        "toastMs": 15,
+        "unique": "ベンチ飯1446",
+        "stillListed": true,
+        "writes": 0,
+        "routes": [],
+        "hasOutboxKey": true
+      },
+      "durability": {
+        "unique": "ベンチ飯5547",
+        "listedWhileDown": true,
+        "outbox": {
+          "ops": 2,
+          "keys": [
+            "outbox:lease:v1",
+            "outbox:v1"
+          ]
+        },
+        "survivedReload": true,
+        "outboxAfterReload": {
+          "ops": 2,
+          "keys": [
+            "outbox:v1"
+          ]
+        },
+        "syncedMs": 4024,
+        "syncedAfterRecovery": true,
+        "outboxFinal": {
+          "ops": 0,
+          "keys": [
+            "outbox:v1"
+          ]
+        },
+        "attemptedPosts": 1,
+        "acceptedPosts": 1,
+        "duplicateAccepted": false
+      },
+      "longTasks": [],
+      "snapshotBytes": 191778
+    }
+  ]
+}
