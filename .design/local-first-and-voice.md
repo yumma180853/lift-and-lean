@@ -199,6 +199,28 @@ PWA では動かない**（Apple 未対応）ためで、これ自体は今も�
 音声そのものは Appwrite にも localStorage にも通常のログにも**残さない**。
 変換のあいだメモリを通り過ぎるだけ。
 
+#### iOS の癖への備え（実機で踏む前に手当てした3つ）
+
+1. **形式は mp4 を先に試す。** WebKit が webm を録れるのは Safari 18.4
+   （2025年3月）以降で、`isTypeSupported` が true でも `start()` が
+   失敗する報告がある。iOS でいちばん枯れているのは mp4 なので、
+   対応していると答えても新しいほうを優先しない
+   （<https://webkit.org/blog/16574/webkit-features-in-safari-18-4/>）
+2. **`stop()` しても `onstop` が来ないことがある**（空の録音になる）。
+   `start(1000)` で1秒ごとに受け取っておき、`stop()` から1.5秒待っても
+   合図が来なければ**手元のぶんで組み立てる**
+   （<https://developer.apple.com/forums/thread/694207>）
+3. **音声処理はタップの流れの中で作る。** iOS は許可ダイアログの「許可」を
+   user gesture として扱わないため、`getUserMedia` を待ってから
+   `AudioContext` を作ると止まったままになり、波形がぴったり無音で返る。
+   先に作っておき、さらに「完全な無音かつ context が動いていない」ときは
+   無音判定を使わない（喋っている最中に切らないため）
+   （<https://bugs.webkit.org/show_bug.cgi?id=180522>）
+
+なお iOS の PWA では**マイクの許可が保存されない**（起動ごとに聞かれる）。
+これは Safari 側の仕様なので、こちらでできることは無い
+（<https://bugs.webkit.org/show_bug.cgi?id=215884>）。
+
 文字入力欄は「聞き取りを直す」ために残すが、**開いた時点では focus しない**。
 
 実装: `src/utils/recorder.ts`（録音）/ `api/_v1/transcribe.ts`（文字起こし）/
@@ -260,6 +282,6 @@ Appwrite が正本 / `LiftAndLeanService` / repository 境界 / 認証・メー�
 AI食事推定 / AI目標提案 / MUSCLE STATUS / 通知・cron・KV / プライバシー /
 PWA / JST / 冪等性 / 既存データ。
 
-単体テスト 338件（音声ぶん: `tests/voice-command.test.ts` 20件、
+単体テスト 344件（音声ぶん: `tests/voice-command.test.ts` 20件、
 `tests/voice-recorder.test.ts` 19件、`tests/voice-transcribe.test.ts` 9件、
 `tests/voice-outbox.test.ts` 6件、`tests/v1-router.test.ts` に5件追加）。

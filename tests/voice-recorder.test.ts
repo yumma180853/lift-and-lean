@@ -15,8 +15,10 @@ import {
   SilenceTracker,
   VoiceRecorder,
   bytesToBase64,
+  candidatesFor,
   classifyMediaError,
   detectRecorderSupport,
+  isAppleBrowser,
   levelOf,
   pickMimeType,
 } from '../src/utils/recorder.ts';
@@ -47,13 +49,29 @@ test('両方あれば使える', () => {
 
 // ---------------------------------------------------------------- 形式
 
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36';
+
 test('iPhone（mp4しか対応しない）では mp4 を選ぶ', () => {
   const isTypeSupported = (type: string) => type.startsWith('audio/mp4');
-  assert.equal(pickMimeType(isTypeSupported), 'audio/mp4;codecs=mp4a.40.2');
+  assert.equal(pickMimeType(isTypeSupported, candidatesFor(IPHONE_UA)), 'audio/mp4;codecs=mp4a.40.2');
+});
+
+test('iPhone は webm も録れると答えても mp4 を選ぶ（枯れているほうを使う）', () => {
+  // Safari 18.4 以降は webm も true を返すが、iOS で確実なのは mp4
+  assert.equal(pickMimeType(() => true, candidatesFor(IPHONE_UA)), 'audio/mp4;codecs=mp4a.40.2');
 });
 
 test('webm が使える端末では webm/opus を選ぶ', () => {
-  assert.equal(pickMimeType(() => true), 'audio/webm;codecs=opus');
+  assert.equal(pickMimeType(() => true, candidatesFor(ANDROID_UA)), 'audio/webm;codecs=opus');
+});
+
+test('iPhone かどうかで並びを変える', () => {
+  assert.equal(isAppleBrowser(IPHONE_UA), true);
+  assert.equal(isAppleBrowser(ANDROID_UA), false);
+  assert.equal(isAppleBrowser(''), false);
+  assert.equal(candidatesFor(IPHONE_UA)[0].startsWith('audio/mp4'), true);
+  assert.equal(candidatesFor(ANDROID_UA)[0].startsWith('audio/webm'), true);
 });
 
 test('どれも使えなければ指定しない（ブラウザに選ばせる）', () => {
@@ -127,7 +145,13 @@ test('大きな録音でも base64 にできる', () => {
 // ---------------------------------------------------------------- 実際の流れ（偽のブラウザ）
 
 /** 最低限の MediaRecorder / getUserMedia を持つ偽の window を用意する */
-function fakeBrowser(options: { deny?: boolean; noRecorder?: boolean; audio?: { state: string; level: number } } = {}) {
+function fakeBrowser(options: {
+  deny?: boolean;
+  noRecorder?: boolean;
+  audio?: { state: string; level: number };
+  /** iOS で報告されている「stop しても onstop が来ない」状態 */
+  silentStop?: boolean;
+} = {}) {
   const stopped: string[] = [];
   const tracks = [{ kind: 'audio', stop() { stopped.push('audio'); } }];
   const stream = { getTracks: () => tracks };
@@ -140,9 +164,15 @@ function fakeBrowser(options: { deny?: boolean; noRecorder?: boolean; audio?: { 
     onstop: any = null;
     onerror: any = null;
     constructor(_stream: any, opts?: { mimeType?: string }) { this.mimeType = opts?.mimeType ?? ''; }
-    start() { this.state = 'recording'; }
+    start(timeslice?: number) {
+      this.state = 'recording';
+      // 小分け指定があれば、実機と同じように録れたぶんが届く
+      if (timeslice) this.ondataavailable?.({ data: { size: 12 } });
+    }
+    requestData() { this.ondataavailable?.({ data: { size: 12 } }); }
     stop() {
       this.state = 'inactive';
+      if (options.silentStop) return; // 何も起きない（iOS の不具合）
       this.ondataavailable?.({ data: { size: 12 } });
       this.onstop?.();
     }
@@ -297,5 +327,45 @@ test('音声処理が動いていれば、無音の判定はそのまま効く',
 
     nextFrame();
     assert.equal(stopped, true, '無音でも止まらない');
+  });
+});
+
+test('iOS で stop の合図が返ってこなくても、録れたぶんを取り出してマイクを解放する', async () => {
+  const { scope, stopped } = fakeBrowser({ silentStop: true });
+  await withBrowser(scope, async () => {
+    let got: any = null;
+    let failed: string | null = null;
+    const recorder = new VoiceRecorder({
+      onStop: (audio: any, mimeType) => { got = { size: audio.size, type: mimeType }; },
+      onError: failure => { failed = failure; },
+    });
+    await recorder.start();
+
+    recorder.stop();
+    assert.equal(got, null, '待たずに返している');
+
+    // 待ちの上限（1.5秒）を過ぎたら、手元のぶんで組み立てる
+    await new Promise(resolve => setTimeout(resolve, 1700));
+
+    assert.equal(failed, null, `失敗になっている: ${failed}`);
+    assert.ok(got, '録れたぶんが返ってこない');
+    assert.ok(got.size > 0, '空の録音になっている');
+    assert.deepEqual(stopped, ['audio'], 'マイクが解放されていない');
+  });
+});
+
+test('結果は1回だけ返る（遅れて onstop が来ても二重に返さない）', async () => {
+  const { scope } = fakeBrowser();
+  await withBrowser(scope, async () => {
+    let count = 0;
+    const recorder = new VoiceRecorder({
+      onStop: () => { count++; },
+      onError: () => assert.fail('失敗になっている'),
+    });
+    await recorder.start();
+
+    recorder.stop();
+    recorder.stop(); // 二度押し
+    assert.equal(count, 1, `${count}回返っている`);
   });
 });

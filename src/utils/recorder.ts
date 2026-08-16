@@ -43,7 +43,7 @@ export function detectRecorderSupport(scope: any = typeof window === 'undefined'
 }
 
 /**
- * 使える形式を選ぶ。**上から順に試す**（軽い順・文字起こしの通りやすい順）。
+ * 使える形式の候補。**上から順に試す。**
  * どれも駄目なら undefined を返し、`MediaRecorder` に選ばせる。
  */
 export const MIME_CANDIDATES = [
@@ -55,9 +55,37 @@ export const MIME_CANDIDATES = [
   'audio/aac',
 ];
 
+/**
+ * Safari/WebKit 用の並び。**mp4 を先に試す。**
+ *
+ * WebKit が webm を録れるようになったのは Safari 18.4（2025年3月）から。
+ * それ以前は mp4 だけで、しかも `isTypeSupported` が true でも
+ * `start()` が失敗する報告がある。**iOS でいちばん枯れているのは mp4** なので、
+ * 対応していると答えても新しいほうを優先しない。
+ */
+export const APPLE_MIME_CANDIDATES = [
+  'audio/mp4;codecs=mp4a.40.2',
+  'audio/mp4',
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/aac',
+];
+
+/** iPhone / iPad / Safari か（端末を決めつけず、並びを変えるだけに使う） */
+export function isAppleBrowser(userAgent?: string): boolean {
+  const ua = userAgent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent ?? '');
+  if (!ua) return false;
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  // iPadOS は Mac を名乗る。Chrome/Edge/Firefox は WebKit の制約を受けない
+  return /Safari/i.test(ua) && !/Chrome|Chromium|Edg\/|Firefox|Android/i.test(ua);
+}
+
+export const candidatesFor = (userAgent?: string): string[] =>
+  isAppleBrowser(userAgent) ? APPLE_MIME_CANDIDATES : MIME_CANDIDATES;
+
 export function pickMimeType(
   isTypeSupported?: (type: string) => boolean,
-  candidates: string[] = MIME_CANDIDATES,
+  candidates: string[] = candidatesFor(),
 ): string | undefined {
   if (typeof isTypeSupported !== 'function') return undefined;
   for (const candidate of candidates) {
@@ -176,16 +204,32 @@ export interface VoiceRecorderCallbacks {
  * iOS は user gesture から離れると許可を求められない。
  */
 export class VoiceRecorder {
+  /**
+   * 録音を小分けに受け取る間隔。
+   *
+   * iOS では **`stop()` を呼んでも `onstop` / `ondataavailable` が
+   * 発火しないことがある**（空の録音になる）。小分けにしておけば、
+   * 発火しなくても手元に音が溜まっているので取り出せる。
+   */
+  private static readonly TIMESLICE_MS = 1000;
+
+  /** `stop()` のあと `onstop` を待つ上限。過ぎたら自分で組み立てる */
+  private static readonly STOP_GRACE_MS = 1500;
+
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
   private context: AudioContext | null = null;
   private frame: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private chunks: BlobPart[] = [];
   private tracker: SilenceTracker;
+  private mimeType: string | undefined;
   private startedAt = 0;
   private stopping = false;
   private released = false;
+  /** 結果を1回だけ返すための目印 */
+  private finished = false;
 
   constructor(private callbacks: VoiceRecorderCallbacks, tracker?: SilenceTracker) {
     this.tracker = tracker ?? new SilenceTracker();
@@ -194,6 +238,15 @@ export class VoiceRecorder {
   async start(): Promise<void> {
     const support = detectRecorderSupport();
     if (!support.supported) { this.callbacks.onError('unsupported'); return; }
+
+    /**
+     * **音声処理はタップの流れの中で作る。**
+     *
+     * iOS は許可ダイアログの「許可」を user gesture として扱わないため、
+     * `getUserMedia` を待ってから作ると止まったまま（波形がぴったり無音）になる。
+     * 先に作っておけば、そのあとで繋ぎ直すだけで済む。
+     */
+    this.context = this.createContext();
 
     let stream: MediaStream;
     try {
@@ -205,12 +258,14 @@ export class VoiceRecorder {
         },
       });
     } catch (error) {
+      this.release(); // 先に作った音声処理を閉じる
       this.callbacks.onError(classifyMediaError(error));
       return;
     }
     this.stream = stream;
 
     const mimeType = pickMimeType((window as any).MediaRecorder?.isTypeSupported?.bind((window as any).MediaRecorder));
+    this.mimeType = mimeType;
     try {
       // 話し声に十分な音質で、送信を軽くする。指定が通らない端末では下で作り直す
       this.recorder = mimeType
@@ -231,16 +286,11 @@ export class VoiceRecorder {
       if (event.data && event.data.size > 0) this.chunks.push(event.data);
     };
     this.recorder.onerror = () => { this.fail(); };
-    this.recorder.onstop = () => {
-      const type = this.recorder?.mimeType || mimeType || 'audio/webm';
-      const audio = new Blob(this.chunks, { type });
-      this.release();
-      if (audio.size === 0) { this.callbacks.onError('failed'); return; }
-      this.callbacks.onStop(audio, type);
-    };
+    this.recorder.onstop = () => this.finish();
 
     try {
-      this.recorder.start();
+      // 小分けに受け取る（iOS で onstop が来ないときの保険）
+      this.recorder.start(VoiceRecorder.TIMESLICE_MS);
     } catch {
       this.release();
       this.callbacks.onError('failed');
@@ -258,28 +308,62 @@ export class VoiceRecorder {
     this.stopping = true;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+
     try {
       if (this.recorder && this.recorder.state !== 'inactive') {
-        this.recorder.stop(); // onstop で release される
+        // 溜まっているぶんを先に吐き出させてから止める
+        try { this.recorder.requestData?.(); } catch { /* 実害なし */ }
+        this.recorder.stop(); // ふつうは onstop → finish
+
+        // **onstop が来ない端末がある。** 待ちすぎず、手元のぶんで組み立てる
+        this.graceTimer = setTimeout(() => this.finish(), VoiceRecorder.STOP_GRACE_MS);
         return;
       }
-    } catch { /* 下で解放する */ }
-    this.release();
+    } catch { /* 下で組み立てる */ }
+    this.finish();
   }
 
   /** 画面を閉じるなど、結果が要らないとき。**必ずマイクを離す** */
   cancel(): void {
     this.stopping = true;
+    this.finished = true;
     this.callbacks = { onStop: () => {}, onError: () => {} };
     try { if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop(); } catch { /* 実害なし */ }
     this.release();
   }
 
+  /** 録れた音を1回だけ返す。**ここを通れば必ずマイクは解放されている** */
+  private finish(): void {
+    if (this.finished) return;
+    this.finished = true;
+    if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
+
+    const type = this.recorder?.mimeType || this.mimeType || 'audio/webm';
+    const audio = new Blob(this.chunks, { type });
+    this.release();
+    if (audio.size === 0) { this.callbacks.onError('failed'); return; }
+    this.callbacks.onStop(audio, type);
+  }
+
   private fail(): void {
-    if (this.stopping) return;
+    if (this.finished) return;
+    this.finished = true;
     this.stopping = true;
     this.release();
     this.callbacks.onError('failed');
+  }
+
+  /** 音声処理を作る。使えない端末では null（停止ボタンと時間切れに頼る） */
+  private createContext(): AudioContext | null {
+    const Ctor = (window as any).AudioContext ?? (window as any).webkitAudioContext;
+    if (typeof Ctor !== 'function') return null;
+    try {
+      const context: AudioContext = new Ctor();
+      void context.resume?.();
+      return context;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -287,15 +371,14 @@ export class VoiceRecorder {
    * `AudioContext` が使えない端末では**時間切れだけ**で止める（停止ボタンが本命）。
    */
   private watch(stream: MediaStream): void {
-    const Ctor = (window as any).AudioContext ?? (window as any).webkitAudioContext;
-    if (typeof Ctor !== 'function' || typeof requestAnimationFrame !== 'function') {
+    const context = this.context;
+    if (!context || typeof requestAnimationFrame !== 'function') {
       this.timer = setTimeout(() => this.stop(), this.tracker.maxMs);
       return;
     }
 
     try {
-      const context: AudioContext = new Ctor();
-      this.context = context;
+      // 許可を待つあいだに止まっていることがあるので、繋ぐ前に起こす
       void context.resume?.();
       const source = context.createMediaStreamSource(stream);
       const analyser = context.createAnalyser();
@@ -338,6 +421,7 @@ export class VoiceRecorder {
     this.released = true;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     try { this.stream?.getTracks().forEach(track => track.stop()); } catch { /* 実害なし */ }
     this.stream = null;
     try { void this.context?.close(); } catch { /* 実害なし */ }
