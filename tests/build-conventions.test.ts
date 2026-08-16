@@ -47,6 +47,28 @@ test('api/ 配下の相対importに .ts 拡張子を使っていない', () => {
   assert.deepEqual(offenders, [], '本番で ERR_MODULE_NOT_FOUND になるため .js 拡張子で書くこと');
 });
 
+/**
+ * 拡張子を**書き忘れた**場合も同じ壊れ方をする。
+ *
+ * tsconfig の moduleResolution は "bundler" なので、拡張子が無くても
+ * 型検査は通ってしまう。しかし本番の実行時（Node の ESM）は拡張子を
+ * 補完しないため ERR_MODULE_NOT_FOUND になり、**全APIが500になる**。
+ * 実際に一度この形で本番を落としたので、ここで落とす。
+ */
+test('api/ 配下の相対importには .js 拡張子が付いている', () => {
+  const offenders: string[] = [];
+  for (const file of collectTsFiles(API_DIR)) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/from\s+'(\.[^']*)'|import\(\s*["'](\.[^"']*)["']/g)) {
+      const specifier = match[1] ?? match[2];
+      if (!specifier.endsWith('.js')) {
+        offenders.push(`${file.replace(API_DIR, 'api/')}: ${specifier}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], '本番で ERR_MODULE_NOT_FOUND になるため .js 拡張子まで書くこと');
+});
+
 test('api/ 直下のディレクトリは _ で始まる（Serverless Function化されない）', () => {
   const exposed = readdirSync(API_DIR)
     .filter(entry => statSync(join(API_DIR, entry)).isDirectory())

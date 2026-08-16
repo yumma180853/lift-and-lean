@@ -21,10 +21,10 @@
  */
 
 import { z } from 'zod';
-import { TOOLS } from '../_mcp/tools';
-import type { ToolContext, ToolDefinition } from '../_mcp/tools';
-import { jstToday } from '../_core/dates';
-import { AppError } from '../_core/errors';
+import { TOOLS } from '../_mcp/tools.js';
+import type { ToolContext, ToolDefinition } from '../_mcp/tools.js';
+import { jstToday } from '../_core/dates.js';
+import { AppError } from '../_core/errors.js';
 
 /** 言い直してもらうときの上限。長文＝雑談化を防ぐ */
 const MAX_TEXT_LENGTH = 300;
