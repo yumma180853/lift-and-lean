@@ -66,6 +66,14 @@ const tokenStoreOf = (deps: OAuthDeps): RecordStore => deps.tokens ?? kvRecordSt
 
 export const MCP_SCOPES = ['data:read', 'log:write'] as const;
 
+export function resolveMcpScopes(scopes: readonly string[]): string[] {
+  const requested = scopes.length ? [...new Set(scopes)] : [...MCP_SCOPES];
+  if (requested.some(scope => !MCP_SCOPES.includes(scope as typeof MCP_SCOPES[number]))) {
+    throw new AppError('invalid_scope', 400, '許可できない操作が含まれています。ChatGPTから連携をやり直してください。');
+  }
+  return requested;
+}
+
 /** 戻り先として許可するURL。ChatGPTの受け口と、検証用のローカルだけ */
 const ALLOWED_REDIRECT_PATTERNS: RegExp[] = [
   /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/,
@@ -162,6 +170,7 @@ export async function grantAuthorization(input: ConsentInput, deps: OAuthDeps = 
     throw new AppError('invalid_redirect', 400, '戻り先のURLが許可されていません。');
   }
   const resource = resolveRequestedResource(input.resource);
+  const scopes = resolveMcpScopes(input.scopes);
 
   const user = await (deps.authenticate ?? defaultAuthenticate)(input.email, input.password);
   if (!user.emailVerified) {
@@ -179,7 +188,7 @@ export async function grantAuthorization(input: ConsentInput, deps: OAuthDeps = 
     clientId: input.clientId,
     redirectUri: input.redirectUri,
     codeChallenge: input.codeChallenge,
-    scopes: input.scopes.length > 0 ? input.scopes : [...MCP_SCOPES],
+    scopes,
     resource,
     sealedSession: seal(code, user.sessionSecret),
     userId: user.userId,

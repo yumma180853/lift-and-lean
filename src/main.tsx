@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import {ResetPassword} from './components/ResetPassword.tsx';
 import {VerifyEmail} from './components/VerifyEmail.tsx';
+import {ChatGPTSetup} from './components/ChatGPTSetup.tsx';
 import './index.css';
 
 // メールのリンクから来る画面だけはアプリ本体と分ける。
@@ -11,6 +12,7 @@ const path = window.location.pathname.replace(/\/+$/, '');
 
 const screen = path === '/reset-password' ? <ResetPassword />
   : path === '/verify-email' ? <VerifyEmail />
+  : path === '/chatgpt' ? <ChatGPTSetup />
   : <App />;
 
 createRoot(document.getElementById('root')!).render(

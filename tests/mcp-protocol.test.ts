@@ -119,11 +119,11 @@ async function startServer() {
     deletedSessions,
     baseUrl: `http://127.0.0.1:${port}`,
     /** 連携済みの状態を直接作る（同意画面を通さない近道） */
-    async tokenFor(userId: string, options: { appwriteSession?: string; resource?: string } = {}) {
+    async tokenFor(userId: string, options: { appwriteSession?: string; resource?: string; scopes?: string[] } = {}) {
       return issueGrant({
         userId,
         resource: options.resource ?? MCP_RESOURCE,
-        scopes: ['data:read', 'log:write'],
+        scopes: options.scopes ?? ['data:read', 'log:write'],
         appwriteSession: options.appwriteSession ?? `appwrite-session-${userId}`,
       }, tokens);
     },
@@ -236,6 +236,7 @@ test('tools/list で6つの道具が見つかり、注記が付いている', as
       assert.equal(typeof annotations?.readOnlyHint, 'boolean', `${tool.name} に readOnlyHint がある`);
       assert.equal(typeof annotations?.destructiveHint, 'boolean', `${tool.name} に destructiveHint がある`);
       assert.equal(typeof annotations?.openWorldHint, 'boolean', `${tool.name} に openWorldHint がある`);
+      assert.deepEqual(tool._meta?.securitySchemes, [{ type: 'oauth2', scopes: [annotations.readOnlyHint ? 'data:read' : 'log:write'] }]);
     }
 
     const readOnly = tools.filter(t => (t.annotations as any)?.readOnlyHint).map(t => t.name).sort();
@@ -247,6 +248,75 @@ test('tools/list で6つの道具が見つかり、注記が付いている', as
 });
 
 // ---------------------------------------------------------------- 認証
+
+test('読み取りだけを許可したトークンでは3種の書き込みを拒否し、記録を変えない', async () => {
+  const server = await startServer();
+  try {
+    const { accessToken } = await server.tokenFor('alice', { scopes: ['data:read'] });
+    const { client, close } = await connect(server.baseUrl, accessToken);
+    const before = await client.callTool({ name: 'get_today_summary', arguments: {} });
+    for (const [name, args] of [
+      ['log_meal', { name: 'scope test', calories: 100, protein: 10, fat: 2, carbs: 10 }],
+      ['log_weight', { weight: 60 }],
+      ['log_workout', { exercises: [{ name: 'scope test', sets: [{ weight: 20, reps: 10 }] }] }],
+    ] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      assert.equal(result.isError, true);
+      assert.match(JSON.stringify(result._meta), /insufficient_scope/);
+    }
+    assert.deepEqual(await client.callTool({ name: 'get_today_summary', arguments: {} }), before);
+    await close();
+  } finally { await server.close(); }
+});
+
+test('書き込みだけを許可したトークンでは3種の読み取りを拒否する', async () => {
+  const server = await startServer();
+  try {
+    const { accessToken } = await server.tokenFor('alice', { scopes: ['log:write'] });
+    const { client, close } = await connect(server.baseUrl, accessToken);
+    for (const name of ['get_today_summary', 'get_recent_workouts', 'get_progress']) {
+      const result = await client.callTool({ name, arguments: {} });
+      assert.equal(result.isError, true);
+      assert.match(JSON.stringify(result._meta), /data:read/);
+      assert.equal(result.structuredContent, undefined);
+    }
+    await close();
+  } finally { await server.close(); }
+});
+
+test('同意画面はクライアント・戻り先の不一致、未知のscope、別サイトからの送信を拒否する', async () => {
+  const server = await startServer();
+  try {
+    const { challenge } = pkce();
+    const original = {
+      client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+      scope: 'data:read', email: 'alice@example.jp', password: 'correct-horse',
+    };
+    for (const change of [{ redirect_uri: 'https://chatgpt.com/connector/oauth/another' }, { scope: 'admin' }]) {
+      const response = await fetch(`${server.baseUrl}/oauth/consent`, {
+        method: 'POST', redirect: 'manual',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ ...original, ...change }),
+      });
+      assert.equal(response.status, 400);
+      assert.equal(response.headers.get('location'), null);
+    }
+    const crossSite = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://evil.example' },
+      body: new URLSearchParams(original),
+    });
+    assert.equal(crossSite.status, 403);
+    assert.equal(server.codes.size, 0);
+    const page = await fetch(`${server.baseUrl}/oauth/consent?${new URLSearchParams(original)}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get('x-frame-options'), 'DENY');
+    assert.match(page.headers.get('content-security-policy')!, /form-action 'self'/);
+    const html = await page.text();
+    assert.match(html, /<strong>読む<\/strong>/);
+    assert.doesNotMatch(html, /<strong>記録する<\/strong>/);
+  } finally { await server.close(); }
+});
 
 test('トークン無しでは接続できず、認可の入口を案内する', async () => {
   const server = await startServer();

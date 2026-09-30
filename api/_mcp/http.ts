@@ -30,6 +30,7 @@ import {
   issuerUrl,
   mcpResourceUrl,
   protectedResourceMetadata,
+  resolveMcpScopes,
   refreshTokens,
   revokeAccessToken,
   verifyAccessToken,
@@ -95,6 +96,19 @@ const clientsStore: OAuthRegisteredClientsStore = {
     };
   },
 };
+
+/** 同意画面への直接アクセスも、認可入口と同じ戻り先・PKCE・権限に制限する。 */
+function validateConsent(params: Record<string, string | undefined>): void {
+  if (typeof params.client_id !== 'string' || !params.redirect_uri
+    || decodeClientId(params.client_id) !== params.redirect_uri
+    || typeof params.code_challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge)) {
+    throw new AppError('invalid_request', 400, 'リクエストの内容が正しくありません。ChatGPTから連携をやり直してください。');
+  }
+  if (params.scope !== undefined && typeof params.scope !== 'string') {
+    throw new AppError('invalid_scope', 400, '許可する操作の指定が正しくありません。');
+  }
+  resolveMcpScopes((params.scope ?? '').split(' ').filter(Boolean));
+}
 
 // ---------------------------------------------------------------- provider
 
@@ -244,10 +258,19 @@ export function createMcpApp(deps: McpAppDeps = {}) {
   });
 
   // 同意画面（本人確認はここだけで行う。ChatGPTの会話にパスワードを出さない）
+  app.use('/oauth/consent', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+    next();
+  });
   app.get('/oauth/consent', (req: Request, res: Response) => {
     const params = req.query as Record<string, string | undefined>;
-    if (!params.client_id || !params.redirect_uri || !params.code_challenge) {
-      res.status(400).send(renderConsentPage({ error: 'リクエストの内容が正しくありません。' }));
+    try {
+      validateConsent(params);
+    } catch (error) {
+      res.status(400).send(renderConsentPage({ error: toErrorResponse(error).body.error }));
       return;
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -262,10 +285,14 @@ export function createMcpApp(deps: McpAppDeps = {}) {
     }));
   });
 
-  app.post('/oauth/consent', express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
+  app.post('/oauth/consent', express.urlencoded({ extended: false, limit: '10kb' }), async (req: Request, res: Response) => {
     const body = req.body as Record<string, string | undefined>;
     res.setHeader('Cache-Control', 'no-store');
     try {
+      if (req.headers.origin && req.headers.origin !== new URL(publicAppUrl()).origin) {
+        throw new AppError('invalid_origin', 403, 'ChatGPTから連携をやり直してください。');
+      }
+      validateConsent(body);
       const code = await grantAuthorization({
         clientId: body.client_id ?? '',
         redirectUri: body.redirect_uri ?? '',
@@ -312,7 +339,7 @@ export function createMcpApp(deps: McpAppDeps = {}) {
     const server = buildMcpServer(() => ({
       service: makeService(session),
       userId: session.userId,
-    }));
+    }), auth.scopes);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // ステートレス
       enableJsonResponse: true,

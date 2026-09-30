@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Bell, BellOff, Sparkles, X, RefreshCw, Download } from 'lucide-react';
+import { Settings, Bell, BellOff, Sparkles, X, RefreshCw, Download, MessageCircle, ChevronRight } from 'lucide-react';
 import { UserGoals } from '../types';
 import { AI_DAILY_LIMITS, loadAiUsage, incrementAiUsage, remainingOf, AiUsage } from '../utils/aiUsage';
 import { downloadBackup } from '../utils/backup';
@@ -273,7 +273,7 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification, a
         <div>
           <h3 className="ll-label text-zinc-500 text-xs">データのバックアップ</h3>
           <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
-            記録はこの端末の中にだけ保存されています。ブラウザのデータを消すと元に戻せません。
+            {dataMode === 'cloud' ? 'この端末に同期済みの記録を書き出します。' : '記録はこの端末の中にだけ保存されています。ブラウザのデータを消すと元に戻せません。'}
           </p>
         </div>
         <button
@@ -293,6 +293,15 @@ export function SectionSettings({ goals, setGoals, remind, toggleNotification, a
 
       {/* クラウド同期（移行の第2工程） */}
       <CloudSync account={account} dataMode={dataMode} onAccountChanged={onAccountChanged} />
+
+      <a href="/chatgpt" className="ll-card p-5 flex items-center gap-3 hover:border-lime-400/30 transition-colors">
+        <MessageCircle size={22} className="text-lime-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-black text-white">ChatGPTと連携</h3>
+          <p className="text-xs text-zinc-400 mt-1 leading-6">チャットで食事・体重・筋トレを記録・確認</p>
+        </div>
+        <ChevronRight size={18} className="text-zinc-500 shrink-0" />
+      </a>
 
       {/* プライバシーポリシー */}
       <div className="ll-card p-5">

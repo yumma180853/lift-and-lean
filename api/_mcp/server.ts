@@ -43,7 +43,7 @@ function toToolError(error: unknown): { content: { type: 'text'; text: string }[
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
-export function buildMcpServer(makeContext: () => ToolContext): McpServer {
+export function buildMcpServer(makeContext: () => ToolContext, grantedScopes: readonly string[]): McpServer {
   const server = new McpServer(MCP_SERVER_INFO, {
     capabilities: { tools: {} },
     instructions:
@@ -54,6 +54,7 @@ export function buildMcpServer(makeContext: () => ToolContext): McpServer {
   });
 
   for (const tool of TOOLS) {
+    const requiredScope = tool.annotations.readOnlyHint ? 'data:read' : 'log:write';
     server.registerTool(
       tool.name,
       {
@@ -61,8 +62,17 @@ export function buildMcpServer(makeContext: () => ToolContext): McpServer {
         description: tool.description,
         inputSchema: tool.inputShape,
         annotations: { title: tool.title, ...tool.annotations },
+        _meta: { securitySchemes: [{ type: 'oauth2', scopes: [requiredScope] }] },
       },
       async (args: any) => {
+        // 表示上の注釈だけでは権限制御にならない。サービスを作る前に拒否する。
+        if (!grantedScopes.includes(requiredScope)) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: 'この操作は許可されていません。必要な権限で連携し直してください。' }],
+            _meta: { 'mcp/www_authenticate': [`Bearer error="insufficient_scope", scope="${requiredScope}"`] },
+          };
+        }
         try {
           const result: ToolResult = await tool.run(makeContext(), args ?? {});
           return {

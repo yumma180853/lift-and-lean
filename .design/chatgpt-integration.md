@@ -503,3 +503,21 @@ ChatGPT
 
 トークン一式と連携の記録を消し、**この連携用に作ったAppwriteセッションだけ**を削除する。
 本人がアプリで使っているログインには触れない。
+
+## 16. ChatGPT接続の再開（2026-09-30）
+
+本人が「シーシャと同じようにMCPで連携できるように、なるべく進めて」と直接依頼。
+既存のAppwrite認証・6ツール・公開OAuthを再利用する。
+
+- アプリ設定へ「ChatGPTと連携」、`/chatgpt` へ初回案内・公開URLコピー・ChatGPT設定への導線を追加。
+- 各自のChatGPTから、各自のLift & Leanアカウントへ接続する。端末内だけの記録は対象外で、クラウド同期とメール確認が必要。
+- 権限の実行時検査が欠けていたため、各ツールで `data:read` / `log:write` を検証。権限不足時はサービス呼び出し前に拒否し、OAuth challengeを返す。
+- 同意画面も登録クライアントと戻り先の一致・S256 challenge形式・許可scopeを検証。別サイトからのフォーム送信を拒否し、iframe埋め込み・参照元送信を制限。
+- 同意画面は要求された操作だけを表示。同日の体重の上書き、ChatGPTへの送信、解除と過去の会話の扱いを明記。プライバシー文書の古い「ログインなし・端末だけ」の説明も現行実装へ合わせた。
+- ローカル確認：TypeScript、MCP関連72件、全unit350件、production build、設定→連携案内・URLコピーの実画面。テストの認証・記録は架空のメモリデータ。実データ更新・有料AI呼び出しなし。
+- ChatGPT画面でOAuth discovery/DCRと `data:read` / `log:write` の自動検出を確認。既存のLift & Leanプラグインはなく、登録フォームを準備した。
+- Vercel CLIの既存認証は無効だったため秘密の取得・変更はせず、既存のGitHub連動デプロイを利用する。直前の本番HEAD `80d583e4` はVercel success。
+- この記録時点では修正の本番反映・本人ログイン後のChatGPT実接続は未完了。実データを使うログイン・連携許可は本人の画面で行い、完了後に読み取りで確認する。
+
+接続先：`https://lift-and-lean.vercel.app/api/mcp`。
+公式仕様の参照：<https://developers.openai.com/plugins/build/auth>。

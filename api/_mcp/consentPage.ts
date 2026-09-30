@@ -24,6 +24,7 @@ const hidden = (name: string, value?: string): string =>
   value === undefined || value === '' ? '' : `<input type="hidden" name="${name}" value="${escape(value)}">`;
 
 export function renderConsentPage(params: ConsentPageParams): string {
+  const scopes = (params.scope || 'data:read log:write').split(' ');
   const canSubmit = Boolean(params.clientId && params.redirectUri && params.codeChallenge);
   const errorBlock = params.error
     ? `<p class="error">${escape(params.error)}</p>`
@@ -73,11 +74,11 @@ export function renderConsentPage(params: ConsentPageParams): string {
 <body>
   <div class="card">
     <h1>LIFT &amp; LEAN</h1>
-    <p class="lead">ChatGPT からあなたの記録を読み書きできるようにします。</p>
+    <p class="lead">あなたの Lift &amp; Lean アカウントを ChatGPT に連携します。アプリと同じアカウントでログインしてください。</p>
     ${errorBlock}
     <ul>
-      <li>食事・体重・筋トレを<strong>記録する</strong></li>
-      <li>その日の合計や最近の記録を<strong>読む</strong></li>
+      ${scopes.includes('log:write') ? '<li>食事・体重・筋トレを<strong>記録する</strong>（同日の体重は上書き）</li>' : ''}
+      ${scopes.includes('data:read') ? '<li>食事の合計・目標・体重・筋トレの記録を<strong>読む</strong></li>' : ''}
     </ul>
     <ul class="deny">
       <li>記録の削除・目標の変更はできません</li>
@@ -86,8 +87,9 @@ export function renderConsentPage(params: ConsentPageParams): string {
     ${form}
     <p class="note">
       パスワードを入力するのはこの画面だけです。ChatGPT の会話には残りません。<br>
-      連携をやめるときは ChatGPT 側で接続を削除してください。この連携専用のログインが
-      無効になり、アプリのログインには影響しません。
+      読み出した記録は ChatGPT に送信されます。会話の保存・利用は ChatGPT 側の設定に従います。<br>
+      連携をやめるときは ChatGPT 側で接続を削除してください。解除通知を受けると連携用トークンを無効にします。
+      アプリのログインには影響しません。<a href="/privacy" target="_blank" rel="noopener noreferrer">プライバシーポリシー</a>
     </p>
   </div>
 </body>
