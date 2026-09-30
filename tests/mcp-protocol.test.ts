@@ -311,7 +311,7 @@ test('同意画面はクライアント・戻り先の不一致、未知のscope
     const page = await fetch(`${server.baseUrl}/oauth/consent?${new URLSearchParams(original)}`);
     assert.equal(page.status, 200);
     assert.equal(page.headers.get('x-frame-options'), 'DENY');
-    assert.match(page.headers.get('content-security-policy')!, /form-action 'self'/);
+    assert.match(page.headers.get('content-security-policy')!, /form-action 'self' https:\/\/chatgpt.com;/);
     const html = await page.text();
     assert.match(html, /<strong>読む<\/strong>/);
     assert.doesNotMatch(html, /<strong>記録する<\/strong>/);

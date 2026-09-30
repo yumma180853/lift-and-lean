@@ -110,6 +110,13 @@ function validateConsent(params: Record<string, string | undefined>): void {
   resolveMcpScopes((params.scope ?? '').split(' ').filter(Boolean));
 }
 
+function consentContentPolicy(redirectUri?: string): string {
+  // Chromeはフォーム送信後の302にもform-actionを適用する。検証済みの
+  // OAuth戻り先を許可しないと、ログイン成功後にChatGPTへ戻れなくなる。
+  const callback = redirectUri && isAllowedRedirectUri(redirectUri) ? ` ${new URL(redirectUri).origin}` : '';
+  return `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${callback}; frame-ancestors 'none'; base-uri 'none'`;
+}
+
 // ---------------------------------------------------------------- provider
 
 /**
@@ -262,13 +269,14 @@ export function createMcpApp(deps: McpAppDeps = {}) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy', consentContentPolicy());
     next();
   });
   app.get('/oauth/consent', (req: Request, res: Response) => {
     const params = req.query as Record<string, string | undefined>;
     try {
       validateConsent(params);
+      res.setHeader('Content-Security-Policy', consentContentPolicy(params.redirect_uri));
     } catch (error) {
       res.status(400).send(renderConsentPage({ error: toErrorResponse(error).body.error }));
       return;
@@ -293,6 +301,7 @@ export function createMcpApp(deps: McpAppDeps = {}) {
         throw new AppError('invalid_origin', 403, 'ChatGPTから連携をやり直してください。');
       }
       validateConsent(body);
+      res.setHeader('Content-Security-Policy', consentContentPolicy(body.redirect_uri));
       const code = await grantAuthorization({
         clientId: body.client_id ?? '',
         redirectUri: body.redirect_uri ?? '',
