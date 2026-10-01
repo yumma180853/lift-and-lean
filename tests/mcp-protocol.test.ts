@@ -345,19 +345,49 @@ test('同一オリジンからの正常な同意送信は認可コードの発�
   } finally { await server.close(); }
 });
 
-test('トークン無しでは接続できず、認可の入口を案内する', async () => {
+test('未ログインでもツール定義を発見でき、すべての道具はOAuthを要求する', async () => {
+  const server = await startServer();
+  const client = new Client({ name: 'anonymous-discovery-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${server.baseUrl}/api/mcp`)));
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 6);
+    assert.deepEqual(tools.map(tool => tool.name).sort(), [
+      'get_progress', 'get_recent_workouts', 'get_today_summary', 'log_meal', 'log_weight', 'log_workout',
+    ]);
+    for (const tool of tools) {
+      assert.deepEqual(tool._meta?.securitySchemes, [{
+        type: 'oauth2', scopes: [tool.annotations?.readOnlyHint ? 'data:read' : 'log:write'],
+      }]);
+    }
+    assert.equal(server.codes.size, 0);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test('トークン無しの読み書き・未知のメソッド・バッチは拒否し、認可の入口を案内する', async () => {
   const server = await startServer();
   try {
-    const response = await fetch(`${server.baseUrl}/api/mcp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
-    });
+    const requests = [
+      ...['get_today_summary', 'get_recent_workouts', 'get_progress', 'log_meal', 'log_weight', 'log_workout']
+        .map(name => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: {} } })),
+      { jsonrpc: '2.0', id: 1, method: 'resources/list' },
+      [{ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_today_summary' } }],
+    ];
+    for (const request of requests) {
+      const response = await fetch(`${server.baseUrl}/api/mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+        body: JSON.stringify(request),
+      });
 
-    assert.equal(response.status, 401);
-    const challenge = response.headers.get('www-authenticate') ?? '';
-    assert.match(challenge, /^Bearer/);
-    assert.match(challenge, /resource_metadata=/, 'どこで認可を受ければよいか示す');
+      assert.equal(response.status, 401);
+      const challenge = response.headers.get('www-authenticate') ?? '';
+      assert.match(challenge, /^Bearer/);
+      assert.match(challenge, /resource_metadata=/, 'どこで認可を受ければよいか示す');
+    }
   } finally {
     await server.close();
   }
@@ -504,8 +534,9 @@ test('401の案内が示すメタデータの場所が実在する', async () =>
     const response = await fetch(`${server.baseUrl}/api/mcp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_today_summary' } }),
     });
+    assert.equal(response.status, 401);
     const challenge = response.headers.get('www-authenticate') ?? '';
     const url = /resource_metadata="([^"]+)"/.exec(challenge)?.[1];
     assert.equal(typeof url, 'string');

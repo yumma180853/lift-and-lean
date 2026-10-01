@@ -9,7 +9,7 @@
  */
 
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { InvalidGrantError, InvalidTargetError, InvalidTokenError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
@@ -337,21 +337,33 @@ export function createMcpApp(deps: McpAppDeps = {}) {
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(mcpResourceUrl()));
   const requireAuth = requireBearerAuth({ verifier: provider, resourceMetadataUrl });
 
-  app.post('/api/mcp', express.json({ limit: '1mb' }), requireAuth, async (req: Request, res: Response) => {
+  // ChatGPTは連携前にツール定義を取得する。公開するのは説明・入力形式だけ。
+  // 呼び出し、未知のメソッド、バッチ、提示された無効トークンは認証を必須にする。
+  const isPublicDiscovery = (body: unknown): boolean => {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+    const method = (body as { method?: unknown }).method;
+    return typeof method === 'string'
+      && ['initialize', 'notifications/initialized', 'tools/list', 'ping'].includes(method);
+  };
+  const authenticateMcpRequest = (req: Request, res: Response, next: NextFunction) => {
+    if (req.headers.authorization === undefined && isPublicDiscovery(req.body)) { next(); return; }
+    requireAuth(req, res, next);
+  };
+
+  app.post('/api/mcp', express.json({ limit: '1mb' }), authenticateMcpRequest, async (req: Request, res: Response) => {
     const auth = req.auth;
-    if (!auth) { res.status(401).end(); return; }
 
     // **Appwriteのセッションはトークンからサーバー側で解決する**。
     // 受け取ったBearer値をそのまま下流へ渡すこと（素通し）はしない
-    const session = {
+    const session = auth ? {
       userId: String(auth.extra?.userId ?? ''),
       sessionSecret: String(auth.extra?.appwriteSession ?? ''),
-    };
-    if (!session.userId || !session.sessionSecret) { res.status(401).end(); return; }
-    const server = buildMcpServer(() => ({
-      service: makeService(session),
-      userId: session.userId,
-    }), auth.scopes);
+    } : null;
+    if (session && (!session.userId || !session.sessionSecret)) { res.status(401).end(); return; }
+    const server = buildMcpServer(() => {
+      if (!session) throw new AppError('unauthenticated', 401, 'ログインが必要です。');
+      return { service: makeService(session), userId: session.userId };
+    }, auth?.scopes ?? []);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // ステートレス
       enableJsonResponse: true,
