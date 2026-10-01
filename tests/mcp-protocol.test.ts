@@ -301,20 +301,47 @@ test('同意画面はクライアント・戻り先の不一致、未知のscope
       assert.equal(response.status, 400);
       assert.equal(response.headers.get('location'), null);
     }
-    const crossSite = await fetch(`${server.baseUrl}/oauth/consent`, {
-      method: 'POST', redirect: 'manual',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://evil.example' },
-      body: new URLSearchParams(original),
-    });
-    assert.equal(crossSite.status, 403);
+    for (const origin of ['https://evil.example', 'null']) {
+      const crossSite = await fetch(`${server.baseUrl}/oauth/consent`, {
+        method: 'POST', redirect: 'manual',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: origin },
+        body: new URLSearchParams(original),
+      });
+      assert.equal(crossSite.status, 403);
+      assert.equal(crossSite.headers.get('location'), null);
+    }
     assert.equal(server.codes.size, 0);
     const page = await fetch(`${server.baseUrl}/oauth/consent?${new URLSearchParams(original)}`);
     assert.equal(page.status, 200);
     assert.equal(page.headers.get('x-frame-options'), 'DENY');
+    assert.equal(page.headers.get('referrer-policy'), 'strict-origin');
     assert.match(page.headers.get('content-security-policy')!, /form-action 'self' https:\/\/chatgpt.com;/);
     const html = await page.text();
     assert.match(html, /<strong>読む<\/strong>/);
     assert.doesNotMatch(html, /<strong>記録する<\/strong>/);
+  } finally { await server.close(); }
+});
+
+test('同一オリジンからの正常な同意送信は認可コードの発行へ進む', async () => {
+  const server = await startServer();
+  try {
+    const { challenge } = pkce();
+    const response = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST', redirect: 'manual',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: new URL(process.env.APP_PUBLIC_URL!).origin,
+      },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT, code_challenge: challenge,
+        scope: 'data:read', email: 'alice@example.jp', password: 'correct-horse',
+      }),
+    });
+    assert.equal(response.status, 302);
+    const callback = new URL(response.headers.get('location')!);
+    assert.equal(callback.origin + callback.pathname, REDIRECT);
+    assert.ok(callback.searchParams.get('code'));
+    assert.equal(server.codes.size, 1);
   } finally { await server.close(); }
 });
 

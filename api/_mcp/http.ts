@@ -267,7 +267,10 @@ export function createMcpApp(deps: McpAppDeps = {}) {
   // 同意画面（本人確認はここだけで行う。ChatGPTの会話にパスワードを出さない）
   app.use('/oauth/consent', (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Referrer-Policy', 'no-referrer');
+    // no-referrer は通常のHTMLフォームPOSTの Origin も null にするため、
+    // 正常な送信が下の送信元チェックで拒否される。URLのパス・クエリは
+    // 送らず、送信元のオリジンだけを残す（HTTPSからHTTPへも送らない）。
+    res.setHeader('Referrer-Policy', 'strict-origin');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Content-Security-Policy', consentContentPolicy());
     next();
