@@ -14,10 +14,14 @@ const messageOf = (error: unknown): string =>
   error instanceof ApiError ? error.message : '処理に失敗しました。時間をおいて試してください。';
 
 export function ResetPassword() {
-  const params = new URLSearchParams(window.location.search);
-  const userId = params.get('userId') ?? '';
-  const secret = params.get('secret') ?? '';
-  const linkOk = userId !== '' && secret !== '';
+  // URLは成功後に消すため、初回のリンク情報を画面の状態として保持する。
+  // 毎回URLを読み直すと、成功時の再描画で「リンク不正」に変わってしまう。
+  const [recovery, setRecovery] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const userId = params.get('userId') ?? '';
+    const secret = params.get('secret') ?? '';
+    return userId !== '' && secret !== '' ? { userId, secret } : null;
+  });
 
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -27,6 +31,7 @@ export function ResetPassword() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!recovery || busy || done) return;
     setError(null);
     if (password !== confirm) {
       setError('確認用のパスワードが一致しません。');
@@ -34,9 +39,10 @@ export function ResetPassword() {
     }
     setBusy(true);
     try {
-      await authApi.confirmPasswordReset(userId, secret, password);
+      await authApi.confirmPasswordReset(recovery.userId, recovery.secret, password);
       setPassword('');
       setConfirm('');
+      setRecovery(null);
       setDone(true);
       // secret を含むURLを履歴に残さない
       window.history.replaceState(null, '', '/reset-password');
@@ -55,7 +61,7 @@ export function ResetPassword() {
           <span>RESET PASSWORD</span>
         </div>
 
-        {!linkOk && (
+        {!recovery && !done && (
           <div className="ll-card p-5 space-y-3">
             <p className="text-sm font-bold text-white">リンクが正しくありません</p>
             <p className="text-xs text-zinc-500 leading-relaxed">
@@ -68,7 +74,7 @@ export function ResetPassword() {
           </div>
         )}
 
-        {linkOk && done && (
+        {done && (
           <div className="ll-card p-5 space-y-3">
             <div className="flex items-center gap-2 text-lime-400">
               <CheckCircle2 size={18} />
@@ -83,7 +89,7 @@ export function ResetPassword() {
           </div>
         )}
 
-        {linkOk && !done && (
+        {recovery && !done && (
           <form onSubmit={submit} className="ll-card p-5 space-y-4">
             <p className="text-xs text-zinc-500 leading-relaxed">
               新しいパスワードを決めてください（8文字以上）。設定するとこのリンクは使えなくなります。
