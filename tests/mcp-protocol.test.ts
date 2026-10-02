@@ -45,7 +45,7 @@ const PWA_SESSIONS: Record<string, { userId: string; emailVerified: boolean }> =
 const MCP_RESOURCE = canonicalResource(mcpResourceUrl());
 
 /** テスト用のサーバーを立てる。Appwriteとの境目だけ差し替える */
-async function startServer() {
+async function startServer(options: { vercelResponseHelpers?: boolean } = {}) {
   const repository = new MemoryRepository();
   const services = new Map<string, InstanceType<typeof LiftAndLeanService>>();
 
@@ -107,7 +107,20 @@ async function startServer() {
     },
   });
 
-  const server = createServer(app);
+  const server = createServer((req, res) => {
+    if (options.vercelResponseHelpers) {
+      // 本番のVercelはExpressより先にredirectを付与する。引数1つの既定値は
+      // Expressの302ではなく307で、POSTの本文も次のサイトへ再送してしまう。
+      Object.defineProperty(res, 'redirect', {
+        value(statusOrUrl: number | string, url?: string) {
+          res.statusCode = typeof statusOrUrl === 'number' ? statusOrUrl : 307;
+          res.setHeader('Location', typeof statusOrUrl === 'string' ? statusOrUrl : url!);
+          res.end();
+        },
+      });
+    }
+    app(req, res);
+  });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as AddressInfo).port;
 
@@ -337,11 +350,62 @@ test('同一オリジンからの正常な同意送信は認可コードの発�
         scope: 'data:read', email: 'alice@example.jp', password: 'correct-horse',
       }),
     });
-    assert.equal(response.status, 302);
+    assert.equal(response.status, 303);
     const callback = new URL(response.headers.get('location')!);
     assert.equal(callback.origin + callback.pathname, REDIRECT);
     assert.ok(callback.searchParams.get('code'));
     assert.equal(server.codes.size, 1);
+  } finally { await server.close(); }
+});
+
+test('Vercelの応答ヘルパーがあっても、同意後の戻り先へパスワードを再送しない', async () => {
+  let callbackMethod: string | undefined;
+  let callbackBody = '';
+  let callbackQuery: URLSearchParams | undefined;
+  const callback = createServer(async (req, res) => {
+    callbackMethod = req.method;
+    for await (const chunk of req) callbackBody += chunk.toString();
+    callbackQuery = new URL(req.url!, 'http://127.0.0.1').searchParams;
+    res.end('connected');
+  });
+  await new Promise<void>(resolve => callback.listen(0, '127.0.0.1', resolve));
+  const redirectUri = `http://127.0.0.1:${(callback.address() as AddressInfo).port}/callback`;
+  const server = await startServer({ vercelResponseHelpers: true });
+  try {
+    const { challenge } = pkce();
+    const response = await fetch(`${server.baseUrl}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: `ll-${Buffer.from(redirectUri).toString('base64url')}`,
+        redirect_uri: redirectUri, code_challenge: challenge,
+        state: 'synthetic-state', scope: 'data:read',
+        email: 'alice@example.jp', password: 'correct-horse',
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(callbackMethod, 'GET', '戻り先はPOSTを受け付けず、GETで認可結果を受け取る');
+    assert.equal(callbackBody, '', 'ログイン本文を戻り先へ送らない');
+    assert.deepEqual([...callbackQuery!.keys()].sort(), ['code', 'state']);
+    assert.equal(callbackQuery!.get('state'), 'synthetic-state');
+    assert.ok(callbackQuery!.get('code'));
+  } finally {
+    await server.close();
+    await new Promise<void>(resolve => callback.close(() => resolve()));
+  }
+});
+
+test('Vercelの応答ヘルパーがあっても、認可開始の移動は302になる', async () => {
+  const server = await startServer({ vercelResponseHelpers: true });
+  try {
+    const { challenge } = pkce();
+    const query = new URLSearchParams({
+      response_type: 'code', client_id: CLIENT_ID, redirect_uri: REDIRECT,
+      code_challenge: challenge, code_challenge_method: 'S256', state: 'synthetic-state',
+    });
+    const response = await fetch(`${server.baseUrl}/authorize?${query}`, { redirect: 'manual' });
+    assert.equal(response.status, 302);
+    assert.equal(new URL(response.headers.get('location')!).pathname, '/oauth/consent');
   } finally { await server.close(); }
 });
 
@@ -810,7 +874,7 @@ test('同意 → コード発行 → トークン交換 → MCP接続 が通る'
       }).toString(),
     });
 
-    assert.equal(consent.status, 302);
+    assert.equal(consent.status, 303);
     const location = new URL(consent.headers.get('location')!);
     assert.equal(location.origin + location.pathname, REDIRECT);
     assert.equal(location.searchParams.get('state'), 'xyz');

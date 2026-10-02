@@ -161,7 +161,8 @@ const buildProvider = (deps: McpAppDeps): OAuthServerProvider => ({
     });
     if (params.state) query.set('state', params.state);
     if (params.resource) query.set('resource', params.resource.toString());
-    res.redirect(`${publicAppUrl()}/oauth/consent?${query.toString()}`);
+    // Vercelのredirect(url)は307。Expressの302に依存せず明示する。
+    res.redirect(302, `${publicAppUrl()}/oauth/consent?${query.toString()}`);
   },
 
   async challengeForAuthorizationCode(_client, authorizationCode: string): Promise<string> {
@@ -317,7 +318,9 @@ export function createMcpApp(deps: McpAppDeps = {}) {
       const target = new URL(body.redirect_uri!);
       target.searchParams.set('code', code);
       if (body.state) target.searchParams.set('state', body.state);
-      res.redirect(target.toString());
+      // POSTのメール・パスワードをChatGPTへ再送しない。Vercelが付ける
+      // redirect(url)の既定値307を避け、303で必ず本文のないGETへ切り替える。
+      res.redirect(303, target.toString());
     } catch (error) {
       const { status, body: payload } = toErrorResponse(error);
       res.setHeader('Content-Type', 'text/html; charset=utf-8');

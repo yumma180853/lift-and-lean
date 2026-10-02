@@ -338,5 +338,5 @@ export function redirectWithError(res: Response, redirectUri: string, error: str
   const url = new URL(redirectUri);
   url.searchParams.set('error', error);
   if (state) url.searchParams.set('state', state);
-  res.redirect(url.toString());
+  res.redirect(303, url.toString());
 }
